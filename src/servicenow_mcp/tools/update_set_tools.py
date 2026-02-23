@@ -4,75 +4,35 @@ Provides management of update sets for tracking customizations.
 """
 
 import logging
-from typing import Any, Dict, Optional
+from typing import Annotated, Any, Dict, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import Field
 
-from servicenow_mcp.auth.auth_manager import AuthManager
-from servicenow_mcp.utils.config import ServerConfig
+from servicenow_mcp.server import mcp, get_config, get_auth_manager
 from servicenow_mcp.utils.http import api_request, parse_json_response
 
 logger = logging.getLogger(__name__)
 
 
-# --- Parameter Models ---
-
-
-class ListUpdateSetsParams(BaseModel):
-    """Parameters for listing update sets."""
-
-    query: Optional[str] = Field(
-        None, description="Filter query (e.g., 'state=in progress', 'nameLIKErelease')"
-    )
-    state: Optional[str] = Field(
-        None, description="Filter by state: 'in progress', 'complete', 'ignore', or 'default'"
-    )
-    limit: int = Field(20, description="Maximum number of update sets to return", ge=1, le=100)
-
-
-class GetUpdateSetParams(BaseModel):
-    """Parameters for getting a single update set."""
-
-    sys_id: str = Field(..., description="The sys_id of the update set")
-
-
-class CreateUpdateSetParams(BaseModel):
-    """Parameters for creating a new update set."""
-
-    name: str = Field(..., description="Name of the update set")
-    description: Optional[str] = Field(None, description="Description of the update set")
-    parent: Optional[str] = Field(None, description="Parent update set sys_id (for batch sets)")
-
-
-class SetCurrentUpdateSetParams(BaseModel):
-    """Parameters for setting the current (active) update set."""
-
-    sys_id: str = Field(..., description="The sys_id of the update set to make current")
-
-
-class ListUpdateSetChangesParams(BaseModel):
-    """Parameters for listing changes in an update set."""
-
-    update_set_sys_id: str = Field(..., description="The sys_id of the update set")
-    limit: int = Field(50, description="Maximum number of changes to return", ge=1, le=500)
-
-
-# --- Tool Implementations ---
-
-
+@mcp.tool()
 def list_update_sets(
-    config: ServerConfig, auth_manager: AuthManager, params: ListUpdateSetsParams
+    query: Annotated[Optional[str], Field(description="Filter query (e.g., 'state=in progress', 'nameLIKErelease')")] = None,
+    state: Annotated[Optional[str], Field(description="Filter by state: 'in progress', 'complete', 'ignore', or 'default'")] = None,
+    limit: Annotated[int, Field(ge=1, le=100, description="Maximum number of update sets to return")] = 20,
 ) -> Dict[str, Any]:
-    """List update sets in the ServiceNow instance."""
+    """List update sets with optional state and query filtering"""
+    config = get_config()
+    auth_manager = get_auth_manager()
+
     url = f"{config.api_url}/table/sys_update_set"
     query_parts = []
-    if params.query:
-        query_parts.append(params.query)
-    if params.state:
-        query_parts.append(f"state={params.state}")
+    if query:
+        query_parts.append(query)
+    if state:
+        query_parts.append(f"state={state}")
 
     query_params: Dict[str, Any] = {
-        "sysparm_limit": params.limit,
+        "sysparm_limit": limit,
         "sysparm_fields": "sys_id,name,description,state,application,sys_created_on,sys_updated_on",
         "sysparm_query": "^".join(query_parts) if query_parts else "ORDERBYDESCsys_updated_on",
     }
@@ -83,26 +43,36 @@ def list_update_sets(
     return {"count": len(result), "update_sets": result}
 
 
+@mcp.tool()
 def get_update_set(
-    config: ServerConfig, auth_manager: AuthManager, params: GetUpdateSetParams
+    sys_id: Annotated[str, Field(description="The sys_id of the update set")],
 ) -> Dict[str, Any]:
-    """Get details of a specific update set."""
-    url = f"{config.api_url}/table/sys_update_set/{params.sys_id}"
+    """Get details of a specific update set by sys_id"""
+    config = get_config()
+    auth_manager = get_auth_manager()
+
+    url = f"{config.api_url}/table/sys_update_set/{sys_id}"
     response = api_request("GET", url, auth_manager, config.timeout)
     data = parse_json_response(response, url)
     return data.get("result", {})
 
 
+@mcp.tool()
 def create_update_set(
-    config: ServerConfig, auth_manager: AuthManager, params: CreateUpdateSetParams
+    name: Annotated[str, Field(description="Name of the update set")],
+    description: Annotated[Optional[str], Field(description="Description of the update set")] = None,
+    parent: Annotated[Optional[str], Field(description="Parent update set sys_id (for batch sets)")] = None,
 ) -> Dict[str, Any]:
-    """Create a new update set."""
+    """Create a new update set for tracking customizations"""
+    config = get_config()
+    auth_manager = get_auth_manager()
+
     url = f"{config.api_url}/table/sys_update_set"
-    payload: Dict[str, Any] = {"name": params.name}
-    if params.description:
-        payload["description"] = params.description
-    if params.parent:
-        payload["parent"] = params.parent
+    payload: Dict[str, Any] = {"name": name}
+    if description:
+        payload["description"] = description
+    if parent:
+        payload["parent"] = parent
 
     response = api_request("POST", url, auth_manager, config.timeout, json_data=payload)
     data = parse_json_response(response, url)
@@ -110,11 +80,15 @@ def create_update_set(
     return {"sys_id": result.get("sys_id"), "name": result.get("name"), "record": result}
 
 
+@mcp.tool()
 def set_current_update_set(
-    config: ServerConfig, auth_manager: AuthManager, params: SetCurrentUpdateSetParams
+    sys_id: Annotated[str, Field(description="The sys_id of the update set to make current")],
 ) -> str:
-    """Set an update set as the current (active) update set for the session."""
-    url = f"{config.api_url}/table/sys_update_set/{params.sys_id}"
+    """Set an update set as the current active update set"""
+    config = get_config()
+    auth_manager = get_auth_manager()
+
+    url = f"{config.api_url}/table/sys_update_set/{sys_id}"
     response = api_request("GET", url, auth_manager, config.timeout)
     data = parse_json_response(response, url)
     update_set = data.get("result", {})
@@ -137,26 +111,31 @@ def set_current_update_set(
         pref_sys_id = prefs[0]["sys_id"]
         api_request(
             "PATCH", f"{pref_url}/{pref_sys_id}", auth_manager, config.timeout,
-            json_data={"value": params.sys_id},
+            json_data={"value": sys_id},
         )
     else:
         api_request(
             "POST", pref_url, auth_manager, config.timeout,
-            json_data={"name": "sys_update_set", "value": params.sys_id},
+            json_data={"name": "sys_update_set", "value": sys_id},
         )
 
-    return f"Current update set changed to '{name}' ({params.sys_id})"
+    return f"Current update set changed to '{name}' ({sys_id})"
 
 
+@mcp.tool()
 def list_update_set_changes(
-    config: ServerConfig, auth_manager: AuthManager, params: ListUpdateSetChangesParams
+    update_set_sys_id: Annotated[str, Field(description="The sys_id of the update set")],
+    limit: Annotated[int, Field(ge=1, le=500, description="Maximum number of changes to return")] = 50,
 ) -> Dict[str, Any]:
-    """List the customer updates (changes) in an update set."""
+    """List all customer updates (changes) within an update set"""
+    config = get_config()
+    auth_manager = get_auth_manager()
+
     url = f"{config.api_url}/table/sys_update_xml"
     query_params = {
-        "sysparm_query": f"update_set={params.update_set_sys_id}^ORDERBYDESCsys_updated_on",
+        "sysparm_query": f"update_set={update_set_sys_id}^ORDERBYDESCsys_updated_on",
         "sysparm_fields": "sys_id,name,type,target_name,action,sys_created_on",
-        "sysparm_limit": params.limit,
+        "sysparm_limit": limit,
     }
 
     response = api_request("GET", url, auth_manager, config.timeout, params=query_params)

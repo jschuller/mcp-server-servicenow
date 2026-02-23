@@ -1,215 +1,160 @@
-"""Tests for tool parameter model validation."""
+"""Tests for tool schema validation via FastMCP."""
 
 import pytest
-from pydantic import ValidationError
+from fastmcp import Client
 
-from servicenow_mcp.tools.table_tools import (
-    CreateRecordParams,
-    DeleteRecordParams,
-    GetRecordParams,
-    ListRecordsParams,
-    UpdateRecordParams,
-)
-from servicenow_mcp.tools.cmdb_tools import (
-    CreateCIParams,
-    GetCIParams,
-    GetCIRelationshipsParams,
-    ListCIParams,
-    UpdateCIParams,
-)
-from servicenow_mcp.tools.system_tools import (
-    GetCurrentUserParams,
-    GetSystemPropertiesParams,
-    GetTableSchemaParams,
-)
-from servicenow_mcp.tools.update_set_tools import (
-    CreateUpdateSetParams,
-    GetUpdateSetParams,
-    ListUpdateSetChangesParams,
-    ListUpdateSetsParams,
-    SetCurrentUpdateSetParams,
-)
+from servicenow_mcp.server import mcp, init_services
+from servicenow_mcp.utils.config import AuthConfig, AuthType, BasicAuthConfig, ServerConfig
 
 
-class TestListRecordsParams:
-    def test_valid_minimal(self) -> None:
-        params = ListRecordsParams(table_name="incident")
-        assert params.table_name == "incident"
-        assert params.limit == 20
-        assert params.offset == 0
+@pytest.fixture(autouse=True)
+def _init_services():
+    """Ensure services are initialized and tools are registered."""
+    config = ServerConfig(
+        instance_url="https://test.service-now.com",
+        auth=AuthConfig(
+            type=AuthType.BASIC,
+            basic=BasicAuthConfig(username="admin", password="test123"),
+        ),
+    )
+    init_services(config)
 
-    def test_valid_full(self) -> None:
-        params = ListRecordsParams(
-            table_name="incident",
-            query="active=true",
-            fields="number,short_description",
-            limit=50,
-            offset=10,
-            order_by="-sys_created_on",
-        )
-        assert params.limit == 50
-
-    def test_missing_table_name(self) -> None:
-        with pytest.raises(ValidationError):
-            ListRecordsParams()  # type: ignore[call-arg]
-
-    def test_limit_too_low(self) -> None:
-        with pytest.raises(ValidationError):
-            ListRecordsParams(table_name="incident", limit=0)
-
-    def test_limit_too_high(self) -> None:
-        with pytest.raises(ValidationError):
-            ListRecordsParams(table_name="incident", limit=1001)
-
-    def test_negative_offset(self) -> None:
-        with pytest.raises(ValidationError):
-            ListRecordsParams(table_name="incident", offset=-1)
+    import servicenow_mcp.tools.table_tools  # noqa: F401
+    import servicenow_mcp.tools.cmdb_tools  # noqa: F401
+    import servicenow_mcp.tools.system_tools  # noqa: F401
+    import servicenow_mcp.tools.update_set_tools  # noqa: F401
 
 
-class TestGetRecordParams:
-    def test_valid(self) -> None:
-        params = GetRecordParams(table_name="incident", sys_id="abc123")
-        assert params.sys_id == "abc123"
-
-    def test_missing_sys_id(self) -> None:
-        with pytest.raises(ValidationError):
-            GetRecordParams(table_name="incident")  # type: ignore[call-arg]
+def _get_tool_schema(tools, name: str) -> dict:
+    """Helper to extract a tool's input schema by name."""
+    for t in tools:
+        if t.name == name:
+            return t.inputSchema
+    raise KeyError(f"Tool '{name}' not found")
 
 
-class TestCreateRecordParams:
-    def test_valid(self) -> None:
-        params = CreateRecordParams(
-            table_name="incident",
-            data={"short_description": "Test"},
-        )
-        assert params.data["short_description"] == "Test"
+class TestListRecordsSchema:
+    @pytest.mark.asyncio
+    async def test_required_fields(self) -> None:
+        async with Client(mcp) as client:
+            tools = await client.list_tools()
+            schema = _get_tool_schema(tools, "list_records")
+            assert "table_name" in schema.get("required", [])
 
-    def test_missing_data(self) -> None:
-        with pytest.raises(ValidationError):
-            CreateRecordParams(table_name="incident")  # type: ignore[call-arg]
+    @pytest.mark.asyncio
+    async def test_limit_constraints(self) -> None:
+        async with Client(mcp) as client:
+            tools = await client.list_tools()
+            schema = _get_tool_schema(tools, "list_records")
+            limit_prop = schema["properties"]["limit"]
+            assert limit_prop.get("minimum") == 1 or limit_prop.get("exclusiveMinimum") == 0
+            assert limit_prop.get("maximum") == 1000 or limit_prop.get("exclusiveMaximum") == 1001
 
-
-class TestUpdateRecordParams:
-    def test_valid(self) -> None:
-        params = UpdateRecordParams(
-            table_name="incident",
-            sys_id="abc123",
-            data={"state": "2"},
-        )
-        assert params.sys_id == "abc123"
-
-
-class TestDeleteRecordParams:
-    def test_valid(self) -> None:
-        params = DeleteRecordParams(table_name="incident", sys_id="abc123")
-        assert params.table_name == "incident"
+    @pytest.mark.asyncio
+    async def test_default_values(self) -> None:
+        async with Client(mcp) as client:
+            tools = await client.list_tools()
+            schema = _get_tool_schema(tools, "list_records")
+            assert schema["properties"]["limit"].get("default") == 20
+            assert schema["properties"]["offset"].get("default") == 0
 
 
-class TestListCIParams:
-    def test_defaults(self) -> None:
-        params = ListCIParams()
-        assert params.class_name == "cmdb_ci"
-        assert params.limit == 20
-
-    def test_custom_class(self) -> None:
-        params = ListCIParams(class_name="cmdb_ci_server")
-        assert params.class_name == "cmdb_ci_server"
-
-
-class TestGetCIParams:
-    def test_valid(self) -> None:
-        params = GetCIParams(sys_id="abc123")
-        assert params.class_name == "cmdb_ci"
+class TestGetRecordSchema:
+    @pytest.mark.asyncio
+    async def test_required_fields(self) -> None:
+        async with Client(mcp) as client:
+            tools = await client.list_tools()
+            schema = _get_tool_schema(tools, "get_record")
+            required = schema.get("required", [])
+            assert "table_name" in required
+            assert "sys_id" in required
 
 
-class TestCreateCIParams:
-    def test_valid(self) -> None:
-        params = CreateCIParams(data={"name": "Test Server"})
-        assert params.data["name"] == "Test Server"
+class TestCreateRecordSchema:
+    @pytest.mark.asyncio
+    async def test_required_fields(self) -> None:
+        async with Client(mcp) as client:
+            tools = await client.list_tools()
+            schema = _get_tool_schema(tools, "create_record")
+            required = schema.get("required", [])
+            assert "table_name" in required
+            assert "data" in required
 
 
-class TestUpdateCIParams:
-    def test_valid(self) -> None:
-        params = UpdateCIParams(sys_id="abc123", data={"name": "Updated"})
-        assert params.sys_id == "abc123"
+class TestDeleteRecordSchema:
+    @pytest.mark.asyncio
+    async def test_required_fields(self) -> None:
+        async with Client(mcp) as client:
+            tools = await client.list_tools()
+            schema = _get_tool_schema(tools, "delete_record")
+            required = schema.get("required", [])
+            assert "table_name" in required
+            assert "sys_id" in required
 
 
-class TestGetCIRelationshipsParams:
-    def test_valid(self) -> None:
-        params = GetCIRelationshipsParams(sys_id="abc123")
-        assert params.relation_type is None
+class TestListCISchema:
+    @pytest.mark.asyncio
+    async def test_all_optional(self) -> None:
+        """list_ci has no required fields (all have defaults)."""
+        async with Client(mcp) as client:
+            tools = await client.list_tools()
+            schema = _get_tool_schema(tools, "list_ci")
+            # All params are optional, so required should be empty or absent
+            assert not schema.get("required", [])
 
-    def test_with_type(self) -> None:
-        params = GetCIRelationshipsParams(sys_id="abc123", relation_type="xyz")
-        assert params.relation_type == "xyz"
-
-
-class TestGetSystemPropertiesParams:
-    def test_defaults(self) -> None:
-        params = GetSystemPropertiesParams()
-        assert params.query is None
-        assert params.limit == 20
-
-
-class TestGetCurrentUserParams:
-    def test_defaults(self) -> None:
-        params = GetCurrentUserParams()
-        assert params.fields is None
+    @pytest.mark.asyncio
+    async def test_default_class_name(self) -> None:
+        async with Client(mcp) as client:
+            tools = await client.list_tools()
+            schema = _get_tool_schema(tools, "list_ci")
+            assert schema["properties"]["class_name"].get("default") == "cmdb_ci"
 
 
-class TestGetTableSchemaParams:
-    def test_valid(self) -> None:
-        params = GetTableSchemaParams(table_name="incident")
-        assert params.limit == 50
-
-    def test_missing_table_name(self) -> None:
-        with pytest.raises(ValidationError):
-            GetTableSchemaParams()  # type: ignore[call-arg]
-
-
-class TestCreateUpdateSetParams:
-    def test_valid_minimal(self) -> None:
-        params = CreateUpdateSetParams(name="My Update Set")
-        assert params.description is None
-        assert params.parent is None
-
-    def test_valid_full(self) -> None:
-        params = CreateUpdateSetParams(
-            name="My Update Set",
-            description="For testing",
-            parent="parent-id",
-        )
-        assert params.description == "For testing"
-
-    def test_missing_name(self) -> None:
-        with pytest.raises(ValidationError):
-            CreateUpdateSetParams()  # type: ignore[call-arg]
+class TestGetCISchema:
+    @pytest.mark.asyncio
+    async def test_required_sys_id(self) -> None:
+        async with Client(mcp) as client:
+            tools = await client.list_tools()
+            schema = _get_tool_schema(tools, "get_ci")
+            assert "sys_id" in schema.get("required", [])
 
 
-class TestGetUpdateSetParams:
-    def test_valid(self) -> None:
-        params = GetUpdateSetParams(sys_id="abc123")
-        assert params.sys_id == "abc123"
+class TestGetTableSchemaSchema:
+    @pytest.mark.asyncio
+    async def test_required_table_name(self) -> None:
+        async with Client(mcp) as client:
+            tools = await client.list_tools()
+            schema = _get_tool_schema(tools, "get_table_schema")
+            assert "table_name" in schema.get("required", [])
+
+    @pytest.mark.asyncio
+    async def test_limit_default(self) -> None:
+        async with Client(mcp) as client:
+            tools = await client.list_tools()
+            schema = _get_tool_schema(tools, "get_table_schema")
+            assert schema["properties"]["limit"].get("default") == 50
 
 
-class TestSetCurrentUpdateSetParams:
-    def test_valid(self) -> None:
-        params = SetCurrentUpdateSetParams(sys_id="abc123")
-        assert params.sys_id == "abc123"
+class TestCreateUpdateSetSchema:
+    @pytest.mark.asyncio
+    async def test_required_name(self) -> None:
+        async with Client(mcp) as client:
+            tools = await client.list_tools()
+            schema = _get_tool_schema(tools, "create_update_set")
+            assert "name" in schema.get("required", [])
 
 
-class TestListUpdateSetsParams:
-    def test_defaults(self) -> None:
-        params = ListUpdateSetsParams()
-        assert params.state is None
-        assert params.limit == 20
+class TestListUpdateSetChangesSchema:
+    @pytest.mark.asyncio
+    async def test_required_update_set_sys_id(self) -> None:
+        async with Client(mcp) as client:
+            tools = await client.list_tools()
+            schema = _get_tool_schema(tools, "list_update_set_changes")
+            assert "update_set_sys_id" in schema.get("required", [])
 
-
-class TestListUpdateSetChangesParams:
-    def test_valid(self) -> None:
-        params = ListUpdateSetChangesParams(update_set_sys_id="abc123")
-        assert params.limit == 50
-
-    def test_missing_sys_id(self) -> None:
-        with pytest.raises(ValidationError):
-            ListUpdateSetChangesParams()  # type: ignore[call-arg]
+    @pytest.mark.asyncio
+    async def test_limit_default(self) -> None:
+        async with Client(mcp) as client:
+            tools = await client.list_tools()
+            schema = _get_tool_schema(tools, "list_update_set_changes")
+            assert schema["properties"]["limit"].get("default") == 50

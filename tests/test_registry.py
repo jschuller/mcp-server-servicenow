@@ -1,9 +1,13 @@
 """Tool registry regression tests.
 
-Safety net to ensure all 18 tools remain registered before FastMCP migration.
+Safety net to ensure all 18 tools remain registered after FastMCP migration.
 """
 
-from servicenow_mcp.utils.tool_utils import get_tool_definitions
+import pytest
+from fastmcp import Client
+
+from servicenow_mcp.server import mcp, init_services
+from servicenow_mcp.utils.config import AuthConfig, AuthType, BasicAuthConfig, ServerConfig
 
 
 EXPECTED_TOOLS = {
@@ -32,34 +36,55 @@ EXPECTED_TOOLS = {
 }
 
 
+@pytest.fixture(autouse=True)
+def _init_services():
+    """Ensure services are initialized and tools are registered."""
+    config = ServerConfig(
+        instance_url="https://test.service-now.com",
+        auth=AuthConfig(
+            type=AuthType.BASIC,
+            basic=BasicAuthConfig(username="admin", password="test123"),
+        ),
+    )
+    init_services(config)
+
+    # Import tool modules to trigger registration
+    import servicenow_mcp.tools.table_tools  # noqa: F401
+    import servicenow_mcp.tools.cmdb_tools  # noqa: F401
+    import servicenow_mcp.tools.system_tools  # noqa: F401
+    import servicenow_mcp.tools.update_set_tools  # noqa: F401
+
+
 class TestToolRegistry:
-    def test_exact_tool_count(self) -> None:
+    @pytest.mark.asyncio
+    async def test_exact_tool_count(self) -> None:
         """Exactly 18 tools must be registered."""
-        tools = get_tool_definitions()
-        assert len(tools) == 18, f"Expected 18 tools, got {len(tools)}: {sorted(tools.keys())}"
+        async with Client(mcp) as client:
+            tools = await client.list_tools()
+            assert len(tools) == 18, f"Expected 18 tools, got {len(tools)}: {sorted(t.name for t in tools)}"
 
-    def test_all_expected_tools_present(self) -> None:
+    @pytest.mark.asyncio
+    async def test_all_expected_tools_present(self) -> None:
         """Every expected tool name must be in the registry."""
-        tools = get_tool_definitions()
-        registered = set(tools.keys())
-        missing = EXPECTED_TOOLS - registered
-        assert not missing, f"Missing tools: {missing}"
+        async with Client(mcp) as client:
+            tools = await client.list_tools()
+            registered = {t.name for t in tools}
+            missing = EXPECTED_TOOLS - registered
+            assert not missing, f"Missing tools: {missing}"
 
-    def test_no_unexpected_tools(self) -> None:
+    @pytest.mark.asyncio
+    async def test_no_unexpected_tools(self) -> None:
         """No tools beyond the expected 18."""
-        tools = get_tool_definitions()
-        registered = set(tools.keys())
-        extra = registered - EXPECTED_TOOLS
-        assert not extra, f"Unexpected tools: {extra}"
+        async with Client(mcp) as client:
+            tools = await client.list_tools()
+            registered = {t.name for t in tools}
+            extra = registered - EXPECTED_TOOLS
+            assert not extra, f"Unexpected tools: {extra}"
 
-    def test_all_tools_have_callable_impl(self) -> None:
-        """Every tool definition must have a callable implementation."""
-        tools = get_tool_definitions()
-        for name, (impl, params_model, return_type, description) in tools.items():
-            assert callable(impl), f"Tool '{name}' impl is not callable"
-
-    def test_all_tools_have_description(self) -> None:
+    @pytest.mark.asyncio
+    async def test_all_tools_have_description(self) -> None:
         """Every tool must have a non-empty description."""
-        tools = get_tool_definitions()
-        for name, (impl, params_model, return_type, description) in tools.items():
-            assert description, f"Tool '{name}' has no description"
+        async with Client(mcp) as client:
+            tools = await client.list_tools()
+            for tool in tools:
+                assert tool.description, f"Tool '{tool.name}' has no description"

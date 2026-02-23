@@ -1,38 +1,42 @@
 # mcp-server-servicenow
 
-**Phase 1 — Foundation**
+![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)
+![FastMCP](https://img.shields.io/badge/FastMCP-3.0-green.svg)
+![MCP Protocol](https://img.shields.io/badge/MCP-2025--11--25-purple.svg)
+![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)
+![18 Tools](https://img.shields.io/badge/tools-18-orange.svg)
 
-A comprehensive MCP (Model Context Protocol) server for ServiceNow. Provides 18 tools for table operations, CMDB management, system queries, and update set management — usable from any MCP client (Claude Desktop, Claude Code, etc.).
+Connect Claude AI to ServiceNow. 18 MCP tools for incidents, CMDB, update sets, and more — accessible from Claude Desktop, Claude Code, or any MCP client over stdio or Streamable HTTP.
 
-## Install
+## What This Does
+
+This MCP server lets AI assistants interact directly with a ServiceNow instance. Instead of copy-pasting between ServiceNow and your AI tool, Claude can query incidents, create records, explore CMDB relationships, and manage update sets through natural conversation.
+
+Built with [FastMCP 3.0](https://gofastmcp.com) for decorator-based tool definitions and dual transport support.
+
+## Quick Start
 
 ```bash
+# Clone and install
 git clone https://github.com/jschuller/mcp-server-servicenow.git
 cd mcp-server-servicenow
-pip install -e ".[dev]"
-```
+pip install -e .
 
-## Configuration
+# Run with stdio (Claude Desktop / Claude Code)
+mcp-servicenow \
+  --instance-url https://your-instance.service-now.com \
+  --auth-type basic \
+  --username admin \
+  --password your-password
 
-Copy `.env.example` to `.env` and fill in your values. OAuth is recommended for production:
-
-```bash
-# OAuth (recommended)
-SERVICENOW_INSTANCE_URL=https://your-instance.service-now.com
-SERVICENOW_AUTH_TYPE=oauth
-SERVICENOW_CLIENT_ID=your-client-id
-SERVICENOW_CLIENT_SECRET=your-client-secret
-SERVICENOW_USERNAME=your-username
-SERVICENOW_PASSWORD=your-password
-```
-
-Basic auth for development:
-
-```bash
-SERVICENOW_INSTANCE_URL=https://your-instance.service-now.com
-SERVICENOW_AUTH_TYPE=basic
-SERVICENOW_USERNAME=admin
-SERVICENOW_PASSWORD=your-password
+# Or run with HTTP (remote access / Cloud Run)
+mcp-servicenow \
+  --transport streamable-http \
+  --port 8080 \
+  --instance-url https://your-instance.service-now.com \
+  --auth-type basic \
+  --username admin \
+  --password your-password
 ```
 
 ### Claude Desktop
@@ -43,8 +47,7 @@ Add to your `claude_desktop_config.json`:
 {
   "mcpServers": {
     "servicenow": {
-      "command": "python",
-      "args": ["-m", "servicenow_mcp.cli"],
+      "command": "mcp-servicenow",
       "env": {
         "SERVICENOW_INSTANCE_URL": "https://your-instance.service-now.com",
         "SERVICENOW_AUTH_TYPE": "basic",
@@ -54,6 +57,14 @@ Add to your `claude_desktop_config.json`:
     }
   }
 }
+```
+
+### Claude Code
+
+```bash
+claude mcp add servicenow -- mcp-servicenow \
+  --instance-url https://your-instance.service-now.com \
+  --auth-type basic --username admin --password your-password
 ```
 
 ## Available Tools
@@ -95,44 +106,118 @@ Add to your `claude_desktop_config.json`:
 ## Architecture
 
 ```
-src/servicenow_mcp/
-├── cli.py                 # Entry point, env var parsing
-├── server.py              # MCP server, tool dispatch
-├── auth/
-│   └── auth_manager.py    # OAuth, basic, API key auth
-├── tools/
-│   ├── table_tools.py     # Generic table CRUD
-│   ├── cmdb_tools.py      # CMDB operations
-│   ├── system_tools.py    # System info queries
-│   └── update_set_tools.py # Update set management
-└── utils/
-    ├── config.py           # Pydantic config models
-    ├── http.py             # HTTP client with error handling
-    └── tool_utils.py       # Tool registry
+Claude / MCP Client
+       │
+       │  stdio or Streamable HTTP
+       ▼
+┌─────────────────────────┐
+│   FastMCP 3.0 Server    │
+│   (server.py)           │
+├─────────────────────────┤
+│  @mcp.tool() decorators │
+│  ┌───────────────────┐  │
+│  │ table_tools (5)   │  │
+│  │ cmdb_tools  (5)   │  │
+│  │ system_tools (3)  │  │
+│  │ update_set_tools(5)│  │
+│  └───────────────────┘  │
+├─────────────────────────┤
+│  auth_manager + http.py │
+└────────────┬────────────┘
+             │  REST API
+             ▼
+     ServiceNow Instance
+      /api/now/table/*
 ```
 
-All tools use the low-level MCP SDK with Pydantic parameter validation. HTTP requests go through a centralized client (`utils/http.py`) with structured error handling and OAuth token auto-refresh on 401.
+## Deployment
+
+### Live Instance
+
+A hosted instance is running on Google Cloud Run:
+
+```
+https://servicenow-mcp-995827589296.us-east1.run.app/mcp
+```
+
+### Docker / Cloud Run
+
+```bash
+# Build
+docker build -t mcp-servicenow .
+
+# Run locally
+docker run -p 8080:8080 \
+  -e SERVICENOW_INSTANCE_URL=https://your-instance.service-now.com \
+  -e SERVICENOW_AUTH_TYPE=basic \
+  -e SERVICENOW_USERNAME=admin \
+  -e SERVICENOW_PASSWORD=your-password \
+  mcp-servicenow
+
+# Deploy to Cloud Run
+gcloud run deploy servicenow-mcp \
+  --source . \
+  --region us-east1 \
+  --port 8080 \
+  --allow-unauthenticated \
+  --set-env-vars "SERVICENOW_INSTANCE_URL=..." \
+  --set-env-vars "SERVICENOW_AUTH_TYPE=basic" \
+  --set-env-vars "SERVICENOW_USERNAME=..." \
+  --set-env-vars "SERVICENOW_PASSWORD=..." \
+  --set-env-vars "MCP_TRANSPORT=streamable-http"
+```
+
+### Verify HTTP Transport
+
+```bash
+curl -X POST https://servicenow-mcp-995827589296.us-east1.run.app/mcp \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
+  -d '{"jsonrpc":"2.0","method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"1.0"}},"id":1}'
+```
+
+## Configuration
+
+All settings can be passed as CLI args or environment variables. See `.env.example`.
+
+| Variable | CLI Arg | Description |
+|----------|---------|-------------|
+| `SERVICENOW_INSTANCE_URL` | `--instance-url` | ServiceNow instance URL |
+| `SERVICENOW_AUTH_TYPE` | `--auth-type` | `basic`, `oauth`, or `api_key` |
+| `SERVICENOW_USERNAME` | `--username` | Username for basic/OAuth auth |
+| `SERVICENOW_PASSWORD` | `--password` | Password for basic/OAuth auth |
+| `SERVICENOW_CLIENT_ID` | `--client-id` | OAuth client ID |
+| `SERVICENOW_CLIENT_SECRET` | `--client-secret` | OAuth client secret |
+| `SERVICENOW_API_KEY` | `--api-key` | API key for api_key auth |
+| `MCP_TRANSPORT` | `--transport` | `stdio` (default) or `streamable-http` |
+| `PORT` | `--port` | HTTP port (default: 8080) |
 
 ## Development
 
 ```bash
-# Run tests
-python -m pytest tests/ -v
+# Install with dev dependencies
+pip install -e ".[dev]"
+
+# Run unit tests
+python -m pytest tests/ -v --ignore=tests/integration
+
+# Run integration tests (requires PDI credentials)
+SERVICENOW_INSTANCE_URL=https://your-pdi.service-now.com \
+SERVICENOW_USERNAME=admin \
+SERVICENOW_PASSWORD=your-password \
+python -m pytest tests/integration/ -v
 
 # Lint
 ruff check src/ tests/
-
-# Run server locally
-python -m servicenow_mcp.cli
 ```
 
 ## Roadmap
 
-- **Phase 1** (current): Foundation — git, tests, OAuth retry, documentation
-- **Phase 2**: Migrate to standalone FastMCP v2.x with decorator-based tools
-- **Phase 3**: Add MCP Resources and Prompts (incident triage, change drafting, etc.)
-- **Phase 4**: PyPI distribution as `mcp-server-servicenow`, MCP Registry listing
+- **Phase 1** &#x2705; Foundation — 18 tools, OAuth retry, structured error handling
+- **Phase 2** &#x2705; Remote access — FastMCP 3.0, Streamable HTTP, Cloud Run deployment
+- **Phase 3** &#x1F51C; AI workflows — incident triage prompts, change drafting templates, CMDB exploration resources
+- **Phase 4** &#x1F51C; Distribution — PyPI package, MCP Registry listing, one-click install
 
 ## License
 
-MIT
+[MIT](LICENSE)
