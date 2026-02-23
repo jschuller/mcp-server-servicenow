@@ -6,7 +6,6 @@ import pytest
 import requests
 
 from servicenow_mcp.auth.auth_manager import AuthManager
-from servicenow_mcp.utils.config import AuthConfig
 from servicenow_mcp.utils.http import ServiceNowAPIError, api_request, parse_json_response
 
 

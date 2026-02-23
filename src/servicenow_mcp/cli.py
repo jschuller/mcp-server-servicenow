@@ -5,11 +5,8 @@ import logging
 import os
 import sys
 
-import anyio
 from dotenv import load_dotenv
-from mcp.server.stdio import stdio_server
 
-from servicenow_mcp.server import ServiceNowMCP
 from servicenow_mcp.utils.config import (
     AuthConfig,
     AuthType,
@@ -59,6 +56,23 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--api-key-header",
         default=os.environ.get("SERVICENOW_API_KEY_HEADER", "X-ServiceNow-API-Key"),
+    )
+    parser.add_argument(
+        "--transport",
+        choices=["stdio", "streamable-http"],
+        default=os.environ.get("MCP_TRANSPORT", "stdio"),
+        help="MCP transport type (default: stdio)",
+    )
+    parser.add_argument(
+        "--host",
+        default=os.environ.get("MCP_HOST", "0.0.0.0"),
+        help="Host to bind to for HTTP transport (default: 0.0.0.0)",
+    )
+    parser.add_argument(
+        "--port",
+        type=int,
+        default=int(os.environ.get("PORT", "8080")),
+        help="Port for HTTP transport (default: 8080)",
     )
 
     return parser.parse_args()
@@ -117,13 +131,6 @@ def create_config(args: argparse.Namespace) -> ServerConfig:
     )
 
 
-async def run_server(server_instance) -> None:
-    """Run the MCP server with stdio transport."""
-    async with stdio_server() as streams:
-        init_options = server_instance.create_initialization_options()
-        await server_instance.run(streams[0], streams[1], init_options)
-
-
 def main() -> None:
     """Main entry point."""
     load_dotenv()
@@ -137,10 +144,19 @@ def main() -> None:
         config = create_config(args)
         logger.info(f"Starting ServiceNow MCP server for {config.instance_url}")
 
-        mcp_controller = ServiceNowMCP(config)
-        server = mcp_controller.start()
+        # Initialize services before importing tool modules
+        from servicenow_mcp.server import mcp, init_services
 
-        anyio.run(run_server, server)
+        init_services(config)
+
+        # Import tool modules to trigger @mcp.tool() registration
+        import servicenow_mcp.tools.table_tools  # noqa: F401
+        import servicenow_mcp.tools.cmdb_tools  # noqa: F401
+        import servicenow_mcp.tools.system_tools  # noqa: F401
+        import servicenow_mcp.tools.update_set_tools  # noqa: F401
+
+        logger.info(f"Transport: {args.transport}")
+        mcp.run(transport=args.transport, host=args.host, port=args.port)
 
     except ValueError as e:
         logger.error(f"Configuration error: {e}")

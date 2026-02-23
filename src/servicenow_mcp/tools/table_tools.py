@@ -4,80 +4,41 @@ Provides CRUD operations on any ServiceNow table via /api/now/table/{table_name}
 """
 
 import logging
-from typing import Any, Dict, Optional
+from typing import Annotated, Any, Dict, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import Field
 
-from servicenow_mcp.auth.auth_manager import AuthManager
-from servicenow_mcp.utils.config import ServerConfig
+from servicenow_mcp.server import mcp, get_config, get_auth_manager
 from servicenow_mcp.utils.http import api_request, parse_json_response
 
 logger = logging.getLogger(__name__)
 
 
-# --- Parameter Models ---
-
-
-class ListRecordsParams(BaseModel):
-    """Parameters for listing records from a ServiceNow table."""
-
-    table_name: str = Field(..., description="The ServiceNow table name (e.g., 'incident', 'sys_user', 'cmdb_ci')")
-    query: Optional[str] = Field(None, description="Encoded query string (e.g., 'active=true^priority=1')")
-    fields: Optional[str] = Field(None, description="Comma-separated list of fields to return")
-    limit: int = Field(20, description="Maximum number of records to return", ge=1, le=1000)
-    offset: int = Field(0, description="Number of records to skip", ge=0)
-    order_by: Optional[str] = Field(None, description="Field to order results by (prefix with '-' for descending)")
-
-
-class GetRecordParams(BaseModel):
-    """Parameters for getting a single record."""
-
-    table_name: str = Field(..., description="The ServiceNow table name")
-    sys_id: str = Field(..., description="The sys_id of the record")
-    fields: Optional[str] = Field(None, description="Comma-separated list of fields to return")
-
-
-class CreateRecordParams(BaseModel):
-    """Parameters for creating a new record."""
-
-    table_name: str = Field(..., description="The ServiceNow table name")
-    data: Dict[str, Any] = Field(..., description="Record field values as key-value pairs")
-
-
-class UpdateRecordParams(BaseModel):
-    """Parameters for updating an existing record."""
-
-    table_name: str = Field(..., description="The ServiceNow table name")
-    sys_id: str = Field(..., description="The sys_id of the record to update")
-    data: Dict[str, Any] = Field(..., description="Fields to update as key-value pairs")
-
-
-class DeleteRecordParams(BaseModel):
-    """Parameters for deleting a record."""
-
-    table_name: str = Field(..., description="The ServiceNow table name")
-    sys_id: str = Field(..., description="The sys_id of the record to delete")
-
-
-# --- Tool Implementations ---
-
-
+@mcp.tool()
 def list_records(
-    config: ServerConfig, auth_manager: AuthManager, params: ListRecordsParams
+    table_name: Annotated[str, Field(description="The ServiceNow table name (e.g., 'incident', 'sys_user', 'cmdb_ci')")],
+    query: Annotated[Optional[str], Field(description="Encoded query string (e.g., 'active=true^priority=1')")] = None,
+    fields: Annotated[Optional[str], Field(description="Comma-separated list of fields to return")] = None,
+    limit: Annotated[int, Field(ge=1, le=1000, description="Maximum number of records to return")] = 20,
+    offset: Annotated[int, Field(ge=0, description="Number of records to skip")] = 0,
+    order_by: Annotated[Optional[str], Field(description="Field to order results by (prefix with '-' for descending)")] = None,
 ) -> Dict[str, Any]:
-    """List records from a ServiceNow table."""
-    url = f"{config.api_url}/table/{params.table_name}"
+    """List records from any ServiceNow table with optional filtering, field selection, and pagination"""
+    config = get_config()
+    auth_manager = get_auth_manager()
+
+    url = f"{config.api_url}/table/{table_name}"
     query_params: Dict[str, Any] = {
-        "sysparm_limit": params.limit,
-        "sysparm_offset": params.offset,
+        "sysparm_limit": limit,
+        "sysparm_offset": offset,
     }
-    if params.query:
-        query_params["sysparm_query"] = params.query
-    if params.fields:
-        query_params["sysparm_fields"] = params.fields
-    if params.order_by:
+    if query:
+        query_params["sysparm_query"] = query
+    if fields:
+        query_params["sysparm_fields"] = fields
+    if order_by:
         query_params["sysparm_query"] = (
-            f"{query_params.get('sysparm_query', '')}^ORDERBY{params.order_by}"
+            f"{query_params.get('sysparm_query', '')}^ORDERBY{order_by}"
         ).lstrip("^")
 
     response = api_request("GET", url, auth_manager, config.timeout, params=query_params)
@@ -86,46 +47,68 @@ def list_records(
     return {"count": len(result), "records": result}
 
 
+@mcp.tool()
 def get_record(
-    config: ServerConfig, auth_manager: AuthManager, params: GetRecordParams
+    table_name: Annotated[str, Field(description="The ServiceNow table name")],
+    sys_id: Annotated[str, Field(description="The sys_id of the record")],
+    fields: Annotated[Optional[str], Field(description="Comma-separated list of fields to return")] = None,
 ) -> Dict[str, Any]:
-    """Get a single record by sys_id."""
-    url = f"{config.api_url}/table/{params.table_name}/{params.sys_id}"
+    """Get a single record from a ServiceNow table by sys_id"""
+    config = get_config()
+    auth_manager = get_auth_manager()
+
+    url = f"{config.api_url}/table/{table_name}/{sys_id}"
     query_params: Dict[str, str] = {}
-    if params.fields:
-        query_params["sysparm_fields"] = params.fields
+    if fields:
+        query_params["sysparm_fields"] = fields
 
     response = api_request("GET", url, auth_manager, config.timeout, params=query_params)
     data = parse_json_response(response, url)
     return data.get("result", {})
 
 
+@mcp.tool()
 def create_record(
-    config: ServerConfig, auth_manager: AuthManager, params: CreateRecordParams
+    table_name: Annotated[str, Field(description="The ServiceNow table name")],
+    data: Annotated[Dict[str, Any], Field(description="Record field values as key-value pairs")],
 ) -> Dict[str, Any]:
-    """Create a new record in a ServiceNow table."""
-    url = f"{config.api_url}/table/{params.table_name}"
-    response = api_request("POST", url, auth_manager, config.timeout, json_data=params.data)
-    data = parse_json_response(response, url)
-    result = data.get("result", {})
+    """Create a new record in any ServiceNow table"""
+    config = get_config()
+    auth_manager = get_auth_manager()
+
+    url = f"{config.api_url}/table/{table_name}"
+    response = api_request("POST", url, auth_manager, config.timeout, json_data=data)
+    resp_data = parse_json_response(response, url)
+    result = resp_data.get("result", {})
     return {"sys_id": result.get("sys_id"), "record": result}
 
 
+@mcp.tool()
 def update_record(
-    config: ServerConfig, auth_manager: AuthManager, params: UpdateRecordParams
+    table_name: Annotated[str, Field(description="The ServiceNow table name")],
+    sys_id: Annotated[str, Field(description="The sys_id of the record to update")],
+    data: Annotated[Dict[str, Any], Field(description="Fields to update as key-value pairs")],
 ) -> Dict[str, Any]:
-    """Update an existing record in a ServiceNow table."""
-    url = f"{config.api_url}/table/{params.table_name}/{params.sys_id}"
-    response = api_request("PATCH", url, auth_manager, config.timeout, json_data=params.data)
-    data = parse_json_response(response, url)
-    result = data.get("result", {})
+    """Update an existing record in a ServiceNow table"""
+    config = get_config()
+    auth_manager = get_auth_manager()
+
+    url = f"{config.api_url}/table/{table_name}/{sys_id}"
+    response = api_request("PATCH", url, auth_manager, config.timeout, json_data=data)
+    resp_data = parse_json_response(response, url)
+    result = resp_data.get("result", {})
     return {"sys_id": result.get("sys_id"), "record": result}
 
 
+@mcp.tool()
 def delete_record(
-    config: ServerConfig, auth_manager: AuthManager, params: DeleteRecordParams
+    table_name: Annotated[str, Field(description="The ServiceNow table name")],
+    sys_id: Annotated[str, Field(description="The sys_id of the record to delete")],
 ) -> str:
-    """Delete a record from a ServiceNow table."""
-    url = f"{config.api_url}/table/{params.table_name}/{params.sys_id}"
+    """Delete a record from a ServiceNow table by sys_id"""
+    config = get_config()
+    auth_manager = get_auth_manager()
+
+    url = f"{config.api_url}/table/{table_name}/{sys_id}"
     api_request("DELETE", url, auth_manager, config.timeout)
-    return f"Record {params.sys_id} deleted from {params.table_name}"
+    return f"Record {sys_id} deleted from {table_name}"

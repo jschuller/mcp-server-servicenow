@@ -4,58 +4,32 @@ Provides system information and property queries.
 """
 
 import logging
-from typing import Any, Dict, Optional
+from typing import Annotated, Any, Dict, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import Field
 
-from servicenow_mcp.auth.auth_manager import AuthManager
-from servicenow_mcp.utils.config import ServerConfig
+from servicenow_mcp.server import mcp, get_config, get_auth_manager
 from servicenow_mcp.utils.http import api_request, parse_json_response
 
 logger = logging.getLogger(__name__)
 
 
-# --- Parameter Models ---
-
-
-class GetSystemPropertiesParams(BaseModel):
-    """Parameters for querying system properties."""
-
-    query: Optional[str] = Field(
-        None, description="Filter query (e.g., 'name=glide.servlet.uri' or 'nameLIKEglide')"
-    )
-    limit: int = Field(20, description="Maximum number of properties to return", ge=1, le=100)
-
-
-class GetCurrentUserParams(BaseModel):
-    """Parameters for getting the current authenticated user info."""
-
-    fields: Optional[str] = Field(
-        None, description="Comma-separated fields to return (default: user_name,name,email,roles)"
-    )
-
-
-class GetTableSchemaParams(BaseModel):
-    """Parameters for getting a table's schema/dictionary."""
-
-    table_name: str = Field(..., description="The table name to get schema for")
-    limit: int = Field(50, description="Maximum number of fields to return", ge=1, le=500)
-
-
-# --- Tool Implementations ---
-
-
+@mcp.tool()
 def get_system_properties(
-    config: ServerConfig, auth_manager: AuthManager, params: GetSystemPropertiesParams
+    query: Annotated[Optional[str], Field(description="Filter query (e.g., 'name=glide.servlet.uri' or 'nameLIKEglide')")] = None,
+    limit: Annotated[int, Field(ge=1, le=100, description="Maximum number of properties to return")] = 20,
 ) -> Dict[str, Any]:
-    """Query ServiceNow system properties."""
+    """Query ServiceNow system properties"""
+    config = get_config()
+    auth_manager = get_auth_manager()
+
     url = f"{config.api_url}/table/sys_properties"
     query_params: Dict[str, Any] = {
-        "sysparm_limit": params.limit,
+        "sysparm_limit": limit,
         "sysparm_fields": "name,value,description",
     }
-    if params.query:
-        query_params["sysparm_query"] = params.query
+    if query:
+        query_params["sysparm_query"] = query
 
     response = api_request("GET", url, auth_manager, config.timeout, params=query_params)
     data = parse_json_response(response, url)
@@ -63,31 +37,40 @@ def get_system_properties(
     return {"count": len(result), "properties": result}
 
 
+@mcp.tool()
 def get_current_user(
-    config: ServerConfig, auth_manager: AuthManager, params: GetCurrentUserParams
+    fields: Annotated[Optional[str], Field(description="Comma-separated fields to return (default: user_name,name,email,roles)")] = None,
 ) -> Dict[str, Any]:
-    """Get the currently authenticated user's information."""
+    """Get the currently authenticated user's information"""
+    config = get_config()
+    auth_manager = get_auth_manager()
+
     url = f"{config.instance_url}/api/now/ui/user/current_user"
     response = api_request("GET", url, auth_manager, config.timeout)
     data = parse_json_response(response, url)
     return data.get("result", {})
 
 
+@mcp.tool()
 def get_table_schema(
-    config: ServerConfig, auth_manager: AuthManager, params: GetTableSchemaParams
+    table_name: Annotated[str, Field(description="The table name to get schema for")],
+    limit: Annotated[int, Field(ge=1, le=500, description="Maximum number of fields to return")] = 50,
 ) -> Dict[str, Any]:
-    """Get the data dictionary (schema) for a ServiceNow table."""
+    """Get the data dictionary (field definitions) for a ServiceNow table"""
+    config = get_config()
+    auth_manager = get_auth_manager()
+
     url = f"{config.api_url}/table/sys_dictionary"
     query_params = {
-        "sysparm_query": f"name={params.table_name}^internal_type!=collection",
+        "sysparm_query": f"name={table_name}^internal_type!=collection",
         "sysparm_fields": "element,column_label,internal_type,max_length,mandatory,reference",
-        "sysparm_limit": params.limit,
+        "sysparm_limit": limit,
     }
 
     response = api_request("GET", url, auth_manager, config.timeout, params=query_params)
     data = parse_json_response(response, url)
     result = data.get("result", [])
-    fields = [
+    fields_list = [
         {
             "name": r.get("element"),
             "label": r.get("column_label"),
@@ -99,4 +82,4 @@ def get_table_schema(
         for r in result
         if r.get("element")
     ]
-    return {"table": params.table_name, "field_count": len(fields), "fields": fields}
+    return {"table": table_name, "field_count": len(fields_list), "fields": fields_list}
