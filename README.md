@@ -132,14 +132,6 @@ Claude / MCP Client
 
 ## Deployment
 
-### Live Instance
-
-A hosted instance is running on Google Cloud Run:
-
-```
-https://servicenow-mcp-995827589296.us-east1.run.app/mcp
-```
-
 ### Docker / Cloud Run
 
 ```bash
@@ -154,12 +146,12 @@ docker run -p 8080:8080 \
   -e SERVICENOW_PASSWORD=your-password \
   mcp-servicenow
 
-# Deploy to Cloud Run
+# Deploy to Cloud Run (requires GCP authentication)
 gcloud run deploy servicenow-mcp \
   --source . \
   --region us-east1 \
   --port 8080 \
-  --allow-unauthenticated \
+  --no-allow-unauthenticated \
   --set-env-vars "SERVICENOW_INSTANCE_URL=..." \
   --set-env-vars "SERVICENOW_AUTH_TYPE=basic" \
   --set-env-vars "SERVICENOW_USERNAME=..." \
@@ -170,7 +162,15 @@ gcloud run deploy servicenow-mcp \
 ### Verify HTTP Transport
 
 ```bash
-curl -X POST https://servicenow-mcp-995827589296.us-east1.run.app/mcp \
+# Local testing
+curl -X POST http://localhost:8080/mcp \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
+  -d '{"jsonrpc":"2.0","method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"1.0"}},"id":1}'
+
+# Cloud Run (requires GCP auth token)
+curl -X POST https://your-service-url.run.app/mcp \
+  -H "Authorization: Bearer $(gcloud auth print-identity-token)" \
   -H "Content-Type: application/json" \
   -H "Accept: application/json, text/event-stream" \
   -d '{"jsonrpc":"2.0","method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"1.0"}},"id":1}'
