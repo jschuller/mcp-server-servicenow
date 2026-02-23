@@ -132,6 +132,14 @@ Claude / MCP Client
 
 ## Deployment
 
+### Live Instance
+
+A hosted instance is running on Google Cloud Run:
+
+```
+https://servicenow-mcp-995827589296.us-east1.run.app/mcp
+```
+
 ### Docker / Cloud Run
 
 ```bash
@@ -151,18 +159,21 @@ gcloud run deploy servicenow-mcp \
   --source . \
   --region us-east1 \
   --port 8080 \
+  --allow-unauthenticated \
   --set-env-vars "SERVICENOW_INSTANCE_URL=..." \
   --set-env-vars "SERVICENOW_AUTH_TYPE=basic" \
   --set-env-vars "SERVICENOW_USERNAME=..." \
-  --set-env-vars "SERVICENOW_PASSWORD=..."
+  --set-env-vars "SERVICENOW_PASSWORD=..." \
+  --set-env-vars "MCP_TRANSPORT=streamable-http"
 ```
 
 ### Verify HTTP Transport
 
 ```bash
-curl -X POST http://localhost:8080/mcp \
+curl -X POST https://servicenow-mcp-995827589296.us-east1.run.app/mcp \
   -H "Content-Type: application/json" \
-  -d '{"jsonrpc":"2.0","method":"tools/list","id":1}'
+  -H "Accept: application/json, text/event-stream" \
+  -d '{"jsonrpc":"2.0","method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"1.0"}},"id":1}'
 ```
 
 ## Configuration
