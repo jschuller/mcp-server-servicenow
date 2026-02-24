@@ -8,8 +8,8 @@ from typing import Annotated, Any, Dict, Optional
 
 from pydantic import Field
 
-from servicenow_mcp.server import mcp, get_config, get_auth_manager
-from servicenow_mcp.utils.http import api_request, parse_json_response
+from servicenow_mcp.server import mcp, get_config, make_sn_request
+from servicenow_mcp.utils.http import parse_json_response
 
 logger = logging.getLogger(__name__)
 
@@ -22,7 +22,6 @@ def list_update_sets(
 ) -> Dict[str, Any]:
     """List update sets with optional state and query filtering"""
     config = get_config()
-    auth_manager = get_auth_manager()
 
     url = f"{config.api_url}/table/sys_update_set"
     query_parts = []
@@ -37,7 +36,7 @@ def list_update_sets(
         "sysparm_query": "^".join(query_parts) if query_parts else "ORDERBYDESCsys_updated_on",
     }
 
-    response = api_request("GET", url, auth_manager, config.timeout, params=query_params)
+    response = make_sn_request("GET", url, config.timeout, params=query_params)
     data = parse_json_response(response, url)
     result = data.get("result", [])
     return {"count": len(result), "update_sets": result}
@@ -49,10 +48,9 @@ def get_update_set(
 ) -> Dict[str, Any]:
     """Get details of a specific update set by sys_id"""
     config = get_config()
-    auth_manager = get_auth_manager()
 
     url = f"{config.api_url}/table/sys_update_set/{sys_id}"
-    response = api_request("GET", url, auth_manager, config.timeout)
+    response = make_sn_request("GET", url, config.timeout)
     data = parse_json_response(response, url)
     return data.get("result", {})
 
@@ -65,7 +63,6 @@ def create_update_set(
 ) -> Dict[str, Any]:
     """Create a new update set for tracking customizations"""
     config = get_config()
-    auth_manager = get_auth_manager()
 
     url = f"{config.api_url}/table/sys_update_set"
     payload: Dict[str, Any] = {"name": name}
@@ -74,7 +71,7 @@ def create_update_set(
     if parent:
         payload["parent"] = parent
 
-    response = api_request("POST", url, auth_manager, config.timeout, json_data=payload)
+    response = make_sn_request("POST", url, config.timeout, json_data=payload)
     data = parse_json_response(response, url)
     result = data.get("result", {})
     return {"sys_id": result.get("sys_id"), "name": result.get("name"), "record": result}
@@ -86,10 +83,9 @@ def set_current_update_set(
 ) -> str:
     """Set an update set as the current active update set"""
     config = get_config()
-    auth_manager = get_auth_manager()
 
     url = f"{config.api_url}/table/sys_update_set/{sys_id}"
-    response = api_request("GET", url, auth_manager, config.timeout)
+    response = make_sn_request("GET", url, config.timeout)
     data = parse_json_response(response, url)
     update_set = data.get("result", {})
 
@@ -100,8 +96,8 @@ def set_current_update_set(
         return f"Cannot set update set '{name}' as current - state is '{state}' (must be 'in progress')"
 
     pref_url = f"{config.api_url}/table/sys_user_preference"
-    pref_response = api_request(
-        "GET", pref_url, auth_manager, config.timeout,
+    pref_response = make_sn_request(
+        "GET", pref_url, config.timeout,
         params={"sysparm_query": "name=sys_update_set", "sysparm_limit": 1},
     )
     pref_data = parse_json_response(pref_response, pref_url)
@@ -109,13 +105,13 @@ def set_current_update_set(
 
     if prefs:
         pref_sys_id = prefs[0]["sys_id"]
-        api_request(
-            "PATCH", f"{pref_url}/{pref_sys_id}", auth_manager, config.timeout,
+        make_sn_request(
+            "PATCH", f"{pref_url}/{pref_sys_id}", config.timeout,
             json_data={"value": sys_id},
         )
     else:
-        api_request(
-            "POST", pref_url, auth_manager, config.timeout,
+        make_sn_request(
+            "POST", pref_url, config.timeout,
             json_data={"name": "sys_update_set", "value": sys_id},
         )
 
@@ -129,7 +125,6 @@ def list_update_set_changes(
 ) -> Dict[str, Any]:
     """List all customer updates (changes) within an update set"""
     config = get_config()
-    auth_manager = get_auth_manager()
 
     url = f"{config.api_url}/table/sys_update_xml"
     query_params = {
@@ -138,7 +133,7 @@ def list_update_set_changes(
         "sysparm_limit": limit,
     }
 
-    response = api_request("GET", url, auth_manager, config.timeout, params=query_params)
+    response = make_sn_request("GET", url, config.timeout, params=query_params)
     data = parse_json_response(response, url)
     result = data.get("result", [])
     return {"count": len(result), "changes": result}

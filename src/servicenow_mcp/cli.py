@@ -75,6 +75,23 @@ def parse_args() -> argparse.Namespace:
         help="Port for HTTP transport (default: 8080)",
     )
 
+    # MCP endpoint OAuth (per-user SN auth via OAuth 2.1 + PKCE proxy)
+    parser.add_argument(
+        "--mcp-oauth-client-id",
+        default=os.environ.get("MCP_OAUTH_CLIENT_ID"),
+        help="SN OAuth app client ID (from Application Registry) for MCP endpoint auth",
+    )
+    parser.add_argument(
+        "--mcp-oauth-client-secret",
+        default=os.environ.get("MCP_OAUTH_CLIENT_SECRET"),
+        help="SN OAuth app client secret for MCP endpoint auth",
+    )
+    parser.add_argument(
+        "--mcp-base-url",
+        default=os.environ.get("MCP_BASE_URL"),
+        help="Public URL of this MCP server (e.g. https://my-server.run.app)",
+    )
+
     return parser.parse_args()
 
 
@@ -131,6 +148,15 @@ def create_config(args: argparse.Namespace) -> ServerConfig:
     )
 
 
+def _has_mcp_oauth(args: argparse.Namespace) -> bool:
+    """Check if MCP endpoint OAuth is configured."""
+    return bool(
+        args.mcp_oauth_client_id
+        and args.mcp_oauth_client_secret
+        and args.mcp_base_url
+    )
+
+
 def main() -> None:
     """Main entry point."""
     load_dotenv()
@@ -141,13 +167,46 @@ def main() -> None:
         if args.debug:
             logging.getLogger().setLevel(logging.DEBUG)
 
-        config = create_config(args)
+        use_mcp_oauth = _has_mcp_oauth(args) and args.transport != "stdio"
+
+        if use_mcp_oauth:
+            # OAuth proxy mode: per-user SN auth, no global creds needed
+            instance_url = args.instance_url
+            if not instance_url:
+                raise ValueError(
+                    "ServiceNow instance URL is required "
+                    "(--instance-url or SERVICENOW_INSTANCE_URL)"
+                )
+
+            # Minimal config — SN backend auth is optional in OAuth mode
+            config = ServerConfig(
+                instance_url=instance_url,
+                auth=AuthConfig(type=AuthType.BASIC, basic=BasicAuthConfig(username="", password="")),
+                debug=args.debug,
+                timeout=args.timeout,
+            )
+        else:
+            config = create_config(args)
+
         logger.info(f"Starting ServiceNow MCP server for {config.instance_url}")
 
         # Initialize services before importing tool modules
         from servicenow_mcp.server import mcp, init_services
 
-        init_services(config)
+        init_services(config, require_auth_manager=not use_mcp_oauth)
+
+        # Wire up OAuth proxy if configured
+        if use_mcp_oauth:
+            from servicenow_mcp.auth.sn_oauth_provider import ServiceNowProvider
+
+            provider = ServiceNowProvider(
+                instance_url=config.instance_url,
+                client_id=args.mcp_oauth_client_id,
+                client_secret=args.mcp_oauth_client_secret,
+                base_url=args.mcp_base_url,
+            )
+            mcp.auth = provider
+            logger.info("MCP endpoint auth: OAuth 2.1 + PKCE (per-user SN tokens)")
 
         # Import tool modules to trigger @mcp.tool() registration
         import servicenow_mcp.tools.table_tools  # noqa: F401

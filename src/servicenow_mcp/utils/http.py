@@ -17,10 +17,11 @@ class ServiceNowAPIError(Exception):
 def api_request(
     method: str,
     url: str,
-    auth_manager: AuthManager,
+    auth_manager: Optional[AuthManager] = None,
     timeout: int = 30,
     params: Optional[Dict[str, Any]] = None,
     json_data: Optional[Dict[str, Any]] = None,
+    bearer_token: Optional[str] = None,
 ) -> requests.Response:
     """Make an HTTP request to the ServiceNow API with proper error handling.
 
@@ -29,8 +30,23 @@ def api_request(
 
     On a 401 response with OAuth auth, automatically refreshes the token
     and retries the request once.
+
+    When ``bearer_token`` is set, uses ``Authorization: Bearer <token>``
+    directly instead of the auth manager. This supports per-user OAuth
+    proxy tokens.
     """
-    headers = auth_manager.get_headers()
+    if bearer_token:
+        headers = {
+            "Accept": "application/json",
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {bearer_token}",
+        }
+    elif auth_manager:
+        headers = auth_manager.get_headers()
+    else:
+        raise ServiceNowAPIError(
+            "Either auth_manager or bearer_token must be provided"
+        )
 
     try:
         response = requests.request(
@@ -53,9 +69,14 @@ def api_request(
             f"The instance may be hibernating or overloaded."
         ) from e
 
-    # On 401, attempt one token refresh and retry (OAuth only)
+    # On 401, attempt one token refresh and retry (OAuth only, not for bearer tokens)
     if response.status_code == 401:
-        if auth_manager.config.type.value == "oauth":
+        if bearer_token:
+            raise ServiceNowAPIError(
+                f"Authentication failed (401). The per-user OAuth token may be expired. "
+                f"URL: {url}"
+            )
+        if auth_manager and auth_manager.config.type.value == "oauth":
             logger.info("Got 401, attempting OAuth token refresh and retry")
             try:
                 auth_manager.refresh_token()

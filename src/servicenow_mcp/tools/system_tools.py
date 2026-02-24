@@ -8,8 +8,8 @@ from typing import Annotated, Any, Dict, Optional
 
 from pydantic import Field
 
-from servicenow_mcp.server import mcp, get_config, get_auth_manager
-from servicenow_mcp.utils.http import api_request, parse_json_response
+from servicenow_mcp.server import mcp, get_config, make_sn_request
+from servicenow_mcp.utils.http import parse_json_response
 
 logger = logging.getLogger(__name__)
 
@@ -21,7 +21,6 @@ def get_system_properties(
 ) -> Dict[str, Any]:
     """Query ServiceNow system properties"""
     config = get_config()
-    auth_manager = get_auth_manager()
 
     url = f"{config.api_url}/table/sys_properties"
     query_params: Dict[str, Any] = {
@@ -31,7 +30,7 @@ def get_system_properties(
     if query:
         query_params["sysparm_query"] = query
 
-    response = api_request("GET", url, auth_manager, config.timeout, params=query_params)
+    response = make_sn_request("GET", url, config.timeout, params=query_params)
     data = parse_json_response(response, url)
     result = data.get("result", [])
     return {"count": len(result), "properties": result}
@@ -43,10 +42,9 @@ def get_current_user(
 ) -> Dict[str, Any]:
     """Get the currently authenticated user's information"""
     config = get_config()
-    auth_manager = get_auth_manager()
 
     url = f"{config.instance_url}/api/now/ui/user/current_user"
-    response = api_request("GET", url, auth_manager, config.timeout)
+    response = make_sn_request("GET", url, config.timeout)
     data = parse_json_response(response, url)
     return data.get("result", {})
 
@@ -58,7 +56,6 @@ def get_table_schema(
 ) -> Dict[str, Any]:
     """Get the data dictionary (field definitions) for a ServiceNow table"""
     config = get_config()
-    auth_manager = get_auth_manager()
 
     url = f"{config.api_url}/table/sys_dictionary"
     query_params = {
@@ -67,7 +64,7 @@ def get_table_schema(
         "sysparm_limit": limit,
     }
 
-    response = api_request("GET", url, auth_manager, config.timeout, params=query_params)
+    response = make_sn_request("GET", url, config.timeout, params=query_params)
     data = parse_json_response(response, url)
     result = data.get("result", [])
     fields_list = [

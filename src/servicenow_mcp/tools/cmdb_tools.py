@@ -8,8 +8,8 @@ from typing import Annotated, Any, Dict, Optional
 
 from pydantic import Field
 
-from servicenow_mcp.server import mcp, get_config, get_auth_manager
-from servicenow_mcp.utils.http import api_request, parse_json_response
+from servicenow_mcp.server import mcp, get_config, make_sn_request
+from servicenow_mcp.utils.http import parse_json_response
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +24,6 @@ def list_ci(
 ) -> Dict[str, Any]:
     """List CMDB configuration items with optional class and query filtering"""
     config = get_config()
-    auth_manager = get_auth_manager()
 
     url = f"{config.api_url}/table/{class_name}"
     query_params: Dict[str, Any] = {
@@ -36,7 +35,7 @@ def list_ci(
     if fields:
         query_params["sysparm_fields"] = fields
 
-    response = api_request("GET", url, auth_manager, config.timeout, params=query_params)
+    response = make_sn_request("GET", url, config.timeout, params=query_params)
     data = parse_json_response(response, url)
     result = data.get("result", [])
     return {"count": len(result), "class": class_name, "records": result}
@@ -49,10 +48,9 @@ def get_ci(
 ) -> Dict[str, Any]:
     """Get a single CMDB configuration item by sys_id"""
     config = get_config()
-    auth_manager = get_auth_manager()
 
     url = f"{config.api_url}/table/{class_name}/{sys_id}"
-    response = api_request("GET", url, auth_manager, config.timeout)
+    response = make_sn_request("GET", url, config.timeout)
     data = parse_json_response(response, url)
     return data.get("result", {})
 
@@ -64,10 +62,9 @@ def create_ci(
 ) -> Dict[str, Any]:
     """Create a new CMDB configuration item"""
     config = get_config()
-    auth_manager = get_auth_manager()
 
     url = f"{config.api_url}/table/{class_name}"
-    response = api_request("POST", url, auth_manager, config.timeout, json_data=data)
+    response = make_sn_request("POST", url, config.timeout, json_data=data)
     resp_data = parse_json_response(response, url)
     result = resp_data.get("result", {})
     return {"sys_id": result.get("sys_id"), "record": result}
@@ -81,10 +78,9 @@ def update_ci(
 ) -> Dict[str, Any]:
     """Update a CMDB configuration item"""
     config = get_config()
-    auth_manager = get_auth_manager()
 
     url = f"{config.api_url}/table/{class_name}/{sys_id}"
-    response = api_request("PATCH", url, auth_manager, config.timeout, json_data=data)
+    response = make_sn_request("PATCH", url, config.timeout, json_data=data)
     resp_data = parse_json_response(response, url)
     result = resp_data.get("result", {})
     return {"sys_id": result.get("sys_id"), "record": result}
@@ -97,7 +93,6 @@ def get_ci_relationships(
 ) -> Dict[str, Any]:
     """Get relationships for a CMDB configuration item (parent and child)"""
     config = get_config()
-    auth_manager = get_auth_manager()
 
     url = f"{config.api_url}/table/cmdb_rel_ci"
     query = f"parent={sys_id}^ORchild={sys_id}"
@@ -109,7 +104,7 @@ def get_ci_relationships(
         "sysparm_limit": 100,
     }
 
-    response = api_request("GET", url, auth_manager, config.timeout, params=query_params)
+    response = make_sn_request("GET", url, config.timeout, params=query_params)
     data = parse_json_response(response, url)
     result = data.get("result", [])
     return {"count": len(result), "relationships": result}

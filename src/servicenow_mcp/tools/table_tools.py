@@ -8,8 +8,8 @@ from typing import Annotated, Any, Dict, Optional
 
 from pydantic import Field
 
-from servicenow_mcp.server import mcp, get_config, get_auth_manager
-from servicenow_mcp.utils.http import api_request, parse_json_response
+from servicenow_mcp.server import mcp, get_config, make_sn_request
+from servicenow_mcp.utils.http import parse_json_response
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +25,6 @@ def list_records(
 ) -> Dict[str, Any]:
     """List records from any ServiceNow table with optional filtering, field selection, and pagination"""
     config = get_config()
-    auth_manager = get_auth_manager()
 
     url = f"{config.api_url}/table/{table_name}"
     query_params: Dict[str, Any] = {
@@ -41,7 +40,7 @@ def list_records(
             f"{query_params.get('sysparm_query', '')}^ORDERBY{order_by}"
         ).lstrip("^")
 
-    response = api_request("GET", url, auth_manager, config.timeout, params=query_params)
+    response = make_sn_request("GET", url, config.timeout, params=query_params)
     data = parse_json_response(response, url)
     result = data.get("result", [])
     return {"count": len(result), "records": result}
@@ -55,14 +54,13 @@ def get_record(
 ) -> Dict[str, Any]:
     """Get a single record from a ServiceNow table by sys_id"""
     config = get_config()
-    auth_manager = get_auth_manager()
 
     url = f"{config.api_url}/table/{table_name}/{sys_id}"
     query_params: Dict[str, str] = {}
     if fields:
         query_params["sysparm_fields"] = fields
 
-    response = api_request("GET", url, auth_manager, config.timeout, params=query_params)
+    response = make_sn_request("GET", url, config.timeout, params=query_params)
     data = parse_json_response(response, url)
     return data.get("result", {})
 
@@ -74,10 +72,9 @@ def create_record(
 ) -> Dict[str, Any]:
     """Create a new record in any ServiceNow table"""
     config = get_config()
-    auth_manager = get_auth_manager()
 
     url = f"{config.api_url}/table/{table_name}"
-    response = api_request("POST", url, auth_manager, config.timeout, json_data=data)
+    response = make_sn_request("POST", url, config.timeout, json_data=data)
     resp_data = parse_json_response(response, url)
     result = resp_data.get("result", {})
     return {"sys_id": result.get("sys_id"), "record": result}
@@ -91,10 +88,9 @@ def update_record(
 ) -> Dict[str, Any]:
     """Update an existing record in a ServiceNow table"""
     config = get_config()
-    auth_manager = get_auth_manager()
 
     url = f"{config.api_url}/table/{table_name}/{sys_id}"
-    response = api_request("PATCH", url, auth_manager, config.timeout, json_data=data)
+    response = make_sn_request("PATCH", url, config.timeout, json_data=data)
     resp_data = parse_json_response(response, url)
     result = resp_data.get("result", {})
     return {"sys_id": result.get("sys_id"), "record": result}
@@ -107,8 +103,7 @@ def delete_record(
 ) -> str:
     """Delete a record from a ServiceNow table by sys_id"""
     config = get_config()
-    auth_manager = get_auth_manager()
 
     url = f"{config.api_url}/table/{table_name}/{sys_id}"
-    api_request("DELETE", url, auth_manager, config.timeout)
+    make_sn_request("DELETE", url, config.timeout)
     return f"Record {sys_id} deleted from {table_name}"
