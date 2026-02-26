@@ -40,12 +40,17 @@ class ServiceNowTokenVerifier(TokenVerifier):
         """Verify a ServiceNow OAuth token by calling the instance API."""
         try:
             async with httpx.AsyncClient(timeout=self.timeout_seconds) as client:
-                # Use current_user endpoint to validate token and get user info
+                # Use Table API to validate token — works with all auth types
                 response = await client.get(
-                    f"{self.instance_url}/api/now/ui/user/current_user",
+                    f"{self.instance_url}/api/now/table/sys_user",
                     headers={
                         "Authorization": f"Bearer {token}",
                         "Accept": "application/json",
+                    },
+                    params={
+                        "sysparm_query": "user_name=javascript:gs.getUserName()",
+                        "sysparm_limit": 1,
+                        "sysparm_fields": "user_name,name,email,sys_id,roles",
                     },
                 )
 
@@ -57,20 +62,25 @@ class ServiceNowTokenVerifier(TokenVerifier):
                     )
                     return None
 
-                user_data = response.json().get("result", {})
+                results = response.json().get("result", [])
+                if not results:
+                    logger.debug("SN token valid but no user record returned")
+                    return None
+
+                user = results[0]
 
                 return AccessToken(
                     token=token,
-                    client_id=user_data.get("user_name", "unknown"),
+                    client_id=user.get("user_name", "unknown"),
                     scopes=[],
                     expires_at=None,
                     claims={
-                        "sub": user_data.get("user_sys_id", user_data.get("user_name")),
-                        "user_name": user_data.get("user_name"),
-                        "name": user_data.get("user_display_name"),
-                        "email": user_data.get("user_email"),
-                        "roles": user_data.get("roles"),
-                        "sn_user_data": user_data,
+                        "sub": user.get("sys_id", user.get("user_name")),
+                        "user_name": user.get("user_name"),
+                        "name": user.get("name"),
+                        "email": user.get("email"),
+                        "roles": user.get("roles"),
+                        "sn_user_data": user,
                     },
                 )
 

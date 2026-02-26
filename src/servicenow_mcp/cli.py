@@ -215,7 +215,10 @@ def main() -> None:
         import servicenow_mcp.tools.update_set_tools  # noqa: F401
 
         logger.info(f"Transport: {args.transport}")
-        mcp.run(transport=args.transport, host=args.host, port=args.port)
+        if args.transport == "stdio":
+            mcp.run(transport=args.transport)
+        else:
+            mcp.run(transport=args.transport, host=args.host, port=args.port)
 
     except ValueError as e:
         logger.error(f"Configuration error: {e}")

@@ -1,22 +1,27 @@
 {
-  "$schema": "https://registry.modelcontextprotocol.io/schemas/server.json",
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.jschuller/mcp-server-servicenow",
   "title": "ServiceNow MCP Server",
   "description": "18 MCP tools for ServiceNow — incidents, CMDB, update sets, system ops. OAuth 2.1 + PKCE, any SN version (Tokyo+), any MCP client.",
-  "version": "0.3.0",
+  "version": "0.3.1",
+  "repository": {
+    "url": "https://github.com/jschuller/mcp-server-servicenow",
+    "source": "github"
+  },
   "packages": [
     {
       "registryType": "pypi",
       "identifier": "mcp-server-servicenow",
-      "runtime": "python",
-      "transport": ["stdio"]
+      "version": "0.3.1",
+      "transport": { "type": "stdio" },
+      "environmentVariables": [
+        { "name": "SERVICENOW_INSTANCE_URL", "isRequired": true, "description": "ServiceNow instance URL", "format": "string" },
+        { "name": "SERVICENOW_AUTH_TYPE", "isRequired": true, "description": "Auth type: basic, oauth, or api_key", "format": "string" },
+        { "name": "SERVICENOW_USERNAME", "isRequired": false, "description": "Username for basic or OAuth auth", "format": "string" },
+        { "name": "SERVICENOW_PASSWORD", "isRequired": false, "description": "Password for basic or OAuth auth", "format": "string", "isSecret": true },
+        { "name": "SERVICENOW_CLIENT_ID", "isRequired": false, "description": "OAuth client ID", "format": "string" },
+        { "name": "SERVICENOW_CLIENT_SECRET", "isRequired": false, "description": "OAuth client secret", "format": "string", "isSecret": true }
+      ]
     }
-  ],
-  "environmentVariables": [
-    { "name": "SERVICENOW_INSTANCE_URL", "required": true, "description": "ServiceNow instance URL" },
-    { "name": "SERVICENOW_AUTH_TYPE", "required": true, "description": "Auth type: basic, oauth, or api_key" },
-    { "name": "SERVICENOW_USERNAME", "required": false, "description": "Username for basic or OAuth auth" },
-    { "name": "SERVICENOW_PASSWORD", "required": false, "description": "Password for basic or OAuth auth" }
-  ],
-  "repository": "https://github.com/jschuller/mcp-server-servicenow"
+  ]
 }

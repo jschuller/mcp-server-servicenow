@@ -34,17 +34,19 @@ def _make_mock_client(response: MagicMock | None = None, side_effect: Exception 
 class TestServiceNowTokenVerifier:
     @pytest.mark.asyncio
     async def test_valid_token_returns_access_token(self, verifier: ServiceNowTokenVerifier) -> None:
-        """A 200 response from SN means the token is valid."""
+        """A 200 response from SN Table API means the token is valid."""
         mock_response = MagicMock()
         mock_response.status_code = 200
         mock_response.json.return_value = {
-            "result": {
-                "user_name": "admin",
-                "user_display_name": "System Administrator",
-                "user_email": "admin@example.com",
-                "user_sys_id": "6816f79cc0a8016401c5a33be04be441",
-                "roles": "admin,itil",
-            }
+            "result": [
+                {
+                    "user_name": "admin",
+                    "name": "System Administrator",
+                    "email": "admin@example.com",
+                    "sys_id": "6816f79cc0a8016401c5a33be04be441",
+                    "roles": "admin,itil",
+                }
+            ]
         }
 
         mock_cls = _make_mock_client(response=mock_response)
@@ -59,6 +61,20 @@ class TestServiceNowTokenVerifier:
         assert result.claims["name"] == "System Administrator"
         assert result.claims["email"] == "admin@example.com"
         assert result.claims["sub"] == "6816f79cc0a8016401c5a33be04be441"
+
+    @pytest.mark.asyncio
+    async def test_valid_token_empty_results_returns_none(self, verifier: ServiceNowTokenVerifier) -> None:
+        """A 200 with empty result list means no user found."""
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"result": []}
+
+        mock_cls = _make_mock_client(response=mock_response)
+
+        with patch("servicenow_mcp.auth.sn_token_verifier.httpx.AsyncClient", mock_cls):
+            result = await verifier.verify_token("valid-but-no-user")
+
+        assert result is None
 
     @pytest.mark.asyncio
     async def test_401_response_returns_none(self, verifier: ServiceNowTokenVerifier) -> None:

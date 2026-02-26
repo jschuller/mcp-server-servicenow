@@ -43,10 +43,35 @@ def get_current_user(
     """Get the currently authenticated user's information"""
     config = get_config()
 
+    # Try the UI endpoint first (works with basic auth)
     url = f"{config.instance_url}/api/now/ui/user/current_user"
-    response = make_sn_request("GET", url, config.timeout)
-    data = parse_json_response(response, url)
-    return data.get("result", {})
+    try:
+        response = make_sn_request("GET", url, config.timeout)
+        data = parse_json_response(response, url)
+        return data.get("result", {})
+    except Exception:
+        pass
+
+    # Fallback: query sys_user via Table API (works with all auth types including OAuth)
+    table_url = f"{config.api_url}/table/sys_user"
+    params: Dict[str, Any] = {
+        "sysparm_query": "user_name=javascript:gs.getUserName()",
+        "sysparm_limit": 1,
+        "sysparm_fields": fields or "user_name,name,email,sys_id,roles",
+    }
+    response = make_sn_request("GET", table_url, config.timeout, params=params)
+    data = parse_json_response(response, table_url)
+    results = data.get("result", [])
+    if results:
+        user = results[0]
+        return {
+            "user_name": user.get("user_name"),
+            "user_display_name": user.get("name"),
+            "user_email": user.get("email"),
+            "user_sys_id": user.get("sys_id"),
+            "roles": user.get("roles"),
+        }
+    return {}
 
 
 @mcp.tool()

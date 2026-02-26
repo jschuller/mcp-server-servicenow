@@ -6,6 +6,8 @@
 ![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)
 ![18 Tools](https://img.shields.io/badge/tools-18-orange.svg)
 
+<!-- mcp-name: io.github.jschuller/mcp-server-servicenow -->
+
 Connect Claude AI to ServiceNow. 18 MCP tools for incidents, CMDB, update sets, and more — accessible from Claude Desktop, Claude Code, or any MCP client over stdio or Streamable HTTP.
 
 ## What This Does
@@ -31,20 +33,39 @@ ServiceNow shipped a native MCP Server in Zurich (2025). Here's when to use each
 **Use native** if you're on Zurich+ with Now Assist and need AI Control Tower governance.
 **Use this** if you're on an older version, don't have the entitlement, need custom table access, or want to use any AI model.
 
-## Install
+## Getting Started
+
+### 1. Get a ServiceNow Instance
+
+Sign up for a free [Personal Developer Instance (PDI)](https://developer.servicenow.com/) — it comes pre-loaded with demo data. Wake it from the developer portal if it's hibernating.
+
+### 2. Install
 
 ```bash
-# From PyPI
+# From PyPI (recommended)
 pip install mcp-server-servicenow
 
 # Or run directly with uvx (no install needed)
 uvx mcp-server-servicenow --help
 ```
 
-## Quick Start
+### 3. Configure Your MCP Client
+
+Copy `.mcp.json.example` to `.mcp.json` and fill in your credentials, or use the Claude Code CLI:
 
 ```bash
-# From source
+claude mcp add servicenow -- uvx mcp-server-servicenow \
+  --instance-url https://your-instance.service-now.com \
+  --auth-type basic --username admin --password your-password
+```
+
+### 4. Verify
+
+Ask Claude: "List the 5 most recent incidents" — if it returns data, you're connected.
+
+### From Source
+
+```bash
 git clone https://github.com/jschuller/mcp-server-servicenow.git
 cd mcp-server-servicenow
 pip install -e .
@@ -64,14 +85,6 @@ mcp-server-servicenow \
   --auth-type basic \
   --username admin \
   --password your-password
-```
-
-### Claude Code CLI
-
-```bash
-claude mcp add servicenow -- uvx mcp-server-servicenow \
-  --instance-url https://your-instance.service-now.com \
-  --auth-type basic --username admin --password your-password
 ```
 
 ## Available Tools
@@ -135,6 +148,81 @@ Claude / MCP Client
              ▼
      ServiceNow Instance
       /api/now/table/*
+```
+
+## Configuration Examples
+
+Copy `.mcp.json.example` to `.mcp.json` and fill in your credentials. The JSON format is the same for Claude Code (`.mcp.json`) and Claude Desktop (`claude_desktop_config.json`).
+
+### Basic Auth (stdio)
+
+```json
+{
+  "mcpServers": {
+    "servicenow": {
+      "command": "uvx",
+      "args": ["mcp-server-servicenow"],
+      "env": {
+        "SERVICENOW_INSTANCE_URL": "https://your-instance.service-now.com",
+        "SERVICENOW_AUTH_TYPE": "basic",
+        "SERVICENOW_USERNAME": "admin",
+        "SERVICENOW_PASSWORD": "your-password"
+      }
+    }
+  }
+}
+```
+
+### OAuth Password Grant (stdio)
+
+```json
+{
+  "mcpServers": {
+    "servicenow": {
+      "command": "uvx",
+      "args": ["mcp-server-servicenow"],
+      "env": {
+        "SERVICENOW_INSTANCE_URL": "https://your-instance.service-now.com",
+        "SERVICENOW_AUTH_TYPE": "oauth",
+        "SERVICENOW_CLIENT_ID": "your-client-id",
+        "SERVICENOW_CLIENT_SECRET": "your-client-secret",
+        "SERVICENOW_USERNAME": "admin",
+        "SERVICENOW_PASSWORD": "your-password"
+      }
+    }
+  }
+}
+```
+
+### Multiple Instances
+
+```json
+{
+  "mcpServers": {
+    "servicenow-dev": {
+      "command": "uvx",
+      "args": ["mcp-server-servicenow"],
+      "env": {
+        "SERVICENOW_INSTANCE_URL": "https://dev12345.service-now.com",
+        "SERVICENOW_AUTH_TYPE": "basic",
+        "SERVICENOW_USERNAME": "admin",
+        "SERVICENOW_PASSWORD": "dev-password"
+      }
+    },
+    "servicenow-prod": {
+      "command": "uvx",
+      "args": ["mcp-server-servicenow"],
+      "env": {
+        "SERVICENOW_INSTANCE_URL": "https://prod12345.service-now.com",
+        "SERVICENOW_AUTH_TYPE": "oauth",
+        "SERVICENOW_CLIENT_ID": "prod-client-id",
+        "SERVICENOW_CLIENT_SECRET": "prod-client-secret",
+        "SERVICENOW_USERNAME": "svc-account",
+        "SERVICENOW_PASSWORD": "prod-password"
+      }
+    }
+  }
+}
 ```
 
 ## Deployment
@@ -229,92 +317,6 @@ MCP_TRANSPORT=streamable-http
 
 **Requires:** ServiceNow San Diego+ (2022) for PKCE support.
 
-## Configuration Examples
-
-Copy `.mcp.json.example` to `.mcp.json` and fill in your credentials.
-
-### Claude Code (basic auth)
-
-```json
-{
-  "mcpServers": {
-    "servicenow": {
-      "command": "uvx",
-      "args": ["mcp-server-servicenow"],
-      "env": {
-        "SERVICENOW_INSTANCE_URL": "https://your-instance.service-now.com",
-        "SERVICENOW_AUTH_TYPE": "basic",
-        "SERVICENOW_USERNAME": "admin",
-        "SERVICENOW_PASSWORD": "your-password"
-      }
-    }
-  }
-}
-```
-
-### Claude Code (OAuth password grant)
-
-```json
-{
-  "mcpServers": {
-    "servicenow": {
-      "command": "uvx",
-      "args": ["mcp-server-servicenow"],
-      "env": {
-        "SERVICENOW_INSTANCE_URL": "https://your-instance.service-now.com",
-        "SERVICENOW_AUTH_TYPE": "oauth",
-        "SERVICENOW_CLIENT_ID": "your-client-id",
-        "SERVICENOW_CLIENT_SECRET": "your-client-secret",
-        "SERVICENOW_USERNAME": "admin",
-        "SERVICENOW_PASSWORD": "your-password"
-      }
-    }
-  }
-}
-```
-
-### Claude Desktop (basic auth)
-
-Add to your `claude_desktop_config.json`:
-
-```json
-{
-  "mcpServers": {
-    "servicenow": {
-      "command": "uvx",
-      "args": ["mcp-server-servicenow"],
-      "env": {
-        "SERVICENOW_INSTANCE_URL": "https://your-instance.service-now.com",
-        "SERVICENOW_AUTH_TYPE": "basic",
-        "SERVICENOW_USERNAME": "admin",
-        "SERVICENOW_PASSWORD": "your-password"
-      }
-    }
-  }
-}
-```
-
-### Claude Desktop (OAuth password grant)
-
-```json
-{
-  "mcpServers": {
-    "servicenow": {
-      "command": "uvx",
-      "args": ["mcp-server-servicenow"],
-      "env": {
-        "SERVICENOW_INSTANCE_URL": "https://your-instance.service-now.com",
-        "SERVICENOW_AUTH_TYPE": "oauth",
-        "SERVICENOW_CLIENT_ID": "your-client-id",
-        "SERVICENOW_CLIENT_SECRET": "your-client-secret",
-        "SERVICENOW_USERNAME": "admin",
-        "SERVICENOW_PASSWORD": "your-password"
-      }
-    }
-  }
-}
-```
-
 ## Configuration Reference
 
 All settings can be passed as CLI args or environment variables. See `.env.example`.
@@ -328,11 +330,28 @@ All settings can be passed as CLI args or environment variables. See `.env.examp
 | `SERVICENOW_CLIENT_ID` | `--client-id` | OAuth client ID |
 | `SERVICENOW_CLIENT_SECRET` | `--client-secret` | OAuth client secret |
 | `SERVICENOW_API_KEY` | `--api-key` | API key for api_key auth |
+| `SERVICENOW_API_KEY_HEADER` | `--api-key-header` | API key header name (default: X-ServiceNow-API-Key) |
 | `MCP_TRANSPORT` | `--transport` | `stdio` (default) or `streamable-http` |
 | `PORT` | `--port` | HTTP port (default: 8080) |
 | `MCP_OAUTH_CLIENT_ID` | `--mcp-oauth-client-id` | SN OAuth app client ID for MCP endpoint auth |
 | `MCP_OAUTH_CLIENT_SECRET` | `--mcp-oauth-client-secret` | SN OAuth app client secret for MCP endpoint auth |
 | `MCP_BASE_URL` | `--mcp-base-url` | Public URL of this MCP server |
+
+## Troubleshooting
+
+### Instance is hibernating
+PDIs hibernate after inactivity. Wake it at [developer.servicenow.com](https://developer.servicenow.com) — click your instance and select "Wake Up". You'll get HTML login pages instead of JSON until it's awake.
+
+### 401 Unauthorized
+- **Basic auth:** Verify username/password are correct; check that the user has the `rest_api_explorer` or `admin` role
+- **OAuth:** Ensure the OAuth Application Registry entry is active and the redirect URI matches. Try regenerating the client secret
+- **Expired token:** OAuth tokens expire; the server retries once automatically, but if both attempts fail, check your credentials
+
+### OAuth `get_current_user` returns different fields
+With OAuth bearer tokens, `get_current_user` uses a Table API fallback (the UI endpoint requires session auth). The response fields are the same but sourced from `sys_user` instead of the UI API.
+
+### CLI TypeError on stdio transport
+Fixed in v0.3.1. If you see `TypeError: unexpected keyword argument 'host'`, upgrade: `pip install --upgrade mcp-server-servicenow`.
 
 ## Development
 
@@ -359,7 +378,7 @@ ruff check src/ tests/
 - **Phase 2** &#x2705; Remote access — FastMCP 3.0, Streamable HTTP, Cloud Run deployment
 - **Phase 3** &#x2705; Security — OAuth 2.1 + PKCE proxy, per-user SN auth, matches native Zurich model
 - **Phase 4** &#x1F51C; Skills & workflows — CMDB Data Foundations, incident triage, change management
-- **Phase 5** &#x1F51C; Distribution — PyPI package, MCP Registry listing, Claude Code skills
+- **Phase 5** &#x1F6A7; Distribution — PyPI package, MCP Registry listing, Claude Code skills
 
 ## License
 
