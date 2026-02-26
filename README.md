@@ -372,12 +372,25 @@ python -m pytest tests/integration/ -v
 ruff check src/ tests/
 ```
 
+## Skills (Claude Code)
+
+This project ships 4 Claude Code skills in `.claude/skills/` — guided workflows that chain MCP tools for common ServiceNow tasks. Skills auto-trigger from natural conversation or can be invoked directly.
+
+| Skill | What It Does | Try Saying |
+|-------|-------------|------------|
+| **servicenow-cmdb** | CI classes, dependencies, CMDB health, data quality, CSDM compliance | "show me CMDB health" / "what depends on this server" |
+| **exploring-tables** | Schema discovery, field types, data profiling, table comparison | "what fields does incident have" / "find tables matching cmdb" |
+| **reviewing-update-sets** | Update set review, risk flagging, conflict detection, pre-promotion checks | "review my update sets" / "is this safe to promote" |
+| **triaging-incidents** | Incident triage, priority assessment, CI correlation, bulk analysis | "what's on fire" / "open P1 incidents" |
+
+The **update set reviewer** is a unique differentiator — no other open-source ServiceNow MCP server provides guided update set review workflows with risk categorization and pre-promotion checklists.
+
 ## Roadmap
 
 - **Phase 1** &#x2705; Foundation — 18 tools, OAuth retry, structured error handling
 - **Phase 2** &#x2705; Remote access — FastMCP 3.0, Streamable HTTP, Cloud Run deployment
 - **Phase 3** &#x2705; Security — OAuth 2.1 + PKCE proxy, per-user SN auth, matches native Zurich model
-- **Phase 4** &#x1F51C; Skills & workflows — CMDB Data Foundations, incident triage, change management
+- **Phase 4** &#x2705; Skills & workflows — 4 Claude Code skills (CMDB, table explorer, update set reviewer, incident triage)
 - **Phase 5** &#x2705; Distribution — PyPI package, [MCP Registry](https://registry.modelcontextprotocol.io), automated publish workflows
 
 ## License

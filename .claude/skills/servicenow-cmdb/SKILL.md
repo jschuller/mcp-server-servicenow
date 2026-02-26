@@ -1,20 +1,30 @@
 ---
 name: servicenow-cmdb
-description: CMDB Data Foundations — explore CI classes, relationships, health, and CSDM compliance
-tools: [list_ci, get_ci, get_ci_relationships, list_records, get_record, get_table_schema]
+description: "Exploring CMDB configuration items, CI class hierarchy, relationships, health metrics, data quality, and CSDM compliance. Use when the user mentions CMDB, configuration items, CIs, CI classes, dependencies, relationships, CMDB health, data quality, duplicates, orphaned CIs, CSDM, service taxonomy, Data Foundations certification, staleness, compliance scores, or \"show me what depends on X.\""
+allowed-tools: "mcp__servicenow__list_ci, mcp__servicenow__get_ci, mcp__servicenow__get_ci_relationships, mcp__servicenow__list_records, mcp__servicenow__get_record, mcp__servicenow__get_table_schema"
+metadata:
+  author: jschuller
+  version: "1.0.0"
+  mcp-server: mcp-server-servicenow
 ---
 
 # ServiceNow CMDB Data Foundations
 
-## When to use this skill
-
-Use when the user asks about CMDB exploration, CI relationships, data quality, CMDB health, or CSDM compliance on a ServiceNow instance. This skill maps to the CIS - Data Foundations certification domains.
+Explore CI classes, map dependencies, assess CMDB health, investigate data quality, and review CSDM service taxonomy. See `references/cmdb-tables.md` for CI classes, health KPIs, CSDM mappings, and encoded query syntax.
 
 ## Workflows
 
 ### 1. Explore CI Class Hierarchy
 
 Discover what CI classes exist and their structure.
+
+**Progress checklist** (copy into your response):
+```
+- [ ] Get base CI table schema
+- [ ] Sample populated CI classes
+- [ ] Check class-specific fields
+- [ ] Summarize class inventory
+```
 
 1. Get the base CI table schema:
    ```
@@ -36,6 +46,15 @@ Discover what CI classes exist and their structure.
 
 Trace upstream and downstream dependencies for a given CI.
 
+**Progress checklist:**
+```
+- [ ] Find target CI
+- [ ] Get CI details
+- [ ] Get relationships
+- [ ] Build dependency tree
+- [ ] Present upstream/downstream map
+```
+
 1. Find the target CI:
    ```
    list_ci(class_name="cmdb_ci", query="nameLIKE<search_term>", limit=10)
@@ -51,15 +70,25 @@ Trace upstream and downstream dependencies for a given CI.
 4. For each related CI, optionally recurse one level deeper to build a dependency map.
 5. Present results as an upstream/downstream tree showing relationship types.
 
-### 3. Check CMDB Health
+### 3. Assess CMDB Health
 
-Query the CMDB Health Dashboard tables for data quality KPIs.
+Query the CMDB Health Dashboard tables for data quality KPIs. Uses a validation loop: assess → identify issues → remediate → re-assess.
 
-1. List health metrics:
+**Progress checklist:**
+```
+- [ ] Query health audit results
+- [ ] Check active health rules
+- [ ] Get health scores by class
+- [ ] Identify top failing rules
+- [ ] Recommend remediation actions
+- [ ] (Optional) Re-assess after fixes
+```
+
+1. List recent health audit results:
    ```
    list_records(table_name="cmdb_health_audit", limit=20, order_by="-sys_created_on")
    ```
-2. Check specific health rules:
+2. Check active health rules:
    ```
    list_records(table_name="cmdb_health_rule", query="active=true", limit=20)
    ```
@@ -68,10 +97,21 @@ Query the CMDB Health Dashboard tables for data quality KPIs.
    list_records(table_name="cmdb_health_config", limit=20)
    ```
 4. Summarize: overall health score, top failing rules, classes with lowest scores.
+5. Recommend specific remediation actions for each failing rule.
+6. After remediation, re-query health scores to verify improvement.
 
 ### 4. Investigate Data Quality
 
-Drill into data quality issues for specific CI classes.
+Drill into data quality issues for specific CI classes. Uses a validation loop: profile → identify gaps → suggest fixes.
+
+**Progress checklist:**
+```
+- [ ] Find CIs with missing mandatory fields
+- [ ] Check for duplicates
+- [ ] Check for orphaned CIs (no relationships)
+- [ ] Query data quality rules
+- [ ] Report issues by category with recommendations
+```
 
 1. Find CIs with missing mandatory fields:
    ```
@@ -83,7 +123,6 @@ Drill into data quality issues for specific CI classes.
    ```
 3. Check for orphaned CIs (no relationships):
    ```
-   # Get a CI and check if get_ci_relationships returns empty
    get_ci_relationships(sys_id="<ci_sys_id>")
    ```
 4. Query data quality rules:
@@ -95,6 +134,16 @@ Drill into data quality issues for specific CI classes.
 ### 5. CSDM Service Taxonomy
 
 Explore the Common Service Data Model service hierarchy.
+
+**Progress checklist:**
+```
+- [ ] List Business Services
+- [ ] List Technical Services
+- [ ] List Application Services
+- [ ] Map service relationships
+- [ ] Check service-to-offering mappings
+- [ ] Present service taxonomy tree
+```
 
 1. List Business Services:
    ```
@@ -121,6 +170,6 @@ Explore the Common Service Data Model service hierarchy.
 ## Tips
 
 - Use `fields` parameter on `list_ci` and `list_records` to limit returned data to relevant columns.
-- Use encoded queries for complex filters: `active=true^sys_class_name=cmdb_ci_server^ip_addressISNOTEMPTY`.
 - CMDB health tables may not exist on all instances — if a table returns 404, the Health Dashboard module may not be activated.
 - CSDM class names vary by SN version. If a class returns no results, try `get_table_schema` to confirm it exists.
+- See `references/cmdb-tables.md` for encoded query syntax, CI class reference, and health KPI definitions.
