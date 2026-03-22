@@ -1,5 +1,6 @@
 .env
 .mcp.json
+.mcpregistry_*
 __pycache__/
 *.pyc
 *.egg-info/
