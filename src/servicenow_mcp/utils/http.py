@@ -28,7 +28,9 @@ def _error_context(response: "requests.Response") -> str:
     if body:
         parts.append(f"Response: {body}")
 
-    diag = {h: response.headers[h] for h in _DIAGNOSTIC_HEADERS if h in response.headers}
+    diag = {
+        h: response.headers[h] for h in _DIAGNOSTIC_HEADERS if h in response.headers
+    }
     if diag:
         parts.append(f"Headers: {diag}")
 
@@ -65,9 +67,7 @@ def api_request(
     elif auth_manager:
         headers = auth_manager.get_headers()
     else:
-        raise ServiceNowAPIError(
-            "Either auth_manager or bearer_token must be provided"
-        )
+        raise ServiceNowAPIError("Either auth_manager or bearer_token must be provided")
 
     try:
         response = requests.request(
@@ -96,8 +96,7 @@ def api_request(
             ctx = _error_context(response)
             raise ServiceNowAPIError(
                 f"Authentication failed (401). The per-user OAuth token may be expired. "
-                f"URL: {url}"
-                + (f" | {ctx}" if ctx else "")
+                f"URL: {url}" + (f" | {ctx}" if ctx else "")
             )
         if auth_manager and auth_manager.config.type.value == "oauth":
             logger.info("Got 401, attempting OAuth token refresh and retry")
@@ -136,23 +135,20 @@ def api_request(
             ctx = _error_context(response)
             raise ServiceNowAPIError(
                 f"Authentication failed (401). Check your username/password. "
-                f"URL: {url}"
-                + (f" | {ctx}" if ctx else "")
+                f"URL: {url}" + (f" | {ctx}" if ctx else "")
             )
 
     if response.status_code == 403:
         ctx = _error_context(response)
         raise ServiceNowAPIError(
             f"Access denied (403). The user may lack permissions for this API. "
-            f"URL: {url}"
-            + (f" | {ctx}" if ctx else "")
+            f"URL: {url}" + (f" | {ctx}" if ctx else "")
         )
     if response.status_code == 404:
         ctx = _error_context(response)
         raise ServiceNowAPIError(
             f"Not found (404). The table or record may not exist. "
-            f"URL: {url}"
-            + (f" | {ctx}" if ctx else "")
+            f"URL: {url}" + (f" | {ctx}" if ctx else "")
         )
 
     # For other errors, raise with response body context
@@ -186,6 +182,5 @@ def parse_json_response(response: requests.Response, url: str) -> Dict[str, Any]
     except ValueError as e:
         body_preview = response.text[:200]
         raise ServiceNowAPIError(
-            f"Invalid JSON from {url}: {e}. "
-            f"Response starts with: {body_preview!r}"
+            f"Invalid JSON from {url}: {e}. Response starts with: {body_preview!r}"
         ) from e

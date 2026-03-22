@@ -50,7 +50,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--username", default=os.environ.get("SERVICENOW_USERNAME"))
     parser.add_argument("--password", default=os.environ.get("SERVICENOW_PASSWORD"))
     parser.add_argument("--client-id", default=os.environ.get("SERVICENOW_CLIENT_ID"))
-    parser.add_argument("--client-secret", default=os.environ.get("SERVICENOW_CLIENT_SECRET"))
+    parser.add_argument(
+        "--client-secret", default=os.environ.get("SERVICENOW_CLIENT_SECRET")
+    )
     parser.add_argument("--token-url", default=os.environ.get("SERVICENOW_TOKEN_URL"))
     parser.add_argument("--api-key", default=os.environ.get("SERVICENOW_API_KEY"))
     parser.add_argument(
@@ -120,8 +122,15 @@ def create_config(args: argparse.Namespace) -> ServerConfig:
         )
 
     elif auth_type == AuthType.OAUTH:
-        if not args.client_id or not args.client_secret or not args.username or not args.password:
-            raise ValueError("client-id, client-secret, username, and password required for OAuth")
+        if (
+            not args.client_id
+            or not args.client_secret
+            or not args.username
+            or not args.password
+        ):
+            raise ValueError(
+                "client-id, client-secret, username, and password required for OAuth"
+            )
         token_url = args.token_url or f"{instance_url}/oauth_token.do"
         auth_config = AuthConfig(
             type=auth_type,
@@ -173,9 +182,7 @@ def _parse_static_tokens(args: argparse.Namespace) -> dict[str, dict[str, str]] 
 def _has_mcp_oauth(args: argparse.Namespace) -> bool:
     """Check if MCP endpoint OAuth is configured."""
     return bool(
-        args.mcp_oauth_client_id
-        and args.mcp_oauth_client_secret
-        and args.mcp_base_url
+        args.mcp_oauth_client_id and args.mcp_oauth_client_secret and args.mcp_base_url
     )
 
 
@@ -203,7 +210,9 @@ def main() -> None:
             # Minimal config — SN backend auth is optional in OAuth mode
             config = ServerConfig(
                 instance_url=instance_url,
-                auth=AuthConfig(type=AuthType.BASIC, basic=BasicAuthConfig(username="", password="")),
+                auth=AuthConfig(
+                    type=AuthType.BASIC, basic=BasicAuthConfig(username="", password="")
+                ),
                 debug=args.debug,
                 timeout=args.timeout,
             )
@@ -250,7 +259,9 @@ def main() -> None:
 
             static_verifier = StaticTokenVerifier(tokens=static_tokens)
             mcp.auth = MultiAuth(verifiers=[static_verifier])
-            logger.info("MCP endpoint auth: %d static bearer tokens", len(static_tokens))
+            logger.info(
+                "MCP endpoint auth: %d static bearer tokens", len(static_tokens)
+            )
 
         # Import tool and resource modules to trigger @mcp.tool()/@mcp.resource() registration
         import servicenow_mcp.tools.table_tools  # noqa: F401

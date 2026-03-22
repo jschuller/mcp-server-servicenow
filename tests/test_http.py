@@ -6,7 +6,11 @@ import pytest
 import requests
 
 from servicenow_mcp.auth.auth_manager import AuthManager
-from servicenow_mcp.utils.http import ServiceNowAPIError, api_request, parse_json_response
+from servicenow_mcp.utils.http import (
+    ServiceNowAPIError,
+    api_request,
+    parse_json_response,
+)
 
 
 URL = "https://test.service-now.com/api/now/table/incident"
@@ -98,7 +102,9 @@ class TestApiRequest:
         mock_request.return_value = _mock_response(401)
 
         with patch.object(
-            oauth_auth_manager, "refresh_token", side_effect=ValueError("refresh failed")
+            oauth_auth_manager,
+            "refresh_token",
+            side_effect=ValueError("refresh failed"),
         ):
             with pytest.raises(ServiceNowAPIError, match="token refresh also failed"):
                 api_request("GET", URL, oauth_auth_manager)
@@ -188,7 +194,9 @@ class TestParseJsonResponse:
     """Tests for parse_json_response function."""
 
     def test_valid_json(self) -> None:
-        resp = _mock_response(200, {"result": [{"sys_id": "abc"}]}, text='{"result": []}')
+        resp = _mock_response(
+            200, {"result": [{"sys_id": "abc"}]}, text='{"result": []}'
+        )
         data = parse_json_response(resp, URL)
         assert "result" in data
 

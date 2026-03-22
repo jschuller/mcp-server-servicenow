@@ -7,7 +7,12 @@ import pytest
 from fastmcp import Client
 
 from servicenow_mcp.server import mcp, init_services
-from servicenow_mcp.utils.config import AuthConfig, AuthType, BasicAuthConfig, ServerConfig
+from servicenow_mcp.utils.config import (
+    AuthConfig,
+    AuthType,
+    BasicAuthConfig,
+    ServerConfig,
+)
 
 
 EXPECTED_TOOLS = {
@@ -62,7 +67,9 @@ class TestToolRegistry:
         """Exactly 19 tools must be registered."""
         async with Client(mcp) as client:
             tools = await client.list_tools()
-            assert len(tools) == 19, f"Expected 19 tools, got {len(tools)}: {sorted(t.name for t in tools)}"
+            assert len(tools) == 19, (
+                f"Expected 19 tools, got {len(tools)}: {sorted(t.name for t in tools)}"
+            )
 
     @pytest.mark.asyncio
     async def test_all_expected_tools_present(self) -> None:

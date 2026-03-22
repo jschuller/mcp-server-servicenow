@@ -4,7 +4,12 @@ import pytest
 from fastmcp import Client
 
 from servicenow_mcp.server import mcp, init_services
-from servicenow_mcp.utils.config import AuthConfig, AuthType, BasicAuthConfig, ServerConfig
+from servicenow_mcp.utils.config import (
+    AuthConfig,
+    AuthType,
+    BasicAuthConfig,
+    ServerConfig,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -47,8 +52,14 @@ class TestListRecordsSchema:
             tools = await client.list_tools()
             schema = _get_tool_schema(tools, "list_records")
             limit_prop = schema["properties"]["limit"]
-            assert limit_prop.get("minimum") == 1 or limit_prop.get("exclusiveMinimum") == 0
-            assert limit_prop.get("maximum") == 1000 or limit_prop.get("exclusiveMaximum") == 1001
+            assert (
+                limit_prop.get("minimum") == 1
+                or limit_prop.get("exclusiveMinimum") == 0
+            )
+            assert (
+                limit_prop.get("maximum") == 1000
+                or limit_prop.get("exclusiveMaximum") == 1001
+            )
 
     @pytest.mark.asyncio
     async def test_default_values(self) -> None:
@@ -181,7 +192,15 @@ class TestAggregateRecordsSchema:
             tools = await client.list_tools()
             schema = _get_tool_schema(tools, "aggregate_records")
             required = schema.get("required", [])
-            for field in ["avg_fields", "min_fields", "max_fields", "sum_fields", "group_by", "query", "having"]:
+            for field in [
+                "avg_fields",
+                "min_fields",
+                "max_fields",
+                "sum_fields",
+                "group_by",
+                "query",
+                "having",
+            ]:
                 assert field not in required, f"{field} should be optional"
 
     @pytest.mark.asyncio

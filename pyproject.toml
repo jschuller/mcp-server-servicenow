@@ -19,6 +19,16 @@ classifiers = [
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
 ]
+keywords = [
+    "servicenow",
+    "mcp",
+    "model-context-protocol",
+    "claude",
+    "cmdb",
+    "itsm",
+    "fastmcp",
+    "oauth",
+]
 dependencies = [
     "fastmcp>=3.0.2,<4",
     "requests>=2.28.0",
@@ -42,6 +52,21 @@ dev = ["pytest>=7.0", "pytest-mock>=3.0", "pytest-asyncio>=0.23.0", "ruff>=0.4.0
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/servicenow_mcp"]
+
+[tool.hatch.build.targets.sdist]
+exclude = [
+    "tests/",
+    "docs/",
+    ".github/",
+    ".claude/",
+    ".claude-plugin/",
+    "agents/",
+    "commands/",
+    "skills/",
+    "dist/",
+    "*.png",
+    "uv.lock",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

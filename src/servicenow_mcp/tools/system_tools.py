@@ -16,8 +16,15 @@ logger = logging.getLogger(__name__)
 
 @mcp.tool(tags={"read", "admin"})
 def get_system_properties(
-    query: Annotated[Optional[str], Field(description="Filter query (e.g., 'name=glide.servlet.uri' or 'nameLIKEglide')")] = None,
-    limit: Annotated[int, Field(ge=1, le=100, description="Maximum number of properties to return")] = 20,
+    query: Annotated[
+        Optional[str],
+        Field(
+            description="Filter query (e.g., 'name=glide.servlet.uri' or 'nameLIKEglide')"
+        ),
+    ] = None,
+    limit: Annotated[
+        int, Field(ge=1, le=100, description="Maximum number of properties to return")
+    ] = 20,
 ) -> Dict[str, Any]:
     """Query ServiceNow system properties"""
     config = get_config()
@@ -38,7 +45,12 @@ def get_system_properties(
 
 @mcp.tool(tags={"read", "admin"})
 def get_current_user(
-    fields: Annotated[Optional[str], Field(description="Comma-separated fields to return (default: user_name,name,email,roles)")] = None,
+    fields: Annotated[
+        Optional[str],
+        Field(
+            description="Comma-separated fields to return (default: user_name,name,email,roles)"
+        ),
+    ] = None,
 ) -> Dict[str, Any]:
     """Get the currently authenticated user's information"""
     config = get_config()
@@ -77,7 +89,9 @@ def get_current_user(
 @mcp.tool(tags={"read", "admin"})
 def get_table_schema(
     table_name: Annotated[str, Field(description="The table name to get schema for")],
-    limit: Annotated[int, Field(ge=1, le=500, description="Maximum number of fields to return")] = 50,
+    limit: Annotated[
+        int, Field(ge=1, le=500, description="Maximum number of fields to return")
+    ] = 50,
 ) -> Dict[str, Any]:
     """Get the data dictionary (field definitions) for a ServiceNow table"""
     config = get_config()

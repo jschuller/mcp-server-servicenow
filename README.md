@@ -1,7 +1,7 @@
 <!-- mcp-server: servicenow | tools: 19 | resources: 5 | transport: stdio,streamable-http | auth: basic,oauth,api_key | framework: fastmcp-3.1 -->
 
 <p align="center">
-  <img src="docs/hero.png" alt="ServiceNow MCP Server" width="100%">
+  <img src="https://raw.githubusercontent.com/jschuller/mcp-server-servicenow/main/docs/hero.png" alt="ServiceNow MCP Server" width="100%">
 </p>
 
 <h1 align="center">ServiceNow MCP Server</h1>

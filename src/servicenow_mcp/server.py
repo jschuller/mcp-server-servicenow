@@ -66,8 +66,17 @@ def make_sn_request(
 
     bearer = get_sn_bearer_token()
     if bearer:
-        return api_request(method, url, timeout=timeout, params=params, json_data=json_data, bearer_token=bearer)
-    return api_request(method, url, get_auth_manager(), timeout, params=params, json_data=json_data)
+        return api_request(
+            method,
+            url,
+            timeout=timeout,
+            params=params,
+            json_data=json_data,
+            bearer_token=bearer,
+        )
+    return api_request(
+        method, url, get_auth_manager(), timeout, params=params, json_data=json_data
+    )
 
 
 def get_sn_bearer_token() -> str | None:

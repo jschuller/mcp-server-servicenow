@@ -16,10 +16,22 @@ logger = logging.getLogger(__name__)
 
 @mcp.tool(tags={"read", "cmdb"})
 def list_ci(
-    class_name: Annotated[str, Field(description="CMDB class name (e.g., 'cmdb_ci', 'cmdb_ci_server', 'cmdb_ci_computer')")] = "cmdb_ci",
-    query: Annotated[Optional[str], Field(description="Encoded query string (e.g., 'operational_status=1')")] = None,
-    fields: Annotated[Optional[str], Field(description="Comma-separated list of fields to return")] = None,
-    limit: Annotated[int, Field(ge=1, le=1000, description="Maximum number of CIs to return")] = 20,
+    class_name: Annotated[
+        str,
+        Field(
+            description="CMDB class name (e.g., 'cmdb_ci', 'cmdb_ci_server', 'cmdb_ci_computer')"
+        ),
+    ] = "cmdb_ci",
+    query: Annotated[
+        Optional[str],
+        Field(description="Encoded query string (e.g., 'operational_status=1')"),
+    ] = None,
+    fields: Annotated[
+        Optional[str], Field(description="Comma-separated list of fields to return")
+    ] = None,
+    limit: Annotated[
+        int, Field(ge=1, le=1000, description="Maximum number of CIs to return")
+    ] = 20,
     offset: Annotated[int, Field(ge=0, description="Number of records to skip")] = 0,
 ) -> Dict[str, Any]:
     """List CMDB configuration items with optional class and query filtering"""
@@ -57,7 +69,10 @@ def get_ci(
 
 @mcp.tool(tags={"write", "cmdb"})
 def create_ci(
-    data: Annotated[Dict[str, Any], Field(description="CI attributes as key-value pairs (must include 'name')")],
+    data: Annotated[
+        Dict[str, Any],
+        Field(description="CI attributes as key-value pairs (must include 'name')"),
+    ],
     class_name: Annotated[str, Field(description="CMDB class name")] = "cmdb_ci",
 ) -> Dict[str, Any]:
     """Create a new CMDB configuration item"""
@@ -89,7 +104,9 @@ def update_ci(
 @mcp.tool(tags={"read", "cmdb"})
 def get_ci_relationships(
     sys_id: Annotated[str, Field(description="The sys_id of the CI")],
-    relation_type: Annotated[Optional[str], Field(description="Filter by relationship type sys_id")] = None,
+    relation_type: Annotated[
+        Optional[str], Field(description="Filter by relationship type sys_id")
+    ] = None,
 ) -> Dict[str, Any]:
     """Get relationships for a CMDB configuration item (parent and child)"""
     config = get_config()

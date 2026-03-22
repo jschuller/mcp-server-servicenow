@@ -17,7 +17,12 @@ from dotenv import load_dotenv
 from fastmcp import Client
 
 from servicenow_mcp.server import mcp, init_services
-from servicenow_mcp.utils.config import AuthConfig, AuthType, BasicAuthConfig, ServerConfig
+from servicenow_mcp.utils.config import (
+    AuthConfig,
+    AuthType,
+    BasicAuthConfig,
+    ServerConfig,
+)
 
 # Load .env.test from project root if it exists
 _env_test = Path(__file__).resolve().parents[2] / ".env.test"
@@ -59,18 +64,24 @@ class TestTableTools:
     @pytest.mark.asyncio
     async def test_list_incidents(self) -> None:
         async with Client(mcp) as client:
-            result = await client.call_tool("list_records", {
-                "table_name": "incident",
-                "limit": 5,
-            })
+            result = await client.call_tool(
+                "list_records",
+                {
+                    "table_name": "incident",
+                    "limit": 5,
+                },
+            )
             assert result is not None
 
     @pytest.mark.asyncio
     async def test_get_table_schema(self) -> None:
         async with Client(mcp) as client:
-            result = await client.call_tool("get_table_schema", {
-                "table_name": "incident",
-            })
+            result = await client.call_tool(
+                "get_table_schema",
+                {
+                    "table_name": "incident",
+                },
+            )
             assert result is not None
 
 
@@ -84,9 +95,12 @@ class TestSystemTools:
     @pytest.mark.asyncio
     async def test_get_system_properties(self) -> None:
         async with Client(mcp) as client:
-            result = await client.call_tool("get_system_properties", {
-                "limit": 5,
-            })
+            result = await client.call_tool(
+                "get_system_properties",
+                {
+                    "limit": 5,
+                },
+            )
             assert result is not None
 
 
@@ -94,10 +108,13 @@ class TestCMDBTools:
     @pytest.mark.asyncio
     async def test_list_ci(self) -> None:
         async with Client(mcp) as client:
-            result = await client.call_tool("list_ci", {
-                "class_name": "cmdb_ci_computer",
-                "limit": 3,
-            })
+            result = await client.call_tool(
+                "list_ci",
+                {
+                    "class_name": "cmdb_ci_computer",
+                    "limit": 3,
+                },
+            )
             assert result is not None
 
 
@@ -105,9 +122,12 @@ class TestUpdateSetTools:
     @pytest.mark.asyncio
     async def test_list_update_sets(self) -> None:
         async with Client(mcp) as client:
-            result = await client.call_tool("list_update_sets", {
-                "limit": 5,
-            })
+            result = await client.call_tool(
+                "list_update_sets",
+                {
+                    "limit": 5,
+                },
+            )
             assert result is not None
 
 
@@ -116,21 +136,27 @@ class TestAggregateRecords:
     async def test_count_without_group_by(self) -> None:
         """Stats API returns a dict without group_by."""
         async with Client(mcp) as client:
-            result = await client.call_tool("aggregate_records", {
-                "table_name": "incident",
-                "count": True,
-            })
+            result = await client.call_tool(
+                "aggregate_records",
+                {
+                    "table_name": "incident",
+                    "count": True,
+                },
+            )
             assert result is not None
 
     @pytest.mark.asyncio
     async def test_count_with_group_by(self) -> None:
         """Stats API returns a list with group_by — must be wrapped in a dict."""
         async with Client(mcp) as client:
-            result = await client.call_tool("aggregate_records", {
-                "table_name": "incident",
-                "count": True,
-                "group_by": "priority",
-            })
+            result = await client.call_tool(
+                "aggregate_records",
+                {
+                    "table_name": "incident",
+                    "count": True,
+                    "group_by": "priority",
+                },
+            )
             assert result is not None
 
 

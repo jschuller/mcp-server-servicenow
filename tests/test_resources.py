@@ -4,7 +4,12 @@ import pytest
 from fastmcp import Client
 
 from servicenow_mcp.server import mcp, init_services
-from servicenow_mcp.utils.config import AuthConfig, AuthType, BasicAuthConfig, ServerConfig
+from servicenow_mcp.utils.config import (
+    AuthConfig,
+    AuthType,
+    BasicAuthConfig,
+    ServerConfig,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -61,5 +66,13 @@ class TestQuerySyntaxResource:
         async with Client(mcp) as client:
             content = await client.read_resource("servicenow://help/query-syntax")
             text = content[0].text if hasattr(content[0], "text") else str(content[0])
-            for op in ["LIKE", "IN", "ISEMPTY", "ISNOTEMPTY", "INSTANCEOF", "^OR", "^NQ"]:
+            for op in [
+                "LIKE",
+                "IN",
+                "ISEMPTY",
+                "ISNOTEMPTY",
+                "INSTANCEOF",
+                "^OR",
+                "^NQ",
+            ]:
                 assert op in text, f"Missing operator: {op}"

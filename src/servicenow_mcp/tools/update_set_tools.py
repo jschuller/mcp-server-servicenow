@@ -16,9 +16,21 @@ logger = logging.getLogger(__name__)
 
 @mcp.tool(tags={"read", "updateset"})
 def list_update_sets(
-    query: Annotated[Optional[str], Field(description="Filter query (e.g., 'state=in progress', 'nameLIKErelease')")] = None,
-    state: Annotated[Optional[str], Field(description="Filter by state: 'in progress', 'complete', 'ignore', or 'default'")] = None,
-    limit: Annotated[int, Field(ge=1, le=100, description="Maximum number of update sets to return")] = 20,
+    query: Annotated[
+        Optional[str],
+        Field(
+            description="Filter query (e.g., 'state=in progress', 'nameLIKErelease')"
+        ),
+    ] = None,
+    state: Annotated[
+        Optional[str],
+        Field(
+            description="Filter by state: 'in progress', 'complete', 'ignore', or 'default'"
+        ),
+    ] = None,
+    limit: Annotated[
+        int, Field(ge=1, le=100, description="Maximum number of update sets to return")
+    ] = 20,
 ) -> Dict[str, Any]:
     """List update sets with optional state and query filtering"""
     config = get_config()
@@ -33,7 +45,9 @@ def list_update_sets(
     query_params: Dict[str, Any] = {
         "sysparm_limit": limit,
         "sysparm_fields": "sys_id,name,description,state,application,sys_created_on,sys_updated_on",
-        "sysparm_query": "^".join(query_parts) if query_parts else "ORDERBYDESCsys_updated_on",
+        "sysparm_query": "^".join(query_parts)
+        if query_parts
+        else "ORDERBYDESCsys_updated_on",
     }
 
     response = make_sn_request("GET", url, config.timeout, params=query_params)
@@ -58,8 +72,12 @@ def get_update_set(
 @mcp.tool(tags={"write", "updateset"})
 def create_update_set(
     name: Annotated[str, Field(description="Name of the update set")],
-    description: Annotated[Optional[str], Field(description="Description of the update set")] = None,
-    parent: Annotated[Optional[str], Field(description="Parent update set sys_id (for batch sets)")] = None,
+    description: Annotated[
+        Optional[str], Field(description="Description of the update set")
+    ] = None,
+    parent: Annotated[
+        Optional[str], Field(description="Parent update set sys_id (for batch sets)")
+    ] = None,
 ) -> Dict[str, Any]:
     """Create a new update set for tracking customizations"""
     config = get_config()
@@ -74,12 +92,18 @@ def create_update_set(
     response = make_sn_request("POST", url, config.timeout, json_data=payload)
     data = parse_json_response(response, url)
     result = data.get("result", {})
-    return {"sys_id": result.get("sys_id"), "name": result.get("name"), "record": result}
+    return {
+        "sys_id": result.get("sys_id"),
+        "name": result.get("name"),
+        "record": result,
+    }
 
 
 @mcp.tool(tags={"write", "updateset"})
 def set_current_update_set(
-    sys_id: Annotated[str, Field(description="The sys_id of the update set to make current")],
+    sys_id: Annotated[
+        str, Field(description="The sys_id of the update set to make current")
+    ],
 ) -> str:
     """Set an update set as the current active update set"""
     config = get_config()
@@ -97,7 +121,9 @@ def set_current_update_set(
 
     pref_url = f"{config.api_url}/table/sys_user_preference"
     pref_response = make_sn_request(
-        "GET", pref_url, config.timeout,
+        "GET",
+        pref_url,
+        config.timeout,
         params={"sysparm_query": "name=sys_update_set", "sysparm_limit": 1},
     )
     pref_data = parse_json_response(pref_response, pref_url)
@@ -106,12 +132,16 @@ def set_current_update_set(
     if prefs:
         pref_sys_id = prefs[0]["sys_id"]
         make_sn_request(
-            "PATCH", f"{pref_url}/{pref_sys_id}", config.timeout,
+            "PATCH",
+            f"{pref_url}/{pref_sys_id}",
+            config.timeout,
             json_data={"value": sys_id},
         )
     else:
         make_sn_request(
-            "POST", pref_url, config.timeout,
+            "POST",
+            pref_url,
+            config.timeout,
             json_data={"name": "sys_update_set", "value": sys_id},
         )
 
@@ -120,8 +150,12 @@ def set_current_update_set(
 
 @mcp.tool(tags={"read", "updateset"})
 def list_update_set_changes(
-    update_set_sys_id: Annotated[str, Field(description="The sys_id of the update set")],
-    limit: Annotated[int, Field(ge=1, le=500, description="Maximum number of changes to return")] = 50,
+    update_set_sys_id: Annotated[
+        str, Field(description="The sys_id of the update set")
+    ],
+    limit: Annotated[
+        int, Field(ge=1, le=500, description="Maximum number of changes to return")
+    ] = 50,
 ) -> Dict[str, Any]:
     """List all customer updates (changes) within an update set"""
     config = get_config()

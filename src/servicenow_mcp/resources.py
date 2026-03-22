@@ -22,6 +22,7 @@ logger = logging.getLogger(__name__)
 # servicenow://schema/{table_name}
 # ---------------------------------------------------------------------------
 
+
 @mcp.resource(
     "servicenow://schema/{table_name}",
     description="Field definitions (name, type, label, mandatory, reference) for a ServiceNow table. Avoids repeated get_table_schema tool calls.",
@@ -54,12 +55,15 @@ def table_schema(table_name: str) -> str:
         for r in result
         if r.get("element")
     ]
-    return json.dumps({"table": table_name, "field_count": len(fields_list), "fields": fields_list})
+    return json.dumps(
+        {"table": table_name, "field_count": len(fields_list), "fields": fields_list}
+    )
 
 
 # ---------------------------------------------------------------------------
 # servicenow://instance
 # ---------------------------------------------------------------------------
+
 
 @mcp.resource(
     "servicenow://instance",
@@ -111,7 +115,9 @@ def instance_info() -> str:
                 "sysparm_limit": 1,
                 "sysparm_fields": "user_name,name,email",
             }
-            user_resp = make_sn_request("GET", table_url, config.timeout, params=user_params)
+            user_resp = make_sn_request(
+                "GET", table_url, config.timeout, params=user_params
+            )
             user_data = parse_json_response(user_resp, table_url)
             users = user_data.get("result", [])
             if users:
@@ -130,6 +136,7 @@ def instance_info() -> str:
 # ---------------------------------------------------------------------------
 # servicenow://update-set/current
 # ---------------------------------------------------------------------------
+
 
 @mcp.resource(
     "servicenow://update-set/current",
@@ -166,18 +173,21 @@ def current_update_set() -> str:
     us_data = parse_json_response(us_resp, us_url)
     update_set = us_data.get("result", {})
 
-    return json.dumps({
-        "sys_id": update_set.get("sys_id"),
-        "name": update_set.get("name"),
-        "state": update_set.get("state"),
-        "description": update_set.get("description"),
-        "application": update_set.get("application"),
-    })
+    return json.dumps(
+        {
+            "sys_id": update_set.get("sys_id"),
+            "name": update_set.get("name"),
+            "state": update_set.get("state"),
+            "description": update_set.get("description"),
+            "application": update_set.get("application"),
+        }
+    )
 
 
 # ---------------------------------------------------------------------------
 # servicenow://cmdb/classes
 # ---------------------------------------------------------------------------
+
 
 @mcp.resource(
     "servicenow://cmdb/classes",

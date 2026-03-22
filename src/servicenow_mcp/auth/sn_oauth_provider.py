@@ -110,5 +110,6 @@ class ServiceNowProvider(OAuthProxy):
         )
 
         logger.info(
-            "Initialized ServiceNow OAuth provider for %s", instance_url,
+            "Initialized ServiceNow OAuth provider for %s",
+            instance_url,
         )

@@ -62,7 +62,8 @@ class TestBearerTokenInApiRequest:
         mock_request.return_value = _mock_response(200, {"result": []})
 
         api_request(
-            "POST", URL,
+            "POST",
+            URL,
             bearer_token="my-token",
             params={"sysparm_limit": 10},
             json_data={"short_description": "test"},
@@ -74,7 +75,9 @@ class TestBearerTokenInApiRequest:
 
     def test_no_auth_raises_error(self) -> None:
         """If neither auth_manager nor bearer_token is provided, raise."""
-        with pytest.raises(ServiceNowAPIError, match="Either auth_manager or bearer_token"):
+        with pytest.raises(
+            ServiceNowAPIError, match="Either auth_manager or bearer_token"
+        ):
             api_request("GET", URL)
 
 

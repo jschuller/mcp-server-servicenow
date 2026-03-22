@@ -19,7 +19,9 @@ class TestServiceNowProvider:
             client_secret=CLIENT_SECRET,
             base_url=BASE_URL,
         )
-        assert provider._upstream_authorization_endpoint == f"{INSTANCE_URL}/oauth_auth.do"
+        assert (
+            provider._upstream_authorization_endpoint == f"{INSTANCE_URL}/oauth_auth.do"
+        )
         assert provider._upstream_token_endpoint == f"{INSTANCE_URL}/oauth_token.do"
 
     def test_upstream_client_credentials(self) -> None:
@@ -71,7 +73,9 @@ class TestServiceNowProvider:
             client_secret=CLIENT_SECRET,
             base_url=BASE_URL,
         )
-        assert provider._upstream_authorization_endpoint == f"{INSTANCE_URL}/oauth_auth.do"
+        assert (
+            provider._upstream_authorization_endpoint == f"{INSTANCE_URL}/oauth_auth.do"
+        )
 
     def test_consent_required_by_default(self) -> None:
         """Consent screen should be required by default."""
