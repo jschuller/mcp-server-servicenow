@@ -158,3 +158,35 @@ class TestListUpdateSetChangesSchema:
             tools = await client.list_tools()
             schema = _get_tool_schema(tools, "list_update_set_changes")
             assert schema["properties"]["limit"].get("default") == 50
+
+
+class TestAggregateRecordsSchema:
+    @pytest.mark.asyncio
+    async def test_required_fields(self) -> None:
+        async with Client(mcp) as client:
+            tools = await client.list_tools()
+            schema = _get_tool_schema(tools, "aggregate_records")
+            assert "table_name" in schema.get("required", [])
+
+    @pytest.mark.asyncio
+    async def test_count_default(self) -> None:
+        async with Client(mcp) as client:
+            tools = await client.list_tools()
+            schema = _get_tool_schema(tools, "aggregate_records")
+            assert schema["properties"]["count"].get("default") is True
+
+    @pytest.mark.asyncio
+    async def test_aggregate_fields_optional(self) -> None:
+        async with Client(mcp) as client:
+            tools = await client.list_tools()
+            schema = _get_tool_schema(tools, "aggregate_records")
+            required = schema.get("required", [])
+            for field in ["avg_fields", "min_fields", "max_fields", "sum_fields", "group_by", "query", "having"]:
+                assert field not in required, f"{field} should be optional"
+
+    @pytest.mark.asyncio
+    async def test_tool_count(self) -> None:
+        """Verify total tool count is 19 (18 original + aggregate_records)."""
+        async with Client(mcp) as client:
+            tools = await client.list_tools()
+            assert len(tools) == 19

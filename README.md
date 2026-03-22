@@ -1,4 +1,4 @@
-<!-- mcp-server: servicenow | tools: 18 | transport: stdio,streamable-http | auth: basic,oauth,api_key | framework: fastmcp-3.0 -->
+<!-- mcp-server: servicenow | tools: 19 | resources: 5 | transport: stdio,streamable-http | auth: basic,oauth,api_key | framework: fastmcp-3.1 -->
 
 <p align="center">
   <img src="docs/hero.png" alt="ServiceNow MCP Server" width="100%">
@@ -9,8 +9,9 @@
 <p align="center">
   <a href="https://pypi.org/project/mcp-server-servicenow/"><img src="https://img.shields.io/pypi/v/mcp-server-servicenow?color=005E4D&label=PyPI" alt="PyPI"></a>
   <a href="https://www.python.org/"><img src="https://img.shields.io/badge/Python-3.11+-005E4D" alt="Python"></a>
-  <a href="https://gofastmcp.com"><img src="https://img.shields.io/badge/FastMCP-3.0-00A893" alt="FastMCP"></a>
-  <a href="#available-tools"><img src="https://img.shields.io/badge/Tools-18-00A893" alt="Tools"></a>
+  <a href="https://gofastmcp.com"><img src="https://img.shields.io/badge/FastMCP-3.1-00A893" alt="FastMCP"></a>
+  <a href="#available-tools"><img src="https://img.shields.io/badge/Tools-19-00A893" alt="Tools"></a>
+  <a href="#resources"><img src="https://img.shields.io/badge/Resources-5-00A893" alt="Resources"></a>
   <a href="https://modelcontextprotocol.io"><img src="https://img.shields.io/badge/MCP-2025--11--25-5436DA" alt="MCP Protocol"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue" alt="License"></a>
   <a href="https://github.com/jschuller/mcp-server-servicenow/actions/workflows/ci.yml"><img src="https://github.com/jschuller/mcp-server-servicenow/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
@@ -18,19 +19,19 @@
 </p>
 
 <p align="center">
-  Connect Claude AI to ServiceNow. 18 MCP tools for incidents, CMDB, update sets, and more —<br>
+  Connect Claude AI to ServiceNow. 19 tools + 5 resources for incidents, CMDB, update sets, and more —<br>
   accessible from Claude Desktop, Claude Code, or any MCP client over stdio or Streamable HTTP.
 </p>
 
 ---
 
-`Table API` · `CMDB` · `Update Sets` · `System Properties` · `OAuth 2.1+PKCE` · `Streamable HTTP` · `Claude Code Plugin` · `4 Skills`
+`Table API` · `CMDB` · `Update Sets` · `Aggregation` · `Resources` · `OAuth 2.1+PKCE` · `Streamable HTTP` · `Claude Code Plugin` · `4 Skills`
 
 ## What This Does
 
 This MCP server lets AI assistants interact directly with a ServiceNow instance. Instead of copy-pasting between ServiceNow and your AI tool, Claude can query incidents, create records, explore CMDB relationships, and manage update sets through natural conversation.
 
-Built with [FastMCP 3.0](https://gofastmcp.com) for decorator-based tool definitions and dual transport support.
+Built with [FastMCP 3.1](https://gofastmcp.com) for decorator-based tool definitions, MCP resources, and dual transport support.
 
 ## Native vs Community
 
@@ -105,7 +106,7 @@ mcp-server-servicenow \
 
 ## Available Tools
 
-### Table API (5 tools)
+### Table API (6 tools)
 | Tool | Description |
 |------|-------------|
 | `list_records` | List records from any table with filtering, field selection, and pagination |
@@ -113,6 +114,7 @@ mcp-server-servicenow \
 | `create_record` | Create a new record in any table |
 | `update_record` | Update an existing record |
 | `delete_record` | Delete a record by sys_id |
+| `aggregate_records` | COUNT, AVG, MIN, MAX, SUM with GROUP BY + HAVING via Stats API |
 
 ### CMDB (5 tools)
 | Tool | Description |
@@ -139,16 +141,29 @@ mcp-server-servicenow \
 | `set_current_update_set` | Set the active update set |
 | `list_update_set_changes` | List changes within an update set |
 
+## Resources
+
+MCP Resources provide read-only context that LLM clients can fetch without tool calls — reducing latency and token overhead.
+
+| Resource URI | Description |
+|-------------|-------------|
+| `servicenow://schema/{table_name}` | Field definitions (name, type, label, mandatory, reference) for any table |
+| `servicenow://instance` | Instance URL, platform version, logged-in user, timezone |
+| `servicenow://update-set/current` | Currently active update set name, sys_id, state |
+| `servicenow://cmdb/classes` | CMDB CI class hierarchy (names, labels, parent classes) |
+| `servicenow://help/query-syntax` | Encoded query operators reference (prevents hallucinated syntax) |
+
 ## Architecture
 
 ```mermaid
 graph TD
     CC["MCP Client"]
-    subgraph SERVER["FastMCP 3.0"]
-        TT["table_tools (5)"]
+    subgraph SERVER["FastMCP 3.1"]
+        TT["table_tools (6)"]
         CT["cmdb_tools (5)"]
         ST["system_tools (3)"]
         UT["update_set_tools (5)"]
+        RS["resources (5)"]
         SNR["make_sn_request"]
     end
     subgraph AUTH["Auth + HTTP"]
@@ -162,6 +177,7 @@ graph TD
     CT --> SNR
     ST --> SNR
     UT --> SNR
+    RS --> SNR
     SNR --> AR
     AM -.->|"credentials"| AR
     AR -->|"REST API"| SN
@@ -245,9 +261,13 @@ pip install -e ".[dev]"
 python -m pytest tests/ -v --ignore=tests/integration
 
 # Run integration tests (requires PDI credentials)
+# Option 1: Create .env.test (gitignored, auto-loaded)
+cp .env.example .env.test  # then fill in your credentials
+python -m pytest tests/integration/ -v
+
+# Option 2: Inline env vars
 SERVICENOW_INSTANCE_URL=https://your-pdi.service-now.com \
-SERVICENOW_USERNAME=admin \
-SERVICENOW_PASSWORD=your-password \
+SERVICENOW_USERNAME=admin SERVICENOW_PASSWORD=your-password \
 python -m pytest tests/integration/ -v
 
 # Lint
@@ -320,6 +340,8 @@ The `servicenow-admin` agent handles complex multi-step tasks autonomously (CMDB
 - **Phase 4** &#x2705; Skills & workflows — 4 Claude Code skills (CMDB, table explorer, update set reviewer, incident triage)
 - **Phase 4.5** &#x2705; Plugin packaging — Claude Code plugin with slash commands, admin agent, zero-config install
 - **Phase 5** &#x2705; Distribution — PyPI package, [MCP Registry](https://registry.modelcontextprotocol.io), automated publish workflows
+- **Sprint 2** &#x2705; FastMCP 3.1.1 — MultiAuth, token caching, connection pooling, response limiting, tool tags
+- **Sprint 3** &#x2705; Resources + Aggregation — 5 MCP resources, `aggregate_records` Stats API tool
 - **Next** — Enhancement backlog under active consideration (background scripts, error enrichment, system logs, health checks)
 
 ## Related Projects

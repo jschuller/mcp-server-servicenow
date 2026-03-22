@@ -1,6 +1,6 @@
 """Tool registry regression tests.
 
-Safety net to ensure all 18 tools remain registered after FastMCP migration.
+Safety net to ensure all 19 tools remain registered after FastMCP migration.
 """
 
 import pytest
@@ -11,12 +11,13 @@ from servicenow_mcp.utils.config import AuthConfig, AuthType, BasicAuthConfig, S
 
 
 EXPECTED_TOOLS = {
-    # Table API (5)
+    # Table API (6)
     "list_records",
     "get_record",
     "create_record",
     "update_record",
     "delete_record",
+    "aggregate_records",
     # CMDB (5)
     "list_ci",
     "get_ci",
@@ -58,10 +59,10 @@ def _init_services():
 class TestToolRegistry:
     @pytest.mark.asyncio
     async def test_exact_tool_count(self) -> None:
-        """Exactly 18 tools must be registered."""
+        """Exactly 19 tools must be registered."""
         async with Client(mcp) as client:
             tools = await client.list_tools()
-            assert len(tools) == 18, f"Expected 18 tools, got {len(tools)}: {sorted(t.name for t in tools)}"
+            assert len(tools) == 19, f"Expected 19 tools, got {len(tools)}: {sorted(t.name for t in tools)}"
 
     @pytest.mark.asyncio
     async def test_all_expected_tools_present(self) -> None:
@@ -74,7 +75,7 @@ class TestToolRegistry:
 
     @pytest.mark.asyncio
     async def test_no_unexpected_tools(self) -> None:
-        """No tools beyond the expected 18."""
+        """No tools beyond the expected 19."""
         async with Client(mcp) as client:
             tools = await client.list_tools()
             registered = {t.name for t in tools}

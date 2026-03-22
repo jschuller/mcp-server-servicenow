@@ -252,11 +252,12 @@ def main() -> None:
             mcp.auth = MultiAuth(verifiers=[static_verifier])
             logger.info("MCP endpoint auth: %d static bearer tokens", len(static_tokens))
 
-        # Import tool modules to trigger @mcp.tool() registration
+        # Import tool and resource modules to trigger @mcp.tool()/@mcp.resource() registration
         import servicenow_mcp.tools.table_tools  # noqa: F401
         import servicenow_mcp.tools.cmdb_tools  # noqa: F401
         import servicenow_mcp.tools.system_tools  # noqa: F401
         import servicenow_mcp.tools.update_set_tools  # noqa: F401
+        import servicenow_mcp.resources  # noqa: F401
 
         logger.info(f"Transport: {args.transport}")
         if args.transport == "stdio":

@@ -1,4 +1,5 @@
 .env
+.env.test
 .mcp.json
 .mcpregistry_*
 __pycache__/
