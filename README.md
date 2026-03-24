@@ -17,6 +17,7 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue" alt="License"></a>
   <a href="https://github.com/jschuller/mcp-server-servicenow/actions/workflows/ci.yml"><img src="https://github.com/jschuller/mcp-server-servicenow/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="https://pypi.org/project/mcp-server-servicenow/"><img src="https://img.shields.io/pypi/dm/mcp-server-servicenow?color=005E4D&label=downloads" alt="Downloads"></a>
+[![Hypercommit](https://img.shields.io/badge/Hypercommit-DB2475)](https://hypercommit.com/mcp-server-servicenow)
 </p>
 
 <p align="center">
