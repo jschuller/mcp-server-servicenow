@@ -12,3 +12,14 @@ build/
 STRATEGY.md
 docs/optimization-prompt.md
 docs/mcp-enhancement-roadmap.md
+# --- security hardening (added 2026-05-28) ---
+.env.*
+!.env.example
+!.env.template
+!.env.sample
+*.secrets.yaml
+*.secret
+*.pem
+*.key
+*.log
+*.token
