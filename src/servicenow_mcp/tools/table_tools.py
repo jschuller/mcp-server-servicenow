@@ -14,6 +14,16 @@ from servicenow_mcp.utils.http import parse_json_response
 logger = logging.getLogger(__name__)
 
 
+def _add_order_clause(query: str, order_by: str) -> str:
+    """Append a ServiceNow encoded-query order clause."""
+    if order_by.startswith("-"):
+        order_clause = f"ORDERBYDESC{order_by[1:]}"
+    else:
+        order_clause = f"ORDERBY{order_by}"
+
+    return f"{query}^{order_clause}".lstrip("^")
+
+
 @mcp.tool(tags={"read", "table"})
 def list_records(
     table_name: Annotated[
@@ -51,9 +61,9 @@ def list_records(
     if fields:
         query_params["sysparm_fields"] = fields
     if order_by:
-        query_params["sysparm_query"] = (
-            f"{query_params.get('sysparm_query', '')}^ORDERBY{order_by}"
-        ).lstrip("^")
+        query_params["sysparm_query"] = _add_order_clause(
+            query_params.get("sysparm_query", ""), order_by
+        )
 
     response = make_sn_request("GET", url, config.timeout, params=query_params)
     data = parse_json_response(response, url)
