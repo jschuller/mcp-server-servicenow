@@ -90,7 +90,9 @@ All settings can be passed as CLI args or environment variables. See `.env.examp
 | `SERVICENOW_API_KEY` | `--api-key` | API key for api_key auth |
 | `SERVICENOW_API_KEY_HEADER` | `--api-key-header` | API key header name (default: X-ServiceNow-API-Key) |
 | `MCP_TRANSPORT` | `--transport` | `stdio` (default) or `streamable-http` |
+| `MCP_HOST` | `--host` | HTTP bind address (default: `127.0.0.1`; set `0.0.0.0` to listen on all interfaces) |
 | `PORT` | `--port` | HTTP port (default: 8080) |
+| `MCP_STATIC_TOKENS` | `--mcp-static-tokens` | Comma-separated static bearer tokens for MCP endpoint auth (CI/CD) |
 | `MCP_OAUTH_CLIENT_ID` | `--mcp-oauth-client-id` | SN OAuth app client ID for MCP endpoint auth |
 | `MCP_OAUTH_CLIENT_SECRET` | `--mcp-oauth-client-secret` | SN OAuth app client secret for MCP endpoint auth |
 | `MCP_BASE_URL` | `--mcp-base-url` | Public URL of this MCP server |

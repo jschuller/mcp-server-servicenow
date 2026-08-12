@@ -7,11 +7,14 @@
 docker build -t mcp-server-servicenow .
 
 # Run locally
+# The server fails closed: an HTTP listener requires MCP endpoint auth
+# (MCP_STATIC_TOKENS or MCP_OAUTH_*), otherwise it exits at startup.
 docker run -p 8080:8080 \
   -e SERVICENOW_INSTANCE_URL=https://your-instance.service-now.com \
   -e SERVICENOW_AUTH_TYPE=basic \
   -e SERVICENOW_USERNAME=admin \
   -e SERVICENOW_PASSWORD=your-password \
+  -e MCP_STATIC_TOKENS=a-long-random-token \
   mcp-server-servicenow
 
 # Deploy to Cloud Run with global creds (requires GCP IAM for access)
@@ -24,6 +27,7 @@ gcloud run deploy servicenow-mcp \
   --set-env-vars "SERVICENOW_AUTH_TYPE=basic" \
   --set-env-vars "SERVICENOW_USERNAME=..." \
   --set-env-vars "SERVICENOW_PASSWORD=..." \
+  --set-env-vars "MCP_STATIC_TOKENS=..." \
   --set-env-vars "MCP_TRANSPORT=streamable-http"
 
 # Deploy to Cloud Run with OAuth (per-user auth, publicly accessible)
@@ -63,8 +67,14 @@ Three deployment modes with increasing security:
 | Mode | MCP Endpoint Auth | SN Backend Auth | Use Case |
 |------|------------------|-----------------|----------|
 | **stdio** | None (local process) | Global creds (env vars) | Claude Desktop, Claude Code |
-| **HTTP (open)** | None | Global creds (env vars) | Development, testing |
+| **HTTP + static tokens** | Bearer tokens (`MCP_STATIC_TOKENS`) | Global creds (env vars) | CI/CD, development |
 | **HTTP + OAuth** | OAuth 2.1 + PKCE | Per-user SN token | Production, Cloud Run |
+
+An unauthenticated HTTP listener is not supported: the server **fails closed**
+and refuses to start a non-stdio transport unless `MCP_OAUTH_*` or
+`MCP_STATIC_TOKENS` is configured. HTTP transport also binds `127.0.0.1` by
+default — set `MCP_HOST=0.0.0.0` to listen on all interfaces (the Docker image
+does this, since the container boundary provides the isolation).
 
 ### OAuth 2.1 + PKCE (recommended for production)
 
