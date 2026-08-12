@@ -27,5 +27,8 @@ jobs:
       - name: Lint
         run: ruff check src/ tests/
 
+      - name: Format check
+        run: ruff format --check src/ tests/
+
       - name: Unit tests
         run: python -m pytest tests/ -v --ignore=tests/integration
