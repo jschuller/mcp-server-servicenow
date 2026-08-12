@@ -67,8 +67,11 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--host",
-        default=os.environ.get("MCP_HOST", "0.0.0.0"),
-        help="Host to bind to for HTTP transport (default: 0.0.0.0)",
+        default=os.environ.get("MCP_HOST", "127.0.0.1"),
+        help=(
+            "Host to bind to for HTTP transport (default: 127.0.0.1; "
+            "set 0.0.0.0 explicitly to listen on all interfaces)"
+        ),
     )
     parser.add_argument(
         "--port",
@@ -274,6 +277,15 @@ def main() -> None:
         if args.transport == "stdio":
             mcp.run(transport=args.transport)
         else:
+            # Fail closed: never expose a network listener without MCP auth.
+            if not use_mcp_oauth and not static_tokens:
+                print(
+                    f"refusing to start {args.transport} listener without "
+                    "authentication; configure MCP_OAUTH_* or "
+                    "MCP_STATIC_TOKENS, or use --transport stdio",
+                    file=sys.stderr,
+                )
+                sys.exit(1)
             mcp.run(transport=args.transport, host=args.host, port=args.port)
 
     except ValueError as e:
