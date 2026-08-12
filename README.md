@@ -13,7 +13,7 @@
   <a href="https://gofastmcp.com"><img src="https://img.shields.io/badge/FastMCP-4.0-00A893" alt="FastMCP"></a>
   <a href="#available-tools"><img src="https://img.shields.io/badge/Tools-19-00A893" alt="Tools"></a>
   <a href="#resources"><img src="https://img.shields.io/badge/Resources-5-00A893" alt="Resources"></a>
-  <a href="https://modelcontextprotocol.io"><img src="https://img.shields.io/badge/MCP-2025--11--25-5436DA" alt="MCP Protocol"></a>
+  <a href="https://modelcontextprotocol.io"><img src="https://img.shields.io/badge/MCP-2026--07--28-5436DA" alt="MCP Protocol"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue" alt="License"></a>
   <a href="https://github.com/jschuller/mcp-server-servicenow/actions/workflows/ci.yml"><img src="https://github.com/jschuller/mcp-server-servicenow/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="https://pypi.org/project/mcp-server-servicenow/"><img src="https://img.shields.io/pypi/dm/mcp-server-servicenow?color=005E4D&label=downloads" alt="Downloads"></a>
@@ -66,15 +66,19 @@ Sign up for a free [Personal Developer Instance (PDI)](https://developer.service
 pip install mcp-server-servicenow
 
 # Or run directly with uvx (no install needed)
-uvx mcp-server-servicenow --help
+uvx --prerelease allow mcp-server-servicenow --help
 ```
+
+> **Why `--prerelease allow`?** v0.6.x pins FastMCP 4.0 (currently in beta) for
+> MCP 2026-07-28 protocol support. uv requires the flag to resolve it; `pip`
+> needs nothing special. The flag goes away when FastMCP 4.0 is stable.
 
 ### 3. Configure Your MCP Client
 
 Copy `.mcp.json.example` to `.mcp.json` and fill in your credentials, or use the Claude Code CLI:
 
 ```bash
-claude mcp add servicenow -- uvx mcp-server-servicenow \
+claude mcp add servicenow -- uvx --prerelease allow mcp-server-servicenow \
   --instance-url https://your-instance.service-now.com \
   --auth-type basic --username admin --password your-password
 ```
@@ -194,7 +198,7 @@ Add to your MCP client config — copy the snippet for your tool:
 <summary><strong>Claude Code</strong></summary>
 
 ```bash
-claude mcp add servicenow -- uvx mcp-server-servicenow \
+claude mcp add servicenow -- uvx --prerelease allow mcp-server-servicenow \
   --instance-url https://your-instance.service-now.com \
   --auth-type basic --username admin --password your-password
 ```
@@ -209,7 +213,7 @@ Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
   "mcpServers": {
     "servicenow": {
       "command": "uvx",
-      "args": ["mcp-server-servicenow"],
+      "args": ["--prerelease", "allow", "mcp-server-servicenow"],
       "env": {
         "SERVICENOW_INSTANCE_URL": "https://your-instance.service-now.com",
         "SERVICENOW_AUTH_TYPE": "basic",
@@ -231,7 +235,7 @@ Add to `.cursor/mcp.json` or `.vscode/mcp.json`:
   "mcpServers": {
     "servicenow": {
       "command": "uvx",
-      "args": ["mcp-server-servicenow"],
+      "args": ["--prerelease", "allow", "mcp-server-servicenow"],
       "env": {
         "SERVICENOW_INSTANCE_URL": "https://your-instance.service-now.com",
         "SERVICENOW_AUTH_TYPE": "basic",

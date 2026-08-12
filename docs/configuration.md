@@ -11,7 +11,7 @@ Copy `.mcp.json.example` to `.mcp.json` and fill in your credentials. The JSON f
   "mcpServers": {
     "servicenow": {
       "command": "uvx",
-      "args": ["mcp-server-servicenow"],
+      "args": ["--prerelease", "allow", "mcp-server-servicenow"],
       "env": {
         "SERVICENOW_INSTANCE_URL": "https://your-instance.service-now.com",
         "SERVICENOW_AUTH_TYPE": "basic",
@@ -30,7 +30,7 @@ Copy `.mcp.json.example` to `.mcp.json` and fill in your credentials. The JSON f
   "mcpServers": {
     "servicenow": {
       "command": "uvx",
-      "args": ["mcp-server-servicenow"],
+      "args": ["--prerelease", "allow", "mcp-server-servicenow"],
       "env": {
         "SERVICENOW_INSTANCE_URL": "https://your-instance.service-now.com",
         "SERVICENOW_AUTH_TYPE": "oauth",
@@ -51,7 +51,7 @@ Copy `.mcp.json.example` to `.mcp.json` and fill in your credentials. The JSON f
   "mcpServers": {
     "servicenow-dev": {
       "command": "uvx",
-      "args": ["mcp-server-servicenow"],
+      "args": ["--prerelease", "allow", "mcp-server-servicenow"],
       "env": {
         "SERVICENOW_INSTANCE_URL": "https://dev12345.service-now.com",
         "SERVICENOW_AUTH_TYPE": "basic",
@@ -61,7 +61,7 @@ Copy `.mcp.json.example` to `.mcp.json` and fill in your credentials. The JSON f
     },
     "servicenow-prod": {
       "command": "uvx",
-      "args": ["mcp-server-servicenow"],
+      "args": ["--prerelease", "allow", "mcp-server-servicenow"],
       "env": {
         "SERVICENOW_INSTANCE_URL": "https://prod12345.service-now.com",
         "SERVICENOW_AUTH_TYPE": "oauth",

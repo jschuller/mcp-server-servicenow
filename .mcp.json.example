@@ -2,7 +2,7 @@
   "mcpServers": {
     "servicenow": {
       "command": "uvx",
-      "args": ["mcp-server-servicenow"],
+      "args": ["--prerelease", "allow", "mcp-server-servicenow"],
       "env": {
         "SERVICENOW_INSTANCE_URL": "https://your-instance.service-now.com",
         "SERVICENOW_AUTH_TYPE": "basic",
@@ -12,7 +12,7 @@
     },
     "servicenow-oauth": {
       "command": "uvx",
-      "args": ["mcp-server-servicenow"],
+      "args": ["--prerelease", "allow", "mcp-server-servicenow"],
       "env": {
         "SERVICENOW_INSTANCE_URL": "https://your-instance.service-now.com",
         "SERVICENOW_AUTH_TYPE": "oauth",

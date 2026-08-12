@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Fixed
+- Documented that uv/uvx installs need `--prerelease allow` while the FastMCP
+  4.0 beta pin is in place (uv only honors pre-release markers in the user's
+  own top-level requirement; pip is unaffected). All uvx examples and the
+  plugin manifest now carry the flag.
+
 ## [0.6.0] - 2026-08-12
 
 ### Added

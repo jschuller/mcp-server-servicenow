@@ -12,7 +12,7 @@
   "mcpServers": {
     "servicenow": {
       "command": "uvx",
-      "args": ["mcp-server-servicenow"],
+      "args": ["--prerelease", "allow", "mcp-server-servicenow"],
       "env": {
         "SERVICENOW_INSTANCE_URL": "${SERVICENOW_INSTANCE_URL}",
         "SERVICENOW_AUTH_TYPE": "${SERVICENOW_AUTH_TYPE}",
