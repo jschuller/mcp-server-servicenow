@@ -1,6 +1,6 @@
 # ServiceNow MCP Server — AI Coding Instructions
 
-Python MCP server built with FastMCP 3.0. Exposes 18 tools for ServiceNow via the Model Context Protocol.
+Python MCP server built with FastMCP 4.0. Exposes 19 tools + 5 resources for ServiceNow via the Model Context Protocol (speaks both the stateless 2026-07-28 revision and the legacy handshake).
 
 ## Source Code
 
@@ -28,4 +28,5 @@ Python MCP server built with FastMCP 3.0. Exposes 18 tools for ServiceNow via th
 pip install -e ".[dev]"
 python -m pytest tests/ -v --ignore=tests/integration
 ruff check src/ tests/
+ruff format --check src/ tests/
 ```

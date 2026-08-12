@@ -46,18 +46,20 @@ gcloud run deploy servicenow-mcp \
 ## Verify HTTP Transport
 
 ```bash
-# Local testing
+# Local testing — an Authorization header is always required now
+# (unauthenticated HTTP listeners no longer exist; the server fails closed)
 curl -X POST http://localhost:8080/mcp \
+  -H "Authorization: Bearer <one of your MCP_STATIC_TOKENS>" \
   -H "Content-Type: application/json" \
   -H "Accept: application/json, text/event-stream" \
-  -d '{"jsonrpc":"2.0","method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"1.0"}},"id":1}'
+  -d '{"jsonrpc":"2.0","method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"test","version":"1.0"}},"id":1}'
 
-# Cloud Run (requires GCP auth token)
+# Cloud Run (GCP IAM in front, MCP static token for the server)
 curl -X POST https://your-service-url.run.app/mcp \
-  -H "Authorization: Bearer $(gcloud auth print-identity-token)" \
+  -H "Authorization: Bearer <one of your MCP_STATIC_TOKENS>" \
   -H "Content-Type: application/json" \
   -H "Accept: application/json, text/event-stream" \
-  -d '{"jsonrpc":"2.0","method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"1.0"}},"id":1}'
+  -d '{"jsonrpc":"2.0","method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"test","version":"1.0"}},"id":1}'
 ```
 
 ## Security Model

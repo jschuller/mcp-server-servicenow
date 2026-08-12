@@ -23,3 +23,5 @@ docs/mcp-enhancement-roadmap.md
 *.key
 *.log
 *.token
+# local skill copies — skills/ (plugin) is the tracked source
+.claude/skills/
