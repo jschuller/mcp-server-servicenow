@@ -1,7 +1,7 @@
 ---
 description: "Triage ServiceNow incidents — list open incidents, assess priority, investigate a specific INC, or analyze trends."
 argument-hint: "[INC number, priority filter, or description]"
-allowed-tools: "mcp__plugin_servicenow_servicenow__list_records, mcp__plugin_servicenow_servicenow__get_record, mcp__plugin_servicenow_servicenow__create_record, mcp__plugin_servicenow_servicenow__update_record, mcp__plugin_servicenow_servicenow__list_ci, mcp__plugin_servicenow_servicenow__get_ci, mcp__plugin_servicenow_servicenow__get_ci_relationships, mcp__plugin_servicenow_servicenow__get_table_schema"
+allowed-tools: "mcp__plugin_servicenow_servicenow__list_records, mcp__plugin_servicenow_servicenow__aggregate_records, mcp__plugin_servicenow_servicenow__get_record, mcp__plugin_servicenow_servicenow__create_record, mcp__plugin_servicenow_servicenow__update_record, mcp__plugin_servicenow_servicenow__list_ci, mcp__plugin_servicenow_servicenow__get_ci, mcp__plugin_servicenow_servicenow__get_ci_relationships, mcp__plugin_servicenow_servicenow__get_table_schema"
 ---
 
 # /servicenow:triage

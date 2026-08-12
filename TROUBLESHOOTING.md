@@ -27,6 +27,3 @@ The error message includes the ServiceNow response body, which typically names t
 
 ## OAuth `get_current_user` returns different fields
 With OAuth bearer tokens, `get_current_user` uses a Table API fallback (the UI endpoint requires session auth). The response fields are the same but sourced from `sys_user` instead of the UI API.
-
-## CLI TypeError on stdio transport
-Fixed in v0.3.1. If you see `TypeError: unexpected keyword argument 'host'`, upgrade: `pip install --upgrade mcp-server-servicenow`.

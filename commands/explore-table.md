@@ -1,7 +1,7 @@
 ---
 description: "Explore ServiceNow tables — schema discovery, field types, data profiling, table search, and comparison."
 argument-hint: "[table name or search keyword]"
-allowed-tools: "mcp__plugin_servicenow_servicenow__get_table_schema, mcp__plugin_servicenow_servicenow__list_records, mcp__plugin_servicenow_servicenow__get_record, mcp__plugin_servicenow_servicenow__list_ci"
+allowed-tools: "mcp__plugin_servicenow_servicenow__get_table_schema, mcp__plugin_servicenow_servicenow__list_records, mcp__plugin_servicenow_servicenow__aggregate_records, mcp__plugin_servicenow_servicenow__get_record, mcp__plugin_servicenow_servicenow__list_ci"
 ---
 
 # /servicenow:explore-table

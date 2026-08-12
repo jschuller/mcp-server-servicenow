@@ -1,7 +1,7 @@
 ---
 description: "Explore CMDB — CI hierarchy, dependencies, health metrics, data quality, and CSDM service taxonomy."
 argument-hint: "[CI name, 'health', 'csdm', or class name]"
-allowed-tools: "mcp__plugin_servicenow_servicenow__list_ci, mcp__plugin_servicenow_servicenow__get_ci, mcp__plugin_servicenow_servicenow__get_ci_relationships, mcp__plugin_servicenow_servicenow__list_records, mcp__plugin_servicenow_servicenow__get_record, mcp__plugin_servicenow_servicenow__get_table_schema"
+allowed-tools: "mcp__plugin_servicenow_servicenow__list_ci, mcp__plugin_servicenow_servicenow__get_ci, mcp__plugin_servicenow_servicenow__get_ci_relationships, mcp__plugin_servicenow_servicenow__list_records, mcp__plugin_servicenow_servicenow__aggregate_records, mcp__plugin_servicenow_servicenow__get_record, mcp__plugin_servicenow_servicenow__get_table_schema"
 ---
 
 # /servicenow:cmdb

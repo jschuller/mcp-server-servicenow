@@ -2,6 +2,47 @@
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-08-12
+
+### Added
+- **FastMCP 4.0 (MCP 2026-07-28 protocol)** — the server now speaks both the
+  stateless 2026-07-28 MCP revision and the legacy handshake protocol,
+  negotiated per connection. Existing stdio clients are unaffected.
+  (`fastmcp==4.0.0b2`, exact pin while 4.0 is in beta; `httpx` → `httpx2`,
+  pydantic floor 2.12)
+- `tests/test_cli.py` — first coverage for the CLI: fail-closed startup,
+  static-token/OAuth wiring, arg parsing (18 tests)
+- Python 3.13 in the CI matrix and package classifiers
+- CI enforces `ruff format --check`; lint rule set pinned in pyproject so
+  unpinned ruff upgrades can't break CI
+- `uv.lock` is now committed
+
+### Security
+- **Fail closed on HTTP**: a non-stdio listener refuses to start unless MCP
+  endpoint auth (`MCP_OAUTH_*` or `MCP_STATIC_TOKENS`) is configured
+- **Bind localhost by default**: `--host` defaults to `127.0.0.1`; all-interface
+  binding is opt-in via `MCP_HOST=0.0.0.0` (the Docker image sets this — the
+  container boundary is the isolation)
+- PyPI publishing via Trusted Publishing (OIDC), GitHub Actions pinned to
+  commit SHAs, broadened `.gitignore` secret patterns, Renovate enabled
+
+### Fixed
+- `list_records` `order_by` descending: a leading `-` now emits `ORDERBYDESC`
+  instead of being silently discarded by ServiceNow — thanks @Nono-04 (#5,
+  fixes #3 reported by @MMunManAIDev)
+- Docker image: startup regression from the fail-closed hardening (missing
+  MCP auth guidance + loopback binding inside the container)
+- MCP server identity now reports the package version instead of FastMCP's
+- `aggregate_records` was missing from the plugin agent/command allow-lists,
+  making the Stats API tool unreachable from `/servicenow:*` commands
+- Plugin manifest version was stuck at 0.4.0
+- `server.json`: PKCE requires San Diego+ (2022); Tokyo+ applies to the
+  Table API tools, not OAuth
+
+### Changed
+- Dropped direct `authlib`/`cryptography` dependencies (never imported;
+  FastMCP brings what it needs transitively)
+
 ## [0.5.1] - 2026-03-22
 
 ### Fixed

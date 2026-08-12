@@ -1,4 +1,4 @@
-<!-- mcp-server: servicenow | tools: 19 | resources: 5 | transport: stdio,streamable-http | auth: basic,oauth,api_key | framework: fastmcp-3.1 -->
+<!-- mcp-server: servicenow | tools: 19 | resources: 5 | transport: stdio,streamable-http | auth: basic,oauth,api_key | framework: fastmcp-4.0 -->
 <!-- mcp-name: io.github.jschuller/mcp-server-servicenow -->
 
 <p align="center">
@@ -10,7 +10,7 @@
 <p align="center">
   <a href="https://pypi.org/project/mcp-server-servicenow/"><img src="https://img.shields.io/pypi/v/mcp-server-servicenow?color=005E4D&label=PyPI" alt="PyPI"></a>
   <a href="https://www.python.org/"><img src="https://img.shields.io/badge/Python-3.11+-005E4D" alt="Python"></a>
-  <a href="https://gofastmcp.com"><img src="https://img.shields.io/badge/FastMCP-3.1-00A893" alt="FastMCP"></a>
+  <a href="https://gofastmcp.com"><img src="https://img.shields.io/badge/FastMCP-4.0-00A893" alt="FastMCP"></a>
   <a href="#available-tools"><img src="https://img.shields.io/badge/Tools-19-00A893" alt="Tools"></a>
   <a href="#resources"><img src="https://img.shields.io/badge/Resources-5-00A893" alt="Resources"></a>
   <a href="https://modelcontextprotocol.io"><img src="https://img.shields.io/badge/MCP-2025--11--25-5436DA" alt="MCP Protocol"></a>
@@ -32,7 +32,7 @@
 
 This MCP server lets AI assistants interact directly with a ServiceNow instance. Instead of copy-pasting between ServiceNow and your AI tool, Claude can query incidents, create records, explore CMDB relationships, and manage update sets through natural conversation.
 
-Built with [FastMCP 3.1](https://gofastmcp.com) for decorator-based tool definitions, MCP resources, and dual transport support.
+Built with [FastMCP 4.0](https://gofastmcp.com) — speaks both the stateless MCP 2026-07-28 protocol and the legacy handshake, negotiated per connection.
 
 ## Native vs Community
 
@@ -159,7 +159,7 @@ MCP Resources provide read-only context that LLM clients can fetch without tool 
 ```mermaid
 graph TD
     CC["MCP Client"]
-    subgraph SERVER["FastMCP 3.1"]
+    subgraph SERVER["FastMCP 4.0"]
         TT["table_tools (6)"]
         CT["cmdb_tools (5)"]
         ST["system_tools (3)"]
@@ -343,7 +343,8 @@ The `servicenow-admin` agent handles complex multi-step tasks autonomously (CMDB
 - **Phase 5** &#x2705; Distribution — PyPI package, [MCP Registry](https://registry.modelcontextprotocol.io), automated publish workflows
 - **Sprint 2** &#x2705; FastMCP 3.1.1 — MultiAuth, token caching, connection pooling, response limiting, tool tags
 - **Sprint 3** &#x2705; Resources + Aggregation — 5 MCP resources, `aggregate_records` Stats API tool
-- **Next** — Enhancement backlog under active consideration (background scripts, error enrichment, system logs, health checks)
+- **v0.6.0** &#x2705; FastMCP 4.0 — MCP 2026-07-28 stateless protocol support, fail-closed HTTP hardening, community fixes
+- **Next** — Enhancement backlog under active consideration (background scripts, system logs, health checks)
 
 ## Related Projects
 

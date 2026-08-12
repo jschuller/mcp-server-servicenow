@@ -1,7 +1,7 @@
 ---
 description: "Review ServiceNow update sets — list sets by state, deep-review changes, compare sets, or run pre-promotion checks."
 argument-hint: "[update set name, 'compare', or 'promote-check']"
-allowed-tools: "mcp__plugin_servicenow_servicenow__list_update_sets, mcp__plugin_servicenow_servicenow__get_update_set, mcp__plugin_servicenow_servicenow__list_update_set_changes, mcp__plugin_servicenow_servicenow__list_records, mcp__plugin_servicenow_servicenow__get_record, mcp__plugin_servicenow_servicenow__get_table_schema"
+allowed-tools: "mcp__plugin_servicenow_servicenow__list_update_sets, mcp__plugin_servicenow_servicenow__get_update_set, mcp__plugin_servicenow_servicenow__list_update_set_changes, mcp__plugin_servicenow_servicenow__list_records, mcp__plugin_servicenow_servicenow__aggregate_records, mcp__plugin_servicenow_servicenow__get_record, mcp__plugin_servicenow_servicenow__get_table_schema"
 ---
 
 # /servicenow:review-update-set

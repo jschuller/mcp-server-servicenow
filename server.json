@@ -2,8 +2,8 @@
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.jschuller/mcp-server-servicenow",
   "title": "ServiceNow MCP Server",
-  "description": "19 tools + 5 resources for ServiceNow: CMDB, update sets, tables. OAuth 2.1, Tokyo+.",
-  "version": "0.5.1",
+  "description": "19 tools + 5 resources for ServiceNow: CMDB, update sets, tables. OAuth 2.1. Tokyo+, PKCE SanDiego+",
+  "version": "0.6.0",
   "repository": {
     "url": "https://github.com/jschuller/mcp-server-servicenow",
     "source": "github"
@@ -12,15 +12,49 @@
     {
       "registryType": "pypi",
       "identifier": "mcp-server-servicenow",
-      "version": "0.5.1",
-      "transport": { "type": "stdio" },
+      "version": "0.6.0",
+      "transport": {
+        "type": "stdio"
+      },
       "environmentVariables": [
-        { "name": "SERVICENOW_INSTANCE_URL", "isRequired": true, "description": "ServiceNow instance URL", "format": "string" },
-        { "name": "SERVICENOW_AUTH_TYPE", "isRequired": true, "description": "Auth type: basic, oauth, or api_key", "format": "string" },
-        { "name": "SERVICENOW_USERNAME", "isRequired": false, "description": "Username for basic or OAuth auth", "format": "string" },
-        { "name": "SERVICENOW_PASSWORD", "isRequired": false, "description": "Password for basic or OAuth auth", "format": "string", "isSecret": true },
-        { "name": "SERVICENOW_CLIENT_ID", "isRequired": false, "description": "OAuth client ID", "format": "string" },
-        { "name": "SERVICENOW_CLIENT_SECRET", "isRequired": false, "description": "OAuth client secret", "format": "string", "isSecret": true }
+        {
+          "name": "SERVICENOW_INSTANCE_URL",
+          "isRequired": true,
+          "description": "ServiceNow instance URL",
+          "format": "string"
+        },
+        {
+          "name": "SERVICENOW_AUTH_TYPE",
+          "isRequired": true,
+          "description": "Auth type: basic, oauth, or api_key",
+          "format": "string"
+        },
+        {
+          "name": "SERVICENOW_USERNAME",
+          "isRequired": false,
+          "description": "Username for basic or OAuth auth",
+          "format": "string"
+        },
+        {
+          "name": "SERVICENOW_PASSWORD",
+          "isRequired": false,
+          "description": "Password for basic or OAuth auth",
+          "format": "string",
+          "isSecret": true
+        },
+        {
+          "name": "SERVICENOW_CLIENT_ID",
+          "isRequired": false,
+          "description": "OAuth client ID",
+          "format": "string"
+        },
+        {
+          "name": "SERVICENOW_CLIENT_SECRET",
+          "isRequired": false,
+          "description": "OAuth client secret",
+          "format": "string",
+          "isSecret": true
+        }
       ]
     }
   ]

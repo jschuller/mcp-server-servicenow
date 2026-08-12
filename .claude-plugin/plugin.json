@@ -1,7 +1,7 @@
 {
   "name": "servicenow",
-  "version": "0.4.0",
-  "description": "ServiceNow admin toolkit — incidents, CMDB, update sets, table explorer. 18 MCP tools + 4 guided skills.",
+  "version": "0.6.0",
+  "description": "ServiceNow admin toolkit — incidents, CMDB, update sets, table explorer. 19 MCP tools + 4 guided skills.",
   "author": {
     "name": "Josh Schuller"
   },

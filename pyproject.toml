@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "mcp-server-servicenow"
-version = "0.5.1"
+version = "0.6.0"
 description = "MCP server for ServiceNow - 19 tools + 5 resources for table, CMDB, system, and update set operations"
 readme = "README.md"
 requires-python = ">=3.11"
