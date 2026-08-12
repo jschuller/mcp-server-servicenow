@@ -34,7 +34,7 @@ def _get_tool_schema(tools, name: str) -> dict:
     """Helper to extract a tool's input schema by name."""
     for t in tools:
         if t.name == name:
-            return t.inputSchema
+            return t.input_schema
     raise KeyError(f"Tool '{name}' not found")
 
 

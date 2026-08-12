@@ -2,7 +2,7 @@
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import httpx
+import httpx2
 import pytest
 
 from servicenow_mcp.auth.sn_token_verifier import ServiceNowTokenVerifier
@@ -19,14 +19,14 @@ def verifier() -> ServiceNowTokenVerifier:
 def _make_mock_client(
     response: MagicMock | None = None, side_effect: Exception | None = None
 ) -> MagicMock:
-    """Create a properly structured mock for httpx.AsyncClient context manager."""
+    """Create a properly structured mock for httpx2.AsyncClient context manager."""
     mock_client = AsyncMock()
     if side_effect:
         mock_client.get.side_effect = side_effect
     else:
         mock_client.get.return_value = response
 
-    # httpx.AsyncClient() returns an object; async with ... enters it
+    # httpx2.AsyncClient() returns an object; async with ... enters it
     mock_cls = MagicMock()
     mock_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
     mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
@@ -55,7 +55,9 @@ class TestServiceNowTokenVerifier:
 
         mock_cls = _make_mock_client(response=mock_response)
 
-        with patch("servicenow_mcp.auth.sn_token_verifier.httpx.AsyncClient", mock_cls):
+        with patch(
+            "servicenow_mcp.auth.sn_token_verifier.httpx2.AsyncClient", mock_cls
+        ):
             result = await verifier.verify_token("valid-sn-token")
 
         assert result is not None
@@ -77,7 +79,9 @@ class TestServiceNowTokenVerifier:
 
         mock_cls = _make_mock_client(response=mock_response)
 
-        with patch("servicenow_mcp.auth.sn_token_verifier.httpx.AsyncClient", mock_cls):
+        with patch(
+            "servicenow_mcp.auth.sn_token_verifier.httpx2.AsyncClient", mock_cls
+        ):
             result = await verifier.verify_token("valid-but-no-user")
 
         assert result is None
@@ -93,7 +97,9 @@ class TestServiceNowTokenVerifier:
 
         mock_cls = _make_mock_client(response=mock_response)
 
-        with patch("servicenow_mcp.auth.sn_token_verifier.httpx.AsyncClient", mock_cls):
+        with patch(
+            "servicenow_mcp.auth.sn_token_verifier.httpx2.AsyncClient", mock_cls
+        ):
             result = await verifier.verify_token("expired-token")
 
         assert result is None
@@ -104,10 +110,12 @@ class TestServiceNowTokenVerifier:
     ) -> None:
         """Network errors should return None, not raise."""
         mock_cls = _make_mock_client(
-            side_effect=httpx.ConnectError("Connection refused")
+            side_effect=httpx2.ConnectError("Connection refused")
         )
 
-        with patch("servicenow_mcp.auth.sn_token_verifier.httpx.AsyncClient", mock_cls):
+        with patch(
+            "servicenow_mcp.auth.sn_token_verifier.httpx2.AsyncClient", mock_cls
+        ):
             result = await verifier.verify_token("some-token")
 
         assert result is None
@@ -117,9 +125,11 @@ class TestServiceNowTokenVerifier:
         self, verifier: ServiceNowTokenVerifier
     ) -> None:
         """Timeouts should return None, not raise."""
-        mock_cls = _make_mock_client(side_effect=httpx.ReadTimeout("timed out"))
+        mock_cls = _make_mock_client(side_effect=httpx2.ReadTimeout("timed out"))
 
-        with patch("servicenow_mcp.auth.sn_token_verifier.httpx.AsyncClient", mock_cls):
+        with patch(
+            "servicenow_mcp.auth.sn_token_verifier.httpx2.AsyncClient", mock_cls
+        ):
             result = await verifier.verify_token("some-token")
 
         assert result is None
@@ -158,7 +168,9 @@ class TestTokenVerificationCache:
         )
         mock_cls = _make_mock_client(response=_valid_sn_response())
 
-        with patch("servicenow_mcp.auth.sn_token_verifier.httpx.AsyncClient", mock_cls):
+        with patch(
+            "servicenow_mcp.auth.sn_token_verifier.httpx2.AsyncClient", mock_cls
+        ):
             first = await verifier.verify_token("cached-token")
             second = await verifier.verify_token("cached-token")
 
@@ -177,7 +189,9 @@ class TestTokenVerificationCache:
         )
         mock_cls = _make_mock_client(response=_valid_sn_response())
 
-        with patch("servicenow_mcp.auth.sn_token_verifier.httpx.AsyncClient", mock_cls):
+        with patch(
+            "servicenow_mcp.auth.sn_token_verifier.httpx2.AsyncClient", mock_cls
+        ):
             await verifier.verify_token("token-a")
             await verifier.verify_token("token-a")
 
@@ -192,7 +206,9 @@ class TestTokenVerificationCache:
         )
         mock_cls = _make_mock_client(response=_valid_sn_response())
 
-        with patch("servicenow_mcp.auth.sn_token_verifier.httpx.AsyncClient", mock_cls):
+        with patch(
+            "servicenow_mcp.auth.sn_token_verifier.httpx2.AsyncClient", mock_cls
+        ):
             await verifier.verify_token("expiry-token")
             # Manually expire the cache entry
             for entry in verifier._cache.values():
@@ -212,7 +228,9 @@ class TestTokenVerificationCache:
         )
         mock_cls = _make_mock_client(response=_valid_sn_response())
 
-        with patch("servicenow_mcp.auth.sn_token_verifier.httpx.AsyncClient", mock_cls):
+        with patch(
+            "servicenow_mcp.auth.sn_token_verifier.httpx2.AsyncClient", mock_cls
+        ):
             await verifier.verify_token("token-1")
             await verifier.verify_token("token-2")
             # Expire all entries so eviction can reclaim space
@@ -252,7 +270,9 @@ class TestConnectionPooling:
         )
         mock_cls = _make_mock_client(response=_valid_sn_response())
 
-        with patch("servicenow_mcp.auth.sn_token_verifier.httpx.AsyncClient", mock_cls):
+        with patch(
+            "servicenow_mcp.auth.sn_token_verifier.httpx2.AsyncClient", mock_cls
+        ):
             result = await verifier.verify_token("fresh-token")
 
         assert result is not None

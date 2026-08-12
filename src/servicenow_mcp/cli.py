@@ -243,8 +243,7 @@ def main() -> None:
             )
 
             if static_tokens:
-                from fastmcp.server.auth import MultiAuth
-                from fastmcp.server.auth.providers.jwt import StaticTokenVerifier
+                from fastmcp.server.auth import MultiAuth, StaticTokenVerifier
 
                 static_verifier = StaticTokenVerifier(tokens=static_tokens)
                 mcp.auth = MultiAuth(server=provider, verifiers=[static_verifier])
@@ -257,8 +256,7 @@ def main() -> None:
                 logger.info("MCP endpoint auth: OAuth 2.1 + PKCE (per-user SN tokens)")
 
         elif static_tokens and args.transport != "stdio":
-            from fastmcp.server.auth import MultiAuth
-            from fastmcp.server.auth.providers.jwt import StaticTokenVerifier
+            from fastmcp.server.auth import MultiAuth, StaticTokenVerifier
 
             static_verifier = StaticTokenVerifier(tokens=static_tokens)
             mcp.auth = MultiAuth(verifiers=[static_verifier])

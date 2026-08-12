@@ -5,7 +5,7 @@ making a lightweight API call to the instance. If the token is valid,
 we get the authenticated user's info back.
 
 Supports optional in-memory caching (default 5 min TTL) and connection
-pooling via a shared ``httpx.AsyncClient``.
+pooling via a shared ``httpx2.AsyncClient``.
 """
 
 from __future__ import annotations
@@ -16,7 +16,7 @@ import logging
 import time
 from dataclasses import dataclass
 
-import httpx
+import httpx2
 
 from fastmcp.server.auth import AccessToken, TokenVerifier
 
@@ -40,7 +40,7 @@ class ServiceNowTokenVerifier(TokenVerifier):
         - **Caching**: Verified tokens are cached by SHA-256 hash for
           ``cache_ttl_seconds`` (default 300s / 5 min). Set to ``None`` to
           disable caching.
-        - **Connection pooling**: Pass a shared ``httpx.AsyncClient`` to
+        - **Connection pooling**: Pass a shared ``httpx2.AsyncClient`` to
           reuse HTTP connections across verification calls.
     """
 
@@ -52,7 +52,7 @@ class ServiceNowTokenVerifier(TokenVerifier):
         instance_url: str,
         timeout_seconds: int = 10,
         required_scopes: list[str] | None = None,
-        http_client: httpx.AsyncClient | None = None,
+        http_client: httpx2.AsyncClient | None = None,
         cache_ttl_seconds: int | None = 300,
         max_cache_size: int | None = None,
     ) -> None:
@@ -93,7 +93,7 @@ class ServiceNowTokenVerifier(TokenVerifier):
             cm = (
                 contextlib.nullcontext(self._http_client)
                 if self._http_client is not None
-                else httpx.AsyncClient(timeout=self.timeout_seconds)
+                else httpx2.AsyncClient(timeout=self.timeout_seconds)
             )
             async with cm as client:
                 response = await client.get(
@@ -139,7 +139,7 @@ class ServiceNowTokenVerifier(TokenVerifier):
                     },
                 )
 
-        except httpx.RequestError as e:
+        except httpx2.RequestError as e:
             logger.debug("Failed to verify SN token: %s", e)
             return None
         except Exception as e:

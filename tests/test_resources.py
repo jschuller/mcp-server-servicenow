@@ -45,7 +45,7 @@ class TestResourceRegistration:
         """Parameterized schema resource appears in list_resource_templates."""
         async with Client(mcp) as client:
             templates = await client.list_resource_templates()
-            template_uris = [str(t.uriTemplate) for t in templates]
+            template_uris = [str(t.uri_template) for t in templates]
             assert any("schema" in uri and "table_name" in uri for uri in template_uris)
 
 
