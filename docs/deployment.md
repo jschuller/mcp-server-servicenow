@@ -86,7 +86,8 @@ When deployed with OAuth, each user authenticates with their own ServiceNow cred
 
 1. In ServiceNow, go to **System OAuth > Application Registry** and create an OAuth API endpoint for external clients
 2. Set the redirect URI to `{your-server-url}/auth/callback`
-3. Deploy with OAuth env vars:
+3. On Zurich+ instances, set **Scope Restriction = "Broadly scoped"** on the OAuth app (the "Securely scoped" default limits tokens to REST API Access Policy-listed endpoints, so Table API calls fail with `invalid_token`) — or define REST API Access Policies covering the Table/Stats APIs
+4. Deploy with OAuth env vars:
 
 ```bash
 SERVICENOW_INSTANCE_URL=https://your-instance.service-now.com

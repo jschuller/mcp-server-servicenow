@@ -5,6 +5,11 @@
 ## [0.6.0] - 2026-08-12
 
 ### Added
+- **OAuth 2.1 + PKCE validated end-to-end** on a Zurich PDI: DCR → consent →
+  SN login (SSO/MFA-compatible) → ephemeral-loopback callback → per-user tool
+  calls. Two Zurich gotchas documented: new PDIs require the
+  `snc_basic_auth_api_access` role for REST basic auth, and new OAuth apps
+  default to "Securely scoped" tokens which reject Table API calls
 - **FastMCP 4.0 (MCP 2026-07-28 protocol)** — the server now speaks both the
   stateless 2026-07-28 MCP revision and the legacy handshake protocol,
   negotiated per connection. Existing stdio clients are unaffected.
