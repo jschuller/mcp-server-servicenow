@@ -57,6 +57,8 @@ ServiceNow shipped a native MCP Server in Zurich (2025). Here's when to use each
 
 Sign up for a free [Personal Developer Instance (PDI)](https://developer.servicenow.com/) — it comes pre-loaded with demo data. Wake it from the developer portal if it's hibernating.
 
+> **Note:** Instances with ServiceNow's basic-auth restriction enforced (the default on new PDIs since mid-2026) reject REST basic auth with `401 "Required to provide Auth information"` unless the integration user has the **`snc_basic_auth_api_access`** role. Grant it via User Administration → Users → your user → Roles.
+
 ### 2. Install
 
 ```bash
