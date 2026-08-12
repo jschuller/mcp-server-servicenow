@@ -42,6 +42,11 @@ dependencies = [
     "pydantic>=2.12",
     "python-dotenv>=1.0.0",
     "httpx2>=2.5.0",
+    "fastmcp>=4.0.0",
+    "requests>=2.28.0",
+    "pydantic>=2.12",
+    "python-dotenv>=1.0.0",
+    "httpx2>=2.5.0",
 ]
 
 [project.urls]
@@ -76,7 +81,7 @@ exclude = [
 [tool.uv]
 # fastmcp 4.0.0b2 pulls fastmcp-slim==4.0.0b2 transitively; uv only
 # auto-allows pre-releases for direct dependencies. Remove when 4.0 is stable.
-prerelease = "allow"
+
 
 [tool.ruff]
 target-version = "py311"
