@@ -33,6 +33,11 @@ keywords = [
 dependencies = [
     # Exact pin while 4.0 is in beta — revert to a range once 4.0 is stable.
     "fastmcp==4.0.0b2",
+    # Redundant with fastmcp's own dependency, but required for `uvx
+    # mcp-server-servicenow` to resolve: uv only honors pre-release
+    # specifiers on direct dependencies, and fastmcp-slim sits at depth 2
+    # behind the fastmcp meta-package. Remove when 4.0 is stable.
+    "fastmcp-slim[client,server]==4.0.0b2",
     "requests>=2.28.0",
     "pydantic>=2.12",
     "python-dotenv>=1.0.0",
