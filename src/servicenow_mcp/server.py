@@ -33,7 +33,9 @@ def init_services(config: ServerConfig, *, require_auth_manager: bool = True) ->
     global _config, _auth_manager
     _config = config
     if require_auth_manager:
-        _auth_manager = AuthManager(config.auth, config.instance_url)
+        _auth_manager = AuthManager(
+            config.auth, config.instance_url, timeout=config.timeout
+        )
     logger.info(f"Services initialized for {config.instance_url}")
 
 
