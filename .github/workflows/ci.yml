@@ -30,6 +30,9 @@ jobs:
       - name: Format check
         run: ruff format --check src/ tests/
 
+      - name: Type check
+        run: mypy src/
+
       - name: Unit tests
         run: python -m pytest tests/ -v --ignore=tests/integration
 

@@ -4,6 +4,7 @@ import argparse
 import logging
 import os
 import sys
+from typing import Any
 
 from dotenv import load_dotenv
 
@@ -165,7 +166,7 @@ def create_config(args: argparse.Namespace) -> ServerConfig:
     )
 
 
-def _parse_static_tokens(args: argparse.Namespace) -> dict[str, dict[str, str]] | None:
+def _parse_static_tokens(args: argparse.Namespace) -> dict[str, dict[str, Any]] | None:
     """Parse comma-separated static bearer tokens into StaticTokenVerifier format.
 
     Returns None if no tokens configured, otherwise a dict mapping each token
