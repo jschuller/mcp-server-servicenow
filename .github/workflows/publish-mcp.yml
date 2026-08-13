@@ -14,6 +14,24 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
+      # The registry validates the version exists on PyPI. Both workflows
+      # trigger on the same release event, and PyPI takes ~1-2 min to serve a
+      # new version — without this wait the registry publish loses the race
+      # every time (failed on v0.6.0 and v0.6.1 before this step existed).
+      - name: Wait for PyPI to serve the released version
+        run: |
+          ver="${GITHUB_REF_NAME#v}"
+          for i in $(seq 1 40); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' "https://pypi.org/pypi/mcp-server-servicenow/${ver}/json")
+            if [ "$code" = "200" ]; then
+              echo "PyPI serves ${ver} (waited ~$(( (i-1) * 15 ))s)"
+              exit 0
+            fi
+            sleep 15
+          done
+          echo "::error::PyPI never served ${ver} after 10 min — check the 'Publish to PyPI' workflow first"
+          exit 1
+
       - name: Install mcp-publisher
         run: |
           curl -L "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_linux_amd64.tar.gz" | tar xz mcp-publisher

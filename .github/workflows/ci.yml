@@ -46,6 +46,38 @@ jobs:
         with:
           python-version: "3.12"
 
+      # The version lives in four places (pyproject, __init__, server.json x2);
+      # a missed bump ships a release where PyPI and the MCP Registry disagree.
+      - name: Check version consistency
+        run: |
+          python - << 'EOF'
+          import json, re, sys, tomllib
+
+          versions = {
+              "pyproject.toml": tomllib.load(open("pyproject.toml", "rb"))["project"]["version"],
+              "src/servicenow_mcp/__init__.py": re.search(
+                  r'__version__ = "([^"]+)"',
+                  open("src/servicenow_mcp/__init__.py").read(),
+              ).group(1),
+          }
+          server_json = json.load(open("server.json"))
+          versions["server.json"] = server_json["version"]
+          versions["server.json packages[0]"] = server_json["packages"][0]["version"]
+
+          if len(set(versions.values())) != 1:
+              print(f"::error::Version mismatch: {versions}")
+              sys.exit(1)
+          print(f"All four version fields agree: {versions['pyproject.toml']}")
+          EOF
+
+      # The test job installs via pip, so nothing else exercises uv.lock —
+      # a stale or hand-edited lockfile (or a broken dependency change like
+      # PR #10's conflicting fastmcp pins) would land unnoticed.
+      - name: Validate lockfile resolves and matches pyproject
+        run: |
+          pip install uv
+          uv lock --check
+
       - name: Build and validate distribution
         run: |
           pip install build twine

@@ -62,3 +62,8 @@ python -m pytest tests/integration/ -v
 - Python 3.11+, type hints on all functions
 - `ruff` for linting
 - Follow existing patterns in the codebase
+
+## Releases
+
+Maintainers: see [RELEASING.md](RELEASING.md) for the full release runbook —
+publish pipeline, verification gates, and failure recovery.

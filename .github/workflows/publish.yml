@@ -18,6 +18,17 @@ jobs:
         with:
           python-version: "3.12"
 
+      # A release created from the wrong commit (or a missed version bump)
+      # would otherwise surface only as a confusing PyPI upload error — or
+      # worse, publish clean with a stale version.
+      - name: Verify tag matches package version
+        run: |
+          ver=$(python -c "import tomllib; print(tomllib.load(open('pyproject.toml','rb'))['project']['version'])")
+          if [ "${GITHUB_REF_NAME}" != "v${ver}" ]; then
+            echo "::error::Release tag ${GITHUB_REF_NAME} != pyproject version v${ver} — was the release cut from the right commit?"
+            exit 1
+          fi
+
       - name: Install build tools
         run: pip install build
 
