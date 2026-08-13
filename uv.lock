@@ -928,7 +928,7 @@ wheels = [
 
 [[package]]
 name = "mcp-server-servicenow"
-version = "0.6.0"
+version = "0.6.1"
 source = { editable = "." }
 dependencies = [
     { name = "fastmcp" },
@@ -954,7 +954,7 @@ requires-dist = [
     { name = "fastmcp", specifier = "==4.0.0b2" },
     { name = "fastmcp-slim", extras = ["client", "server"], specifier = "==4.0.0b2" },
     { name = "httpx2", specifier = ">=2.5.0" },
-    { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.14" },
+    { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.14,<3" },
     { name = "pydantic", specifier = ">=2.12" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=7.0" },
     { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=0.23.0" },

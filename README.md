@@ -350,6 +350,7 @@ The `servicenow-admin` agent handles complex multi-step tasks autonomously (CMDB
 - **Sprint 2** &#x2705; FastMCP 3.1.1 — MultiAuth, token caching, connection pooling, response limiting, tool tags
 - **Sprint 3** &#x2705; Resources + Aggregation — 5 MCP resources, `aggregate_records` Stats API tool
 - **v0.6.0** &#x2705; FastMCP 4.0 — MCP 2026-07-28 stateless protocol support, fail-closed HTTP hardening, community fixes
+- **v0.6.1** &#x2705; OAuth ROPC timeout + refresh-token grant, mypy in CI, dependency refresh
 - **Next** — Enhancement backlog under active consideration (background scripts, system logs, health checks)
 
 ## Related Projects

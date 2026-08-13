@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "mcp-server-servicenow"
-version = "0.6.0"
+version = "0.6.1"
 description = "MCP server for ServiceNow - 19 tools + 5 resources for table, CMDB, system, and update set operations"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -58,7 +58,10 @@ dev = [
     "pytest-mock>=3.0",
     "pytest-asyncio>=0.23.0",
     "ruff>=0.4.0",
-    "mypy>=1.14",
+    # Upper-bounded for the same reason [tool.ruff.lint] pins its rule set:
+    # CI installs the latest on every run, and a new mypy major could shift
+    # defaults under previously-clean code.
+    "mypy>=1.14,<3",
     "types-requests>=2.28.0",
 ]
 

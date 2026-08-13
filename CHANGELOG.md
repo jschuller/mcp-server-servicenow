@@ -1,12 +1,32 @@
 # Changelog
 
-## [Unreleased]
+## [0.6.1] - 2026-08-13
+
+### Added
+- **mypy in CI** — the shipped `py.typed` marker is now backed by an actual
+  type check: `mypy src/` runs between format check and tests, with
+  `disallow_untyped_defs` across all first-party code and zero suppressions.
+  One annotation corrected along the way (`_parse_static_tokens` claims dict
+  is `dict[str, Any]`, not `dict[str, str]`) (#9)
 
 ### Fixed
+- **ROPC OAuth (stdio path)**: the password-grant token request now honors the
+  configured `--timeout` instead of hanging indefinitely on an unresponsive
+  instance, and the `refresh_token` from the token response is stored and
+  used — `refresh_token()` performs a real `grant_type=refresh_token`
+  exchange (rotation-aware) and falls back to the password grant only when
+  the refresh grant is rejected or errors. New `tests/test_auth_manager.py`
+  covers both behaviors (11 tests) (#7)
 - Documented that uv/uvx installs need `--prerelease allow` while the FastMCP
   4.0 beta pin is in place (uv only honors pre-release markers in the user's
   own top-level requirement; pip is unaffected). All uvx examples and the
   plugin manifest now carry the flag.
+
+### Changed
+- Dependency refresh (Dependabot #6): requests 2.33.0, cryptography 50.0.0,
+  pytest 9.0.3, pydantic-settings 2.14.2, pyjwt 2.13.0, urllib3 2.7.0
+- Declined community PR #10 (premature FastMCP `>=4.0.0` bump — no stable
+  4.0 exists on PyPI yet); #8 remains the tracking issue for the un-pin
 
 ## [0.6.0] - 2026-08-12
 
