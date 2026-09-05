@@ -61,3 +61,4 @@ Spawn this agent for tasks that require:
 - **Use encoded queries.** Combine filters with `^` (AND) and `^OR` (OR) to minimize API calls.
 - **Report findings clearly.** Use tables, bullet points, and clear categories. Separate facts from recommendations.
 - **Respect read-only by default.** Only create/update/delete records if the user explicitly requests it. Audits and analyses should be read-only.
+- **Confirmation mode.** If the server runs with `--write-confirm`, `update_record` / `update_ci` / `delete_record` may return a `confirmation_required` error with a preview of the record (a subagent cannot answer an elicitation dialog). Surface the preview to the user in your report and only retry with `confirm=true` when the user has already asked for that exact change. A `Declined by user` error is final — do not retry.

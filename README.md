@@ -20,36 +20,37 @@
 </p>
 
 <p align="center">
-  Connect Claude AI to ServiceNow. 19 tools + 5 resources for incidents, CMDB, update sets, and more —<br>
-  accessible from Claude Desktop, Claude Code, or any MCP client over stdio or Streamable HTTP.
+  The developer data plane for ServiceNow in Claude Code — Table API, schema, aggregates and update sets,<br>
+  on any release from Tokyo up, on PDIs, in GCC, for free. Runs alongside ServiceNow's native MCP Server.
 </p>
 
 ---
 
-`Table API` · `CMDB` · `Update Sets` · `Aggregation` · `Resources` · `OAuth 2.1+PKCE` · `Streamable HTTP` · `Claude Code Plugin` · `4 Skills`
+`Table API` · `CMDB` · `Update Sets` · `Aggregation` · `Resources` · `Read-only mode` · `Audit log` · `OAuth 2.1+PKCE` · `Streamable HTTP` · `Claude Code Plugin` · `4 Skills`
 
 ## What This Does
 
-This MCP server lets AI assistants interact directly with a ServiceNow instance. Instead of copy-pasting between ServiceNow and your AI tool, Claude can query incidents, create records, explore CMDB relationships, and manage update sets through natural conversation.
+This MCP server gives AI assistants the raw ServiceNow data plane: any table via the Table API, the data dictionary (with inherited fields), Stats API aggregates, CMDB classes and relationships, and update sets. 19 tools and 5 resources, with tool annotations, an optional read-only mode, table allow/deny lists, hardened encoded queries, and a JSON audit line per call.
 
 Built with [FastMCP 4.0](https://gofastmcp.com) — speaks both the stateless MCP 2026-07-28 protocol and the legacy handshake, negotiated per connection.
 
-## Native vs Community
+## Alongside ServiceNow's native MCP Server
 
-ServiceNow shipped a native MCP Server in Zurich (2025). Here's when to use each:
+ServiceNow's **MCP Server Console** (Action Fabric) exposes Now Assist skills, Knowledge Graph, flows, scripted REST and playbooks as governed tools — and **excludes the Table API by design** ("cannot be converted to MCP tools regardless of configuration"). This project is the other half: the developer loop that native does not serve. ServiceNow's own CEG AI CoE guide lists `uvx mcp-server-servicenow` as its community "Path C".
 
-| | Native (Zurich+) | This project |
+| | Native MCP Server Console | This project |
 |---|---|---|
-| **SN version** | Zurich+ only | Any version (Tokyo+) |
-| **Entitlement** | Requires Now Assist SKU | None (MIT, free) |
-| **Auth model** | OAuth 2.1 + PKCE via AI Control Tower | OAuth 2.1 + PKCE via FastMCP proxy |
-| **Governance** | AI Control Tower policies | Self-managed |
-| **Table access** | Governed by CT config | Full table API access |
-| **AI models** | Now Assist models + approved | Any MCP client (Claude, GPT, etc.) |
-| **Custom tools** | Requires SN development | Python — add tools in minutes |
+| **Tool sources** | Now Assist skills, Knowledge Graph, subflows/actions, scripted REST (GET/POST/PUT), playbooks, MCP Apps | Table API CRUD, Stats API aggregates, `sys_dictionary` schema, update sets, CMDB via Table API |
+| **Table API** | Excluded by design | Any table, any field |
+| **Minimum release** | Zurich P9 / Australia P2 for custom tools | Tokyo+ |
+| **Entitlement** | Now Assist / AI-Native SKU (docs: Prime for inbound); metered in assists | MIT, $0, your own compute |
+| **PDIs / GCC** | Not available | Works |
+| **Auth** | OAuth 2.0 auth-code via Machine Identity Console (JWT, no DCR) | OAuth 2.1 + PKCE proxy (DCR + CIMD), static tokens, or a service account |
+| **Governance** | AI Control Tower / AI Gateway | Self-managed: `--read-only`, table allow/deny, opt-in write confirmation, audit log, tool annotations |
+| **Transport** | Streamable HTTP only | stdio + Streamable HTTP |
+| **Resources / prompts** | Roadmap | 5 resources |
 
-**Use native** if you're on Zurich+ with Now Assist and need AI Control Tower governance.
-**Use this** if you're on an older version, don't have the entitlement, need custom table access, or want to use any AI model.
+**Run both.** Native tells Claude what ServiceNow *means* (skills, summaries, semantic search); this server tells Claude what ServiceNow *contains* (rows, schema, aggregates, update sets). No tool-name collisions today.
 
 ## Getting Started
 
@@ -66,19 +67,15 @@ Sign up for a free [Personal Developer Instance (PDI)](https://developer.service
 pip install mcp-server-servicenow
 
 # Or run directly with uvx (no install needed)
-uvx --prerelease allow mcp-server-servicenow --help
+uvx mcp-server-servicenow --help
 ```
-
-> **Why `--prerelease allow`?** v0.6.x pins FastMCP 4.0 (currently in beta) for
-> MCP 2026-07-28 protocol support. uv requires the flag to resolve it; `pip`
-> needs nothing special. The flag goes away when FastMCP 4.0 is stable.
 
 ### 3. Configure Your MCP Client
 
 Copy `.mcp.json.example` to `.mcp.json` and fill in your credentials, or use the Claude Code CLI:
 
 ```bash
-claude mcp add servicenow -- uvx --prerelease allow mcp-server-servicenow \
+claude mcp add servicenow -- uvx mcp-server-servicenow \
   --instance-url https://your-instance.service-now.com \
   --auth-type basic --username admin --password your-password
 ```
@@ -101,10 +98,14 @@ mcp-server-servicenow \
   --username admin \
   --password your-password
 
-# Or run with HTTP (remote access / Cloud Run)
+# Or run with HTTP (remote access / Cloud Run).
+# An HTTP listener fails closed: it needs MCP endpoint auth on top of the
+# ServiceNow credentials, otherwise the server refuses to start. Static
+# bearer tokens below; see docs/deployment.md for OAuth 2.1 + PKCE.
 mcp-server-servicenow \
   --transport streamable-http \
   --port 8080 \
+  --mcp-static-tokens "$(openssl rand -hex 32)" \
   --instance-url https://your-instance.service-now.com \
   --auth-type basic \
   --username admin \
@@ -119,8 +120,8 @@ mcp-server-servicenow \
 | `list_records` | List records from any table with filtering, field selection, and pagination |
 | `get_record` | Get a single record by sys_id |
 | `create_record` | Create a new record in any table |
-| `update_record` | Update an existing record |
-| `delete_record` | Delete a record by sys_id |
+| `update_record` | Update an existing record (optional confirmation, see below) |
+| `delete_record` | Delete a record by sys_id (optional confirmation, see below) |
 | `aggregate_records` | COUNT, AVG, MIN, MAX, SUM with GROUP BY + HAVING via Stats API |
 
 ### CMDB (5 tools)
@@ -129,15 +130,15 @@ mcp-server-servicenow \
 | `list_ci` | List configuration items with class and query filtering |
 | `get_ci` | Get a single CI by sys_id |
 | `create_ci` | Create a new configuration item |
-| `update_ci` | Update a configuration item |
-| `get_ci_relationships` | Get parent/child relationships for a CI |
+| `update_ci` | Update a configuration item (optional confirmation, see below) |
+| `get_ci_relationships` | Get parent/child relationships for a CI (paged: `limit`, `offset`) |
 
 ### System (3 tools)
 | Tool | Description |
 |------|-------------|
 | `get_system_properties` | Query system properties |
 | `get_current_user` | Get authenticated user info |
-| `get_table_schema` | Get table data dictionary (field definitions) |
+| `get_table_schema` | Table data dictionary incl. inherited fields (`hierarchy`, per-field `defined_in`) |
 
 ### Update Sets (5 tools)
 | Tool | Description |
@@ -154,11 +155,41 @@ MCP Resources provide read-only context that LLM clients can fetch without tool 
 
 | Resource URI | Description |
 |-------------|-------------|
-| `servicenow://schema/{table_name}` | Field definitions (name, type, label, mandatory, reference) for any table |
+| `servicenow://schema/{table_name}` | Field definitions (name, type, label, mandatory, reference, defined_in) for any table, parents included |
 | `servicenow://instance` | Instance URL, platform version, logged-in user, timezone |
 | `servicenow://update-set/current` | Currently active update set name, sys_id, state |
 | `servicenow://cmdb/classes` | CMDB CI class hierarchy (names, labels, parent classes) |
 | `servicenow://help/query-syntax` | Encoded query operators reference (prevents hallucinated syntax) |
+
+## Safety & governance
+
+Every tool carries MCP annotations (`readOnlyHint`, `destructiveHint`, `idempotentHint`, `openWorldHint`) so clients such as Claude Code can apply their own permission policy. On top of that, the server ships its own guardrails — all off by default except the audit log:
+
+| Flag | Env var | Effect |
+|------|---------|--------|
+| `--read-only` | `SERVICENOW_READ_ONLY=true` | Hides the 7 write tools from `tools/list` **and** refuses any non-GET request at the HTTP layer |
+| `--table-allowlist a,b*` | `SERVICENOW_TABLE_ALLOWLIST` | Only these tables (exact or glob) may be accessed — applies to `table_name`, `class_name`, fixed-table tools and the schema resource |
+| `--table-denylist sys_user*` | `SERVICENOW_TABLE_DENYLIST` | These tables may never be accessed; wins over the allowlist |
+| *(always on)* | — | Table names, sys_ids, field lists and `order_by` are validated; `javascript:` in caller queries is limited to `gs.*` date helpers (`gs.daysAgo(7)`, `gs.beginningOfToday()` …) |
+| `--allow-js-queries` | `SERVICENOW_ALLOW_JS_QUERIES=true` | Re-enable arbitrary `javascript:` in queries |
+| `--write-confirm` | `SERVICENOW_WRITE_CONFIRM=true` | Ask the user before `update_record`, `update_ci`, `delete_record` (see below) |
+| `--audit-log stderr\|off\|PATH` | `SERVICENOW_AUDIT_LOG` | One JSON line per tool call / resource read (default: stderr) |
+
+An audit line (keys only — never values):
+
+```json
+{"ts":"2026-08-22T19:04:11.512+00:00","run_id":"…","event":"tool_call","name":"update_record","user":"admin","auth_mode":"service-account","transport":"stdio","table":"incident","sys_id":"9d385017c611228701d22104cc95c371","data_keys":["state"],"tags":["table","write"],"outcome":"ok","duration_ms":212.4}
+```
+
+### Write confirmation (opt-in)
+
+With `--write-confirm`, the three destructive tools fetch the record's current values and ask the user before writing:
+
+- **Claude Code** (stdio, handshake-era protocol) and **Cursor** render the prompt as a dialog (`elicitation/create`). *Decline* stops the write; the assistant is told not to retry.
+- **2026-07-28 clients** get the same prompt as a multi round-trip `InputRequiredResult`; the server never sends one to a client that has not declared elicitation.
+- **Claude Desktop / Cowork, claude.ai connectors and headless runs** cannot show the prompt (Desktop answers with a synthetic *cancel*). They receive a `confirmation_required` error carrying the preview; the assistant shows it and re-runs with `confirm=true`.
+
+It is off by default because the MCP client's own permission prompt is the primary human-in-the-loop, and because automation cannot answer a dialog. Enable it where an AI Steward wants a second gate.
 
 ## Architecture
 
@@ -198,7 +229,7 @@ Add to your MCP client config — copy the snippet for your tool:
 <summary><strong>Claude Code</strong></summary>
 
 ```bash
-claude mcp add servicenow -- uvx --prerelease allow mcp-server-servicenow \
+claude mcp add servicenow -- uvx mcp-server-servicenow \
   --instance-url https://your-instance.service-now.com \
   --auth-type basic --username admin --password your-password
 ```
@@ -213,7 +244,7 @@ Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
   "mcpServers": {
     "servicenow": {
       "command": "uvx",
-      "args": ["--prerelease", "allow", "mcp-server-servicenow"],
+      "args": ["mcp-server-servicenow"],
       "env": {
         "SERVICENOW_INSTANCE_URL": "https://your-instance.service-now.com",
         "SERVICENOW_AUTH_TYPE": "basic",
@@ -235,7 +266,7 @@ Add to `.cursor/mcp.json` or `.vscode/mcp.json`:
   "mcpServers": {
     "servicenow": {
       "command": "uvx",
-      "args": ["--prerelease", "allow", "mcp-server-servicenow"],
+      "args": ["mcp-server-servicenow"],
       "env": {
         "SERVICENOW_INSTANCE_URL": "https://your-instance.service-now.com",
         "SERVICENOW_AUTH_TYPE": "basic",
@@ -283,7 +314,7 @@ ruff check src/ tests/
 
 ## Skills (Claude Code)
 
-This project ships 4 Claude Code skills in `.claude/skills/` — guided workflows that chain MCP tools for common ServiceNow tasks. Skills auto-trigger from natural conversation or can be invoked directly.
+This project ships 4 Claude Code skills in `skills/` (installed via the plugin, not the PyPI package) — guided workflows that chain MCP tools for common ServiceNow tasks. Skills auto-trigger from natural conversation or can be invoked directly.
 
 | Skill | What It Does | Try Saying |
 |-------|-------------|------------|
@@ -315,7 +346,8 @@ export SERVICENOW_CLIENT_SECRET="your-client-secret"
 ### Install from Git
 
 ```bash
-claude plugin add --from https://github.com/jschuller/mcp-server-servicenow
+claude plugin marketplace add jschuller/mcp-server-servicenow
+claude plugin install servicenow@mcp-server-servicenow
 ```
 
 ### Install Locally (development)
@@ -351,7 +383,8 @@ The `servicenow-admin` agent handles complex multi-step tasks autonomously (CMDB
 - **Sprint 3** &#x2705; Resources + Aggregation — 5 MCP resources, `aggregate_records` Stats API tool
 - **v0.6.0** &#x2705; FastMCP 4.0 — MCP 2026-07-28 stateless protocol support, fail-closed HTTP hardening, community fixes
 - **v0.6.1** &#x2705; OAuth ROPC timeout + refresh-token grant, mypy in CI, dependency refresh
-- **Next** — Enhancement backlog under active consideration (background scripts, system logs, health checks)
+- **v0.7.0** &#x2705; Safety & governance — tool annotations, read-only mode, table allow/deny lists, opt-in destructive-call confirmation, JSON audit log, schema inheritance
+- **Next** — "Run alongside native" guide, MCP prompts from the skills, per-token scopes over HTTP, developer-plane tools (system logs, health checks)
 
 ## Related Projects
 

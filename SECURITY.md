@@ -25,8 +25,8 @@ Instead, please email the maintainer directly or use [GitHub's private vulnerabi
 
 | Version | Supported |
 |---------|-----------|
-| 0.3.x   | Yes       |
-| < 0.3   | No        |
+| 0.7.x   | Yes       |
+| < 0.7   | No        |
 
 ## Security Best Practices
 

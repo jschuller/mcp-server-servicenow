@@ -76,3 +76,36 @@ class TestQuerySyntaxResource:
                 "^NQ",
             ]:
                 assert op in text, f"Missing operator: {op}"
+
+
+class TestCmdbClassesResource:
+    @pytest.mark.asyncio
+    async def test_requests_super_class_name_dot_walk(self, monkeypatch) -> None:
+        import json
+        from unittest.mock import Mock
+
+        from servicenow_mcp import resources
+        from tests.conftest import sn_response
+
+        mock = Mock(
+            return_value=sn_response(
+                {
+                    "result": [
+                        {
+                            "name": "cmdb_ci_server",
+                            "label": "Server",
+                            "super_class.name": "cmdb_ci_computer",
+                            "super_class": {"link": "l", "value": "ID"},
+                        },
+                        {"name": "cmdb_ci", "label": "CI", "super_class": ""},
+                    ]
+                }
+            )
+        )
+        monkeypatch.setattr(resources, "make_sn_request", mock)
+        async with Client(mcp) as client:
+            content = await client.read_resource("servicenow://cmdb/classes")
+        payload = json.loads(content[0].text)
+        assert payload["classes"][0]["super_class"] == "cmdb_ci_computer"
+        assert payload["classes"][1]["super_class"] == ""
+        assert "super_class.name" in mock.call_args.kwargs["params"]["sysparm_fields"]

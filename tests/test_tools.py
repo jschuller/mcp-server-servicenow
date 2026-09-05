@@ -143,7 +143,9 @@ class TestGetTableSchemaSchema:
         async with Client(mcp) as client:
             tools = await client.list_tools()
             schema = _get_tool_schema(tools, "get_table_schema")
-            assert schema["properties"]["limit"].get("default") == 50
+            assert schema["properties"]["limit"].get("default") == 200
+            assert schema["properties"]["limit"].get("maximum") == 1000
+            assert schema["properties"]["include_inherited"].get("default") is True
 
 
 class TestCreateUpdateSetSchema:

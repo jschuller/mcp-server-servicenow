@@ -9,12 +9,13 @@ from typing import Annotated, Any, Dict, Optional
 from pydantic import Field
 
 from servicenow_mcp.server import mcp, get_config, make_sn_request
-from servicenow_mcp.utils.http import parse_json_response
+from servicenow_mcp.tools import annotations
+from servicenow_mcp.utils.http import build_url, parse_json_response
 
 logger = logging.getLogger(__name__)
 
 
-@mcp.tool(tags={"read", "updateset"})
+@mcp.tool(tags={"read", "updateset"}, annotations=annotations.READ)
 def list_update_sets(
     query: Annotated[
         Optional[str],
@@ -35,7 +36,7 @@ def list_update_sets(
     """List update sets with optional state and query filtering"""
     config = get_config()
 
-    url = f"{config.api_url}/table/sys_update_set"
+    url = build_url(config.api_url, "table", "sys_update_set")
     query_parts = []
     if query:
         query_parts.append(query)
@@ -56,20 +57,20 @@ def list_update_sets(
     return {"count": len(result), "update_sets": result}
 
 
-@mcp.tool(tags={"read", "updateset"})
+@mcp.tool(tags={"read", "updateset"}, annotations=annotations.READ)
 def get_update_set(
     sys_id: Annotated[str, Field(description="The sys_id of the update set")],
 ) -> Dict[str, Any]:
     """Get details of a specific update set by sys_id"""
     config = get_config()
 
-    url = f"{config.api_url}/table/sys_update_set/{sys_id}"
+    url = build_url(config.api_url, "table", "sys_update_set", sys_id)
     response = make_sn_request("GET", url, config.timeout)
     data = parse_json_response(response, url)
     return data.get("result", {})
 
 
-@mcp.tool(tags={"write", "updateset"})
+@mcp.tool(tags={"write", "updateset"}, annotations=annotations.CREATE)
 def create_update_set(
     name: Annotated[str, Field(description="Name of the update set")],
     description: Annotated[
@@ -82,7 +83,7 @@ def create_update_set(
     """Create a new update set for tracking customizations"""
     config = get_config()
 
-    url = f"{config.api_url}/table/sys_update_set"
+    url = build_url(config.api_url, "table", "sys_update_set")
     payload: Dict[str, Any] = {"name": name}
     if description:
         payload["description"] = description
@@ -99,7 +100,7 @@ def create_update_set(
     }
 
 
-@mcp.tool(tags={"write", "updateset"})
+@mcp.tool(tags={"write", "updateset"}, annotations=annotations.SET_PREF)
 def set_current_update_set(
     sys_id: Annotated[
         str, Field(description="The sys_id of the update set to make current")
@@ -108,7 +109,7 @@ def set_current_update_set(
     """Set an update set as the current active update set"""
     config = get_config()
 
-    url = f"{config.api_url}/table/sys_update_set/{sys_id}"
+    url = build_url(config.api_url, "table", "sys_update_set", sys_id)
     response = make_sn_request("GET", url, config.timeout)
     data = parse_json_response(response, url)
     update_set = data.get("result", {})
@@ -119,7 +120,7 @@ def set_current_update_set(
     if state != "in progress":
         return f"Cannot set update set '{name}' as current - state is '{state}' (must be 'in progress')"
 
-    pref_url = f"{config.api_url}/table/sys_user_preference"
+    pref_url = build_url(config.api_url, "table", "sys_user_preference")
     pref_response = make_sn_request(
         "GET",
         pref_url,
@@ -133,7 +134,7 @@ def set_current_update_set(
         pref_sys_id = prefs[0]["sys_id"]
         make_sn_request(
             "PATCH",
-            f"{pref_url}/{pref_sys_id}",
+            build_url(config.api_url, "table", "sys_user_preference", pref_sys_id),
             config.timeout,
             json_data={"value": sys_id},
         )
@@ -148,7 +149,7 @@ def set_current_update_set(
     return f"Current update set changed to '{name}' ({sys_id})"
 
 
-@mcp.tool(tags={"read", "updateset"})
+@mcp.tool(tags={"read", "updateset"}, annotations=annotations.READ)
 def list_update_set_changes(
     update_set_sys_id: Annotated[
         str, Field(description="The sys_id of the update set")
@@ -160,7 +161,7 @@ def list_update_set_changes(
     """List all customer updates (changes) within an update set"""
     config = get_config()
 
-    url = f"{config.api_url}/table/sys_update_xml"
+    url = build_url(config.api_url, "table", "sys_update_xml")
     query_params = {
         "sysparm_query": f"update_set={update_set_sys_id}^ORDERBYDESCsys_updated_on",
         "sysparm_fields": "sys_id,name,type,target_name,action,sys_created_on",

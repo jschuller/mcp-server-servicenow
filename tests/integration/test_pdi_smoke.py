@@ -83,6 +83,31 @@ class TestTableTools:
                 },
             )
             assert result is not None
+            data = result.data
+            # Inherited fields: incident's `number` lives on task (v0.7.0)
+            assert data["hierarchy"][:2] == ["incident", "task"]
+            by_name = {f["name"]: f for f in data["fields"]}
+            assert by_name["number"]["defined_in"] == "task"
+            assert by_name["number"]["mandatory"] in ("true", "false")
+
+    @pytest.mark.asyncio
+    async def test_audit_line_written(self, tmp_path) -> None:
+        import json
+
+        from servicenow_mcp.middleware.audit import configure_audit_log
+
+        path = tmp_path / "audit.jsonl"
+        configure_audit_log(str(path))
+        try:
+            async with Client(mcp) as client:
+                await client.call_tool(
+                    "list_records", {"table_name": "incident", "limit": 1}
+                )
+        finally:
+            configure_audit_log("off")
+        line = json.loads(path.read_text().splitlines()[0])
+        assert line["name"] == "list_records" and line["outcome"] == "ok"
+        assert line["auth_mode"] == "service-account" and line["user"]
 
 
 class TestSystemTools:
@@ -189,6 +214,11 @@ class TestResources:
             content = await client.read_resource("servicenow://cmdb/classes")
             text = content[0].text if hasattr(content[0], "text") else str(content[0])
             assert "classes" in text
+            import json
+
+            classes = json.loads(text)["classes"]
+            assert classes and all(isinstance(c["super_class"], str) for c in classes)
+            assert any(c["super_class"] == "cmdb_ci" for c in classes)
 
     @pytest.mark.asyncio
     async def test_read_current_update_set(self) -> None:

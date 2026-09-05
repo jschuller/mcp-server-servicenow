@@ -1,7 +1,7 @@
 """MCP Resources — read-only context for LLM clients.
 
 Provides 5 resources:
-- servicenow://schema/{table_name} — field definitions for any table
+- servicenow://schema/{table_name} — field definitions for any table (incl. inherited)
 - servicenow://instance — instance URL, version, user, timezone
 - servicenow://update-set/current — currently active update set
 - servicenow://cmdb/classes — CMDB CI class hierarchy
@@ -13,7 +13,8 @@ import logging
 from typing import Any, Dict
 
 from servicenow_mcp.server import mcp, get_config, make_sn_request
-from servicenow_mcp.utils.http import parse_json_response
+from servicenow_mcp.utils.http import build_url, parse_json_response
+from servicenow_mcp.utils.schema import _reference_value, fetch_table_schema
 
 logger = logging.getLogger(__name__)
 
@@ -25,38 +26,21 @@ logger = logging.getLogger(__name__)
 
 @mcp.resource(
     "servicenow://schema/{table_name}",
-    description="Field definitions (name, type, label, mandatory, reference) for a ServiceNow table. Avoids repeated get_table_schema tool calls.",
+    description="Field definitions (name, type, label, mandatory, reference, defined_in) for a ServiceNow table including inherited fields. Avoids repeated get_table_schema tool calls.",
     mime_type="application/json",
     tags={"read", "table"},
 )
 def table_schema(table_name: str) -> str:
-    """Return the data dictionary for a ServiceNow table."""
+    """Return the data dictionary for a ServiceNow table, parents included."""
     config = get_config()
-
-    url = f"{config.api_url}/table/sys_dictionary"
-    query_params = {
-        "sysparm_query": f"name={table_name}^internal_type!=collection",
-        "sysparm_fields": "element,column_label,internal_type,max_length,mandatory,reference",
-        "sysparm_limit": 500,
-    }
-
-    response = make_sn_request("GET", url, config.timeout, params=query_params)
-    data = parse_json_response(response, url)
-    result = data.get("result", [])
-    fields_list = [
-        {
-            "name": r.get("element"),
-            "label": r.get("column_label"),
-            "type": r.get("internal_type"),
-            "max_length": r.get("max_length"),
-            "mandatory": r.get("mandatory"),
-            "reference": r.get("reference"),
-        }
-        for r in result
-        if r.get("element")
-    ]
     return json.dumps(
-        {"table": table_name, "field_count": len(fields_list), "fields": fields_list}
+        fetch_table_schema(
+            table_name,
+            limit=1000,
+            timeout=config.timeout,
+            api_url=config.api_url,
+            include_inherited=True,
+        )
     )
 
 
@@ -77,7 +61,7 @@ def instance_info() -> str:
     result: Dict[str, Any] = {"instance_url": config.instance_url}
 
     # Fetch version + timezone in one call
-    props_url = f"{config.api_url}/table/sys_properties"
+    props_url = build_url(config.api_url, "table", "sys_properties")
     props_params = {
         "sysparm_query": "nameINglide.product.version,glide.sys.timezone",
         "sysparm_fields": "name,value",
@@ -107,9 +91,10 @@ def instance_info() -> str:
             "email": user.get("email"),
         }
     except Exception:
-        # Fallback: Table API
+        # Fallback: Table API. Server-authored query — not subject to the
+        # caller-query javascript: policy.
         try:
-            table_url = f"{config.api_url}/table/sys_user"
+            table_url = build_url(config.api_url, "table", "sys_user")
             user_params = {
                 "sysparm_query": "user_name=javascript:gs.getUserName()",
                 "sysparm_limit": 1,
@@ -149,7 +134,7 @@ def current_update_set() -> str:
     config = get_config()
 
     # Get current update set sys_id from user preference
-    pref_url = f"{config.api_url}/table/sys_user_preference"
+    pref_url = build_url(config.api_url, "table", "sys_user_preference")
     pref_params = {
         "sysparm_query": "name=sys_update_set",
         "sysparm_limit": 1,
@@ -165,7 +150,7 @@ def current_update_set() -> str:
     update_set_sys_id = prefs[0]["value"]
 
     # Fetch the update set details
-    us_url = f"{config.api_url}/table/sys_update_set/{update_set_sys_id}"
+    us_url = build_url(config.api_url, "table", "sys_update_set", update_set_sys_id)
     us_params = {
         "sysparm_fields": "sys_id,name,state,description,application",
     }
@@ -199,10 +184,12 @@ def cmdb_classes() -> str:
     """Return the CMDB CI class hierarchy from sys_db_object."""
     config = get_config()
 
-    url = f"{config.api_url}/table/sys_db_object"
+    url = build_url(config.api_url, "table", "sys_db_object")
     query_params = {
         "sysparm_query": "nameSTARTSWITHcmdb_ci^ORDERBYname",
-        "sysparm_fields": "name,label,super_class",
+        # Dot-walk the parent's name so super_class is a usable string rather
+        # than a {link, value} reference.
+        "sysparm_fields": "name,label,super_class.name,super_class",
         "sysparm_limit": 200,
     }
 
@@ -213,7 +200,8 @@ def cmdb_classes() -> str:
         {
             "name": r.get("name"),
             "label": r.get("label"),
-            "super_class": r.get("super_class"),
+            "super_class": r.get("super_class.name")
+            or _reference_value(r.get("super_class")),
         }
         for r in result
     ]
@@ -266,8 +254,19 @@ _QUERY_SYNTAX_REFERENCE = """\
 | `MORETHAN` | More than N units ago | `sys_created_onMORETHAN30@dayofweek@ago` |
 | `LESSTHAN` | Less than N units ago | `sys_created_onLESSTHAN7@dayofweek@ago` |
 | `DATEPART` | Date part equals | `sys_created_onDATEPART2024@year` |
-| `javascript:gs.daysAgo(N)` | N days ago | `sys_created_on>=javascript:gs.daysAgo(7)` |
+| `javascript:gs.daysAgo(7)` | 7 days ago | `sys_created_on>=javascript:gs.daysAgo(7)` |
+| `javascript:gs.daysAgoStart(1)` | Start of yesterday | `sys_created_on>=javascript:gs.daysAgoStart(1)` |
+| `javascript:gs.beginningOfToday()` | Start of today | `sys_updated_on>=javascript:gs.beginningOfToday()` |
 | `javascript:gs.beginningOfLastMonth()` | Start of last month | `sys_created_on>=javascript:gs.beginningOfLastMonth()` |
+
+## Server-side script in queries
+
+Only GlideSystem **date helpers** are accepted in `javascript:` expressions
+(`gs.daysAgo*`, `gs.hoursAgo*`, `gs.monthsAgo*`, `gs.yearsAgo*`,
+`gs.beginningOf*`, `gs.endOf*`, `gs.now*`). Anything else — `gs.getUserName()`,
+`GlideRecord`, `;`, `new` — is rejected with "Query rejected: unsafe javascript:".
+Prefer the `RELATIVE*`, `MORETHAN`/`LESSTHAN` and `DATEPART` operators above; the
+server operator can re-enable arbitrary script with `--allow-js-queries`.
 
 ## Join Operators
 

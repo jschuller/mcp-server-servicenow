@@ -1,9 +1,9 @@
 """Configuration module for the ServiceNow MCP server."""
 
 from enum import Enum
-from typing import Optional
+from typing import List, Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class AuthType(str, Enum):
@@ -54,6 +54,32 @@ class ServerConfig(BaseModel):
     auth: AuthConfig
     debug: bool = False
     timeout: int = 30
+
+    # --- Safety rails (v0.7.0) ---
+    read_only: bool = Field(
+        default=False,
+        description="Hide write tools and refuse non-GET ServiceNow requests.",
+    )
+    table_allowlist: List[str] = Field(
+        default_factory=list,
+        description="If non-empty, only these tables (exact or glob) may be accessed.",
+    )
+    table_denylist: List[str] = Field(
+        default_factory=list,
+        description="Tables (exact or glob) that may never be accessed; wins over allowlist.",
+    )
+    allow_js_queries: bool = Field(
+        default=False,
+        description="Permit arbitrary javascript: expressions in caller-supplied queries.",
+    )
+    write_confirm: bool = Field(
+        default=False,
+        description="Ask the user to confirm update/delete calls via MCP elicitation.",
+    )
+    audit_log: str = Field(
+        default="stderr",
+        description="Audit log target: 'stderr', 'off', or a file path.",
+    )
 
     @property
     def api_url(self) -> str:

@@ -28,6 +28,12 @@ _CLI_ENV_VARS = [
     "MCP_OAUTH_CLIENT_SECRET",
     "MCP_BASE_URL",
     "MCP_STATIC_TOKENS",
+    "SERVICENOW_READ_ONLY",
+    "SERVICENOW_TABLE_ALLOWLIST",
+    "SERVICENOW_TABLE_DENYLIST",
+    "SERVICENOW_ALLOW_JS_QUERIES",
+    "SERVICENOW_WRITE_CONFIRM",
+    "SERVICENOW_AUDIT_LOG",
 ]
 
 
@@ -37,17 +43,6 @@ def _clean_env(monkeypatch):
         monkeypatch.delenv(var, raising=False)
     # main() calls load_dotenv(); keep a local .env from polluting tests
     monkeypatch.setattr(cli, "load_dotenv", lambda: None, raising=False)
-
-
-@pytest.fixture(autouse=True)
-def _restore_mcp_auth():
-    """main() assigns mcp.auth on the module-level singleton; undo it so
-    later test files using the in-process Client see a pristine server."""
-    from servicenow_mcp.server import mcp
-
-    original = mcp.auth
-    yield
-    mcp.auth = original
 
 
 def _args(**overrides) -> argparse.Namespace:
@@ -91,7 +86,13 @@ class TestParseStaticTokens:
 
     def test_single_token(self):
         tokens = cli._parse_static_tokens(_args(mcp_static_tokens="secret-a"))
-        assert tokens == {"secret-a": {"client_id": "static-client-1", "scopes": []}}
+        assert tokens == {
+            "secret-a": {
+                "client_id": "static-client-1",
+                "scopes": [],
+                "sn_auth": "service-account",
+            }
+        }
 
     def test_multiple_tokens_strip_whitespace(self):
         tokens = cli._parse_static_tokens(
@@ -233,4 +234,174 @@ class TestFailClosed:
             with pytest.raises(SystemExit) as exc_info:
                 cli.main()
         assert exc_info.value.code == 1
+        mock_run.assert_not_called()
+
+
+class TestSafetyFlags:
+    def test_flags_parse_into_config(self, monkeypatch):
+        monkeypatch.setattr(
+            "sys.argv",
+            [
+                *_BASIC_ARGV,
+                "--read-only",
+                "--table-denylist",
+                "sys_user*, sys_properties",
+                "--table-allowlist",
+                "incident,cmdb_ci*",
+                "--allow-js-queries",
+                "--write-confirm",
+                "--audit-log",
+                "off",
+            ],
+        )
+        config = cli.create_config(cli.parse_args())
+        assert config.read_only is True
+        assert config.table_denylist == ["sys_user*", "sys_properties"]
+        assert config.table_allowlist == ["incident", "cmdb_ci*"]
+        assert config.allow_js_queries is True
+        assert config.write_confirm is True
+        assert config.audit_log == "off"
+
+    def test_defaults(self, monkeypatch):
+        monkeypatch.setattr("sys.argv", list(_BASIC_ARGV))
+        config = cli.create_config(cli.parse_args())
+        assert config.read_only is False
+        assert config.table_denylist == [] and config.table_allowlist == []
+        assert config.allow_js_queries is False
+        assert config.write_confirm is False
+        assert config.audit_log == "stderr"
+
+    def test_env_vars(self, monkeypatch):
+        monkeypatch.setenv("SERVICENOW_READ_ONLY", "true")
+        monkeypatch.setenv("SERVICENOW_TABLE_DENYLIST", "sys_*")
+        monkeypatch.setenv("SERVICENOW_WRITE_CONFIRM", "1")
+        monkeypatch.setenv("SERVICENOW_AUDIT_LOG", "/tmp/audit.jsonl")
+        monkeypatch.setattr("sys.argv", list(_BASIC_ARGV))
+        config = cli.create_config(cli.parse_args())
+        assert config.read_only is True
+        assert config.table_denylist == ["sys_*"]
+        assert config.write_confirm is True
+        assert config.audit_log == "/tmp/audit.jsonl"
+
+    def test_unexpanded_plugin_placeholders_are_ignored(self, monkeypatch):
+        """Claude Code passes unset plugin env vars through as literal ${VAR}."""
+        monkeypatch.setenv("SERVICENOW_TIMEOUT", "${SERVICENOW_TIMEOUT}")
+        monkeypatch.setenv("SERVICENOW_READ_ONLY", "${SERVICENOW_READ_ONLY}")
+        monkeypatch.setenv("SERVICENOW_AUDIT_LOG", "${SERVICENOW_AUDIT_LOG}")
+        monkeypatch.setenv("SERVICENOW_TABLE_DENYLIST", "")
+        monkeypatch.setenv("SERVICENOW_API_KEY_HEADER", "${SERVICENOW_API_KEY_HEADER}")
+        monkeypatch.setattr("sys.argv", list(_BASIC_ARGV))
+        args = cli.parse_args()
+        assert args.timeout == 30
+        assert args.read_only is False
+        assert args.audit_log == "stderr"
+        assert args.table_denylist is None
+        assert args.api_key_header == "X-ServiceNow-API-Key"
+
+    def test_read_only_hides_write_tools(self, monkeypatch):
+        import asyncio
+
+        from fastmcp import Client
+
+        from servicenow_mcp.server import mcp
+
+        monkeypatch.setattr("sys.argv", [*_BASIC_ARGV, "--read-only"])
+        with patch("servicenow_mcp.server.mcp.run"):
+            cli.main()
+
+        async def count():
+            async with Client(mcp) as client:
+                return len(await client.list_tools())
+
+        assert asyncio.run(count()) == 12
+
+    def test_audit_log_configured(self, monkeypatch):
+        from servicenow_mcp.middleware import audit
+
+        monkeypatch.setattr("sys.argv", list(_BASIC_ARGV))
+        with patch("servicenow_mcp.server.mcp.run"):
+            cli.main()
+        assert audit.is_enabled() is True
+        monkeypatch.setattr("sys.argv", [*_BASIC_ARGV, "--audit-log", "off"])
+        with patch("servicenow_mcp.server.mcp.run"):
+            cli.main()
+        assert audit.is_enabled() is False
+
+
+class TestStaticTokensNeedServiceAccount:
+    _HTTP_STATIC = [
+        "mcp-server-servicenow",
+        "--instance-url",
+        "https://test.service-now.com",
+        "--transport",
+        "streamable-http",
+        "--mcp-static-tokens",
+        "tok-1",
+    ]
+
+    def test_without_creds_exits_with_clear_message(self, monkeypatch, caplog):
+        monkeypatch.setattr("sys.argv", list(self._HTTP_STATIC))
+        with patch("servicenow_mcp.server.mcp.run") as mock_run:
+            with pytest.raises(SystemExit) as exc_info:
+                cli.main()
+        assert exc_info.value.code == 1
+        mock_run.assert_not_called()
+        assert "MCP_STATIC_TOKENS requires ServiceNow service-account" in caplog.text
+
+    def test_api_key_counts_as_service_account(self, monkeypatch):
+        monkeypatch.setattr(
+            "sys.argv",
+            [*self._HTTP_STATIC, "--auth-type", "api_key", "--api-key", "k-1"],
+        )
+        from servicenow_mcp import server
+
+        with patch("servicenow_mcp.server.mcp.run") as mock_run:
+            cli.main()
+        mock_run.assert_called_once()
+        assert server.get_auth_manager().config.type.value == "api_key"
+
+    def test_oauth_proxy_plus_static_builds_auth_manager(self, monkeypatch):
+        monkeypatch.setattr(
+            "sys.argv",
+            [
+                *self._HTTP_STATIC,
+                "--mcp-oauth-client-id",
+                "cid",
+                "--mcp-oauth-client-secret",
+                "csecret",
+                "--mcp-base-url",
+                "https://mcp.example.com",
+                "--username",
+                "svc",
+                "--password",
+                "pw",
+            ],
+        )
+        from servicenow_mcp import server
+
+        with (
+            patch("servicenow_mcp.auth.sn_oauth_provider.ServiceNowProvider"),
+            patch("servicenow_mcp.server.mcp.run") as mock_run,
+        ):
+            cli.main()
+        mock_run.assert_called_once()
+        assert server.get_auth_manager().config.basic.username == "svc"
+        assert type(server.mcp.auth).__name__ == "MultiAuth"
+
+    def test_oauth_proxy_plus_static_without_creds_exits(self, monkeypatch):
+        monkeypatch.setattr(
+            "sys.argv",
+            [
+                *self._HTTP_STATIC,
+                "--mcp-oauth-client-id",
+                "cid",
+                "--mcp-oauth-client-secret",
+                "csecret",
+                "--mcp-base-url",
+                "https://mcp.example.com",
+            ],
+        )
+        with patch("servicenow_mcp.server.mcp.run") as mock_run:
+            with pytest.raises(SystemExit):
+                cli.main()
         mock_run.assert_not_called()

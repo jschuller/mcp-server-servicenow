@@ -50,7 +50,7 @@ class TestBearerTokenInApiRequest:
         """With bearer_token, a 401 should raise immediately (no retry)."""
         mock_request.return_value = _mock_response(401)
 
-        with pytest.raises(ServiceNowAPIError, match="per-user OAuth token"):
+        with pytest.raises(ServiceNowAPIError, match="bearer-token request"):
             api_request("GET", URL, bearer_token="expired-token")
 
         # Should only be called once (no retry)
@@ -115,6 +115,36 @@ class TestGetSnBearerToken:
         ):
             result = get_sn_bearer_token()
             assert result is None
+
+    def test_returns_none_for_static_token(self) -> None:
+        """Static MCP tokens are tagged sn_auth=service-account and never forwarded."""
+        from fastmcp.server.auth.auth import AccessToken
+
+        from servicenow_mcp.server import get_sn_bearer_token
+
+        token = AccessToken(
+            token="static-secret",
+            client_id="static-client-1",
+            scopes=[],
+            claims={"client_id": "static-client-1", "sn_auth": "service-account"},
+        )
+        with patch("fastmcp.server.dependencies.get_access_token", return_value=token):
+            assert get_sn_bearer_token() is None
+
+    def test_returns_token_for_oauth_claims(self) -> None:
+        """Per-user OAuth tokens (realistic claims, no sn_auth tag) are forwarded."""
+        from fastmcp.server.auth.auth import AccessToken
+
+        from servicenow_mcp.server import get_sn_bearer_token
+
+        token = AccessToken(
+            token="sn-user-oauth-token",
+            client_id="mcp-client",
+            scopes=["useraccount"],
+            claims={"user_name": "admin", "sub": "admin"},
+        )
+        with patch("fastmcp.server.dependencies.get_access_token", return_value=token):
+            assert get_sn_bearer_token() == "sn-user-oauth-token"
 
     def test_returns_none_on_exception(self) -> None:
         """If get_access_token raises, return None (don't crash)."""

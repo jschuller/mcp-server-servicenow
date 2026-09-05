@@ -1,6 +1,7 @@
 """HTTP request helper with proper error handling for ServiceNow API responses."""
 
 import logging
+from urllib.parse import quote
 from typing import Any, Dict, Optional
 
 import requests
@@ -35,6 +36,15 @@ def _error_context(response: "requests.Response") -> str:
         parts.append(f"Headers: {diag}")
 
     return " | ".join(parts) if parts else ""
+
+
+def build_url(base: str, *segments: str) -> str:
+    """Join URL path segments onto ``base``, percent-encoding each segment.
+
+    Identifiers such as table names and sys_ids come from tool arguments; encoding
+    them means ``../`` or ``?sysparm_query=`` can never rewrite the request path.
+    """
+    return base + "".join("/" + quote(str(segment), safe="") for segment in segments)
 
 
 def api_request(
@@ -95,8 +105,9 @@ def api_request(
         if bearer_token:
             ctx = _error_context(response)
             raise ServiceNowAPIError(
-                f"Authentication failed (401). The per-user OAuth token may be expired. "
-                f"URL: {url}" + (f" | {ctx}" if ctx else "")
+                f"Authentication failed (401) for the bearer-token request. "
+                f"The token may be expired or not valid for this instance. URL: {url}"
+                + (f" | {ctx}" if ctx else "")
             )
         if auth_manager and auth_manager.config.type.value == "oauth":
             logger.info("Got 401, attempting OAuth token refresh and retry")

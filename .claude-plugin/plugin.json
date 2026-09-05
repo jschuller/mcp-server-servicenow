@@ -1,25 +1,43 @@
 {
   "name": "servicenow",
-  "version": "0.6.0",
-  "description": "ServiceNow admin toolkit — incidents, CMDB, update sets, table explorer. 19 MCP tools + 4 guided skills.",
+  "version": "0.7.0",
+  "description": "ServiceNow developer data plane — incidents, CMDB, update sets, table explorer. 19 MCP tools + 4 guided skills, read-only mode, audit log.",
   "author": {
     "name": "Josh Schuller"
   },
   "homepage": "https://github.com/jschuller/mcp-server-servicenow",
   "repository": "https://github.com/jschuller/mcp-server-servicenow",
   "license": "MIT",
-  "keywords": ["servicenow", "itsm", "cmdb", "incidents", "update-sets", "mcp"],
+  "keywords": [
+    "servicenow",
+    "itsm",
+    "cmdb",
+    "incidents",
+    "update-sets",
+    "mcp"
+  ],
   "mcpServers": {
     "servicenow": {
       "command": "uvx",
-      "args": ["--prerelease", "allow", "mcp-server-servicenow"],
+      "args": [
+        "mcp-server-servicenow"
+      ],
       "env": {
         "SERVICENOW_INSTANCE_URL": "${SERVICENOW_INSTANCE_URL}",
         "SERVICENOW_AUTH_TYPE": "${SERVICENOW_AUTH_TYPE}",
         "SERVICENOW_USERNAME": "${SERVICENOW_USERNAME}",
         "SERVICENOW_PASSWORD": "${SERVICENOW_PASSWORD}",
         "SERVICENOW_CLIENT_ID": "${SERVICENOW_CLIENT_ID}",
-        "SERVICENOW_CLIENT_SECRET": "${SERVICENOW_CLIENT_SECRET}"
+        "SERVICENOW_CLIENT_SECRET": "${SERVICENOW_CLIENT_SECRET}",
+        "SERVICENOW_API_KEY": "${SERVICENOW_API_KEY:-}",
+        "SERVICENOW_API_KEY_HEADER": "${SERVICENOW_API_KEY_HEADER:-X-ServiceNow-API-Key}",
+        "SERVICENOW_TIMEOUT": "${SERVICENOW_TIMEOUT:-30}",
+        "SERVICENOW_READ_ONLY": "${SERVICENOW_READ_ONLY:-false}",
+        "SERVICENOW_TABLE_ALLOWLIST": "${SERVICENOW_TABLE_ALLOWLIST:-}",
+        "SERVICENOW_TABLE_DENYLIST": "${SERVICENOW_TABLE_DENYLIST:-}",
+        "SERVICENOW_ALLOW_JS_QUERIES": "${SERVICENOW_ALLOW_JS_QUERIES:-false}",
+        "SERVICENOW_WRITE_CONFIRM": "${SERVICENOW_WRITE_CONFIRM:-false}",
+        "SERVICENOW_AUDIT_LOG": "${SERVICENOW_AUDIT_LOG:-stderr}"
       }
     }
   }

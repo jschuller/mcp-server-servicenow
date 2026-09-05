@@ -163,3 +163,7 @@ Analyze incident trends — top categories, repeat offenders, SLA status.
 - SLA fields (`sla_due`, `made_sla`) track whether response/resolution targets are met.
 - Assignment groups can be looked up: `list_records(table_name="sys_user_group", query="nameLIKE<keyword>", fields="name,sys_id")`.
 - See `references/incident-fields.md` for encoded query patterns and field reference.
+
+## Notes on writes
+
+`update_record` mutates the incident immediately. If the server was started with `--write-confirm`, the call may instead return a `confirmation_required` error containing the record's current values (clients that cannot show a dialog, such as Claude Desktop) — show that preview to the user and re-run with `confirm=true` only once they agree. `Declined by user` means stop.

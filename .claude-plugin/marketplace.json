@@ -1,0 +1,30 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "mcp-server-servicenow",
+  "description": "ServiceNow developer data plane for Claude Code — Table API, CMDB, update sets, schema, with read-only mode and an audit log.",
+  "owner": {
+    "name": "Josh Schuller",
+    "url": "https://github.com/jschuller"
+  },
+  "plugins": [
+    {
+      "name": "servicenow",
+      "description": "ServiceNow developer data plane — incidents, CMDB, update sets, table explorer. 19 MCP tools + 4 guided skills, read-only mode, audit log.",
+      "source": "./",
+      "category": "development",
+      "author": {
+        "name": "Josh Schuller"
+      },
+      "homepage": "https://github.com/jschuller/mcp-server-servicenow",
+      "license": "MIT",
+      "keywords": [
+        "servicenow",
+        "itsm",
+        "cmdb",
+        "incidents",
+        "update-sets",
+        "mcp"
+      ]
+    }
+  ]
+}

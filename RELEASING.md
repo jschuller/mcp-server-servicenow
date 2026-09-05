@@ -18,11 +18,12 @@ the release (see Failure modes).
 
 ## Pre-flight
 
-1. **Version bump** — one version, four fields (CI's "Check version
+1. **Version bump** — one version, five fields (CI's "Check version
    consistency" step enforces agreement):
    - `pyproject.toml` → `version`
    - `src/servicenow_mcp/__init__.py` → `__version__`
    - `server.json` → top-level `version` **and** `packages[0].version`
+   - `.claude-plugin/plugin.json` → `version` (missed in v0.6.1 — hence the check)
 
    Then `uv lock` (the lockfile records the project's own version), a
    `CHANGELOG.md` section (`## [X.Y.Z] - YYYY-MM-DD`), and the README
@@ -48,7 +49,20 @@ the release (see Failure modes).
    `content-type: application/json` (~1–2 min). Quote URLs containing `?`
    in zsh or the curl probe silently never runs.
 
-3. Push to main and wait for CI green — the test matrix (3.11/3.12/3.13)
+3. **Real-client check** (the unit suite drives an in-memory client; these
+   surfaces behave differently):
+   - Claude Code: `claude mcp add servicenow-dev -- uv run --directory . mcp-server-servicenow …`,
+     then update a scratch incident — default config must need no prompt
+     beyond Claude Code's permission gate; with `--write-confirm` the
+     elicitation dialog must appear and *Decline* must stop the write.
+   - Claude Desktop: point `claude_desktop_config.json` at the local build;
+     default works; `--write-confirm` yields `confirmation_required` and a
+     `confirm=true` retry succeeds.
+   - Plugin: `claude --plugin-dir .` with only `SERVICENOW_INSTANCE_URL/USERNAME/PASSWORD`
+     set must start (the `${VAR:-default}` passthrough check).
+   - `/servicenow:review-update-set` and `/servicenow:triage` still work.
+
+4. Push to main and wait for CI green — the test matrix (3.11/3.12/3.13)
    plus the `package` job (version consistency, `uv lock --check`,
    build + twine).
 
@@ -69,8 +83,7 @@ The tag must be exactly `v` + the pyproject version.
    `curl -s 'https://registry.modelcontextprotocol.io/v0/servers?search=io.github.jschuller/mcp-server-servicenow'`
    → newest entry `isLatest: true`.
 4. Fresh-install smoke test:
-   `uvx --no-cache --prerelease allow mcp-server-servicenow==X.Y.Z --help`
-   (drop `--prerelease allow` once FastMCP 4.0 stable lands — issue #8).
+   `uvx --no-cache mcp-server-servicenow==X.Y.Z --help`
 
 ## Failure modes & recovery
 

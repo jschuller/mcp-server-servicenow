@@ -2,8 +2,8 @@
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.jschuller/mcp-server-servicenow",
   "title": "ServiceNow MCP Server",
-  "description": "19 tools + 5 resources for ServiceNow: CMDB, update sets, tables. OAuth 2.1. Tokyo+, PKCE SanDiego+",
-  "version": "0.6.1",
+  "description": "ServiceNow developer data plane: Table API, CMDB, update sets, schema. Read-only, allow/deny, audit.",
+  "version": "0.7.0",
   "repository": {
     "url": "https://github.com/jschuller/mcp-server-servicenow",
     "source": "github"
@@ -12,7 +12,7 @@
     {
       "registryType": "pypi",
       "identifier": "mcp-server-servicenow",
-      "version": "0.6.1",
+      "version": "0.7.0",
       "transport": {
         "type": "stdio"
       },
@@ -54,6 +54,67 @@
           "description": "OAuth client secret",
           "format": "string",
           "isSecret": true
+        },
+        {
+          "name": "SERVICENOW_API_KEY",
+          "isRequired": false,
+          "description": "API key for api_key auth",
+          "format": "string",
+          "isSecret": true
+        },
+        {
+          "name": "SERVICENOW_API_KEY_HEADER",
+          "isRequired": false,
+          "description": "Header name for api_key auth (default X-ServiceNow-API-Key)",
+          "format": "string"
+        },
+        {
+          "name": "SERVICENOW_TOKEN_URL",
+          "isRequired": false,
+          "description": "OAuth token URL (default <instance>/oauth_token.do)",
+          "format": "string"
+        },
+        {
+          "name": "SERVICENOW_TIMEOUT",
+          "isRequired": false,
+          "description": "HTTP timeout in seconds (default 30)",
+          "format": "number"
+        },
+        {
+          "name": "SERVICENOW_READ_ONLY",
+          "isRequired": false,
+          "description": "Hide write tools and refuse non-GET requests",
+          "format": "boolean"
+        },
+        {
+          "name": "SERVICENOW_TABLE_ALLOWLIST",
+          "isRequired": false,
+          "description": "Comma-separated tables/globs that may be accessed",
+          "format": "string"
+        },
+        {
+          "name": "SERVICENOW_TABLE_DENYLIST",
+          "isRequired": false,
+          "description": "Comma-separated tables/globs that may never be accessed",
+          "format": "string"
+        },
+        {
+          "name": "SERVICENOW_ALLOW_JS_QUERIES",
+          "isRequired": false,
+          "description": "Permit arbitrary javascript: in caller queries",
+          "format": "boolean"
+        },
+        {
+          "name": "SERVICENOW_WRITE_CONFIRM",
+          "isRequired": false,
+          "description": "Confirm update/delete via MCP elicitation (opt-in)",
+          "format": "boolean"
+        },
+        {
+          "name": "SERVICENOW_AUDIT_LOG",
+          "isRequired": false,
+          "description": "Audit log target: stderr (default), off, or a file path",
+          "format": "string"
         }
       ]
     }

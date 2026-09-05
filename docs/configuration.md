@@ -11,7 +11,7 @@ Copy `.mcp.json.example` to `.mcp.json` and fill in your credentials. The JSON f
   "mcpServers": {
     "servicenow": {
       "command": "uvx",
-      "args": ["--prerelease", "allow", "mcp-server-servicenow"],
+      "args": ["mcp-server-servicenow"],
       "env": {
         "SERVICENOW_INSTANCE_URL": "https://your-instance.service-now.com",
         "SERVICENOW_AUTH_TYPE": "basic",
@@ -30,7 +30,7 @@ Copy `.mcp.json.example` to `.mcp.json` and fill in your credentials. The JSON f
   "mcpServers": {
     "servicenow": {
       "command": "uvx",
-      "args": ["--prerelease", "allow", "mcp-server-servicenow"],
+      "args": ["mcp-server-servicenow"],
       "env": {
         "SERVICENOW_INSTANCE_URL": "https://your-instance.service-now.com",
         "SERVICENOW_AUTH_TYPE": "oauth",
@@ -44,6 +44,27 @@ Copy `.mcp.json.example` to `.mcp.json` and fill in your credentials. The JSON f
 }
 ```
 
+### Read-only with a table denylist (stdio)
+
+```json
+{
+  "mcpServers": {
+    "servicenow-prod-ro": {
+      "command": "uvx",
+      "args": ["mcp-server-servicenow", "--read-only"],
+      "env": {
+        "SERVICENOW_INSTANCE_URL": "https://prod12345.service-now.com",
+        "SERVICENOW_AUTH_TYPE": "basic",
+        "SERVICENOW_USERNAME": "svc-readonly",
+        "SERVICENOW_PASSWORD": "prod-password",
+        "SERVICENOW_TABLE_DENYLIST": "sys_user*,sys_user_has_role,oauth_*",
+        "SERVICENOW_AUDIT_LOG": "/var/log/servicenow-mcp/audit.jsonl"
+      }
+    }
+  }
+}
+```
+
 ### Multiple Instances
 
 ```json
@@ -51,7 +72,7 @@ Copy `.mcp.json.example` to `.mcp.json` and fill in your credentials. The JSON f
   "mcpServers": {
     "servicenow-dev": {
       "command": "uvx",
-      "args": ["--prerelease", "allow", "mcp-server-servicenow"],
+      "args": ["mcp-server-servicenow"],
       "env": {
         "SERVICENOW_INSTANCE_URL": "https://dev12345.service-now.com",
         "SERVICENOW_AUTH_TYPE": "basic",
@@ -61,7 +82,7 @@ Copy `.mcp.json.example` to `.mcp.json` and fill in your credentials. The JSON f
     },
     "servicenow-prod": {
       "command": "uvx",
-      "args": ["--prerelease", "allow", "mcp-server-servicenow"],
+      "args": ["mcp-server-servicenow"],
       "env": {
         "SERVICENOW_INSTANCE_URL": "https://prod12345.service-now.com",
         "SERVICENOW_AUTH_TYPE": "oauth",
@@ -89,6 +110,9 @@ All settings can be passed as CLI args or environment variables. See `.env.examp
 | `SERVICENOW_CLIENT_SECRET` | `--client-secret` | OAuth client secret |
 | `SERVICENOW_API_KEY` | `--api-key` | API key for api_key auth |
 | `SERVICENOW_API_KEY_HEADER` | `--api-key-header` | API key header name (default: X-ServiceNow-API-Key) |
+| `SERVICENOW_TOKEN_URL` | `--token-url` | OAuth token URL (default: `<instance>/oauth_token.do`) |
+| `SERVICENOW_TIMEOUT` | `--timeout` | HTTP timeout in seconds (default: 30) |
+| `SERVICENOW_DEBUG` | `--debug` | Debug logging (`true`/`false`) |
 | `MCP_TRANSPORT` | `--transport` | `stdio` (default) or `streamable-http` |
 | `MCP_HOST` | `--host` | HTTP bind address (default: `127.0.0.1`; set `0.0.0.0` to listen on all interfaces) |
 | `PORT` | `--port` | HTTP port (default: 8080) |
@@ -96,3 +120,16 @@ All settings can be passed as CLI args or environment variables. See `.env.examp
 | `MCP_OAUTH_CLIENT_ID` | `--mcp-oauth-client-id` | SN OAuth app client ID for MCP endpoint auth |
 | `MCP_OAUTH_CLIENT_SECRET` | `--mcp-oauth-client-secret` | SN OAuth app client secret for MCP endpoint auth |
 | `MCP_BASE_URL` | `--mcp-base-url` | Public URL of this MCP server |
+
+### Safety rails
+
+| Variable | CLI Arg | Description |
+|----------|---------|-------------|
+| `SERVICENOW_READ_ONLY` | `--read-only` | Hide the 7 write tools and refuse non-GET requests (default: off) |
+| `SERVICENOW_TABLE_ALLOWLIST` | `--table-allowlist` | Comma-separated tables/globs that may be accessed (empty = all) |
+| `SERVICENOW_TABLE_DENYLIST` | `--table-denylist` | Comma-separated tables/globs that may never be accessed; wins over the allowlist |
+| `SERVICENOW_ALLOW_JS_QUERIES` | `--allow-js-queries` | Permit arbitrary `javascript:` in caller queries (default: only `gs.*` date helpers) |
+| `SERVICENOW_WRITE_CONFIRM` | `--write-confirm` | Ask the user to confirm `update_record` / `update_ci` / `delete_record` via MCP elicitation (default: off) |
+| `SERVICENOW_AUDIT_LOG` | `--audit-log` | `stderr` (default), `off`, or a file path for the JSON audit log |
+
+Boolean env vars accept `1`, `true`, `yes`, `on` (case-insensitive). Empty values and unexpanded `${VAR}` placeholders (as Claude Code passes for unset plugin env vars) are treated as unset.

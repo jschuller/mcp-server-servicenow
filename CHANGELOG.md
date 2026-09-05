@@ -1,5 +1,127 @@
 # Changelog
 
+## [0.7.0] - 2026-09-05
+
+"Developer data plane, with guardrails." Closes the write-safety and
+auditability gap identified in the Action Fabric gap analysis, fixes the
+correctness bugs found during that diligence, and restates what this server is
+for: the raw Table API / schema / aggregates / update-set loop that ServiceNow's
+native MCP Server Console excludes by design.
+
+### Upgrade notes
+No default-path change breaks a documented client, but five behaviours differ
+from 0.6.x:
+- **`delete_record` returns a dict** (`{"deleted": true, "table", "sys_id"}`)
+  instead of the sentence `"Record … deleted from …"`.
+- **`get_table_schema` / `servicenow://schema/{table}` include inherited
+  fields by default** — `incident` now shows its `task` columns. Output gains
+  `hierarchy` and per-field `defined_in` (existing keys unchanged); `limit`
+  defaults to 200 (max 1000). Pass `include_inherited=false` for the old
+  direct-only behaviour. Expect 2–3× more fields and one extra ServiceNow call
+  per parent table.
+- **`javascript:` in caller-supplied queries is restricted** to GlideSystem date
+  helpers (`gs.daysAgo*`, `gs.beginningOf*`, `gs.endOf*`, `gs.*AgoStart/End`,
+  `gs.now*`). Everything the shipped skills and the query-syntax resource teach
+  still works; `gs.getUserName()`, `GlideRecord`, `;` etc. are rejected with a
+  message naming `--allow-js-queries` / `SERVICENOW_ALLOW_JS_QUERIES=true`.
+- **A JSON audit line per call is written to stderr by default.** Claude Desktop
+  shows it in `mcp-server-servicenow.log`; Claude Code only in debug logs.
+  `--audit-log off` or `--audit-log /path/file.jsonl` to change.
+- **`MCP_STATIC_TOKENS` now requires ServiceNow service-account credentials**
+  (basic, api_key, or OAuth client credentials) and no longer forwards the
+  static token to ServiceNow. In 0.6.x that mode 401'd on every call, so
+  nothing that worked stops working — unless you had pasted a real ServiceNow
+  bearer into `MCP_STATIC_TOKENS` as a workaround.
+- `update_record`, `update_ci` and `delete_record` gain an inert
+  `confirm: bool = false` argument (only consulted under `--write-confirm`).
+
+### Added
+- **Tool annotations** on all 19 tools (`readOnlyHint`, `destructiveHint`,
+  `idempotentHint`, `openWorldHint`) so clients can apply their own permission
+  policies; Claude Code shows them in `/mcp`.
+- **`--read-only` / `SERVICENOW_READ_ONLY`** — hides the 7 write tools and, as
+  defence in depth, refuses any non-GET request in `make_sn_request`.
+- **Table allow/deny lists** (`--table-allowlist`, `--table-denylist`; exact or
+  glob, deny wins) enforced by a `PolicyMiddleware` on `table_name`,
+  `class_name`, the fixed-table tools and the schema resource.
+- **Opt-in destructive-call confirmation** (`--write-confirm`): `update_record`,
+  `update_ci`, `delete_record` show the record's current values and ask via
+  MCP elicitation — `ctx.elicit()` on handshake-era connections (Claude Code,
+  Cursor), the 2026-07-28 multi round-trip `InputRequiredResult` on modern
+  ones. Decline is final; a synthetic cancel (Claude Desktop/Cowork) or a
+  client without elicitation falls back to an explicit `confirm=true`.
+- **JSON audit log** (`AuditMiddleware`): user, auth mode, transport, tool,
+  table, sys_id, redacted query, data keys, tags, outcome, duration. Never
+  stdout, never values.
+- `get_table_schema(include_inherited=…)` and the schema resource walk
+  `sys_db_object.super_class` (depth ≤ 10, per-table queries with a child-first
+  budget, graceful fallback when `sys_db_object` is unreadable).
+- `get_ci_relationships` gains `limit` (default 100, max 1000) and `offset`.
+- CLI helpers treat empty and unexpanded `${VAR}` environment values as unset —
+  the Claude Code plugin can now pass every option through with
+  `${VAR:-default}` without crashing startup when a var is not set.
+- `servicenow://cmdb/classes` returns `super_class` as the parent's name
+  instead of a `{link, value}` reference.
+- **`.claude-plugin/marketplace.json`** — the plugin is now actually
+  installable: `claude plugin marketplace add jschuller/mcp-server-servicenow`
+  then `claude plugin install servicenow@mcp-server-servicenow`. Deliberately
+  carries no `version` field, so it does not become a sixth version string to
+  keep in sync (marketplace entries validate against `plugin.json` only when
+  they declare one).
+
+### Security
+- **Encoded-query hardening**: caller-supplied `query`/`having` reject
+  arbitrary `javascript:`; table names, sys_ids, `relation_type`, `state`,
+  `order_by` and field lists are validated; URL path segments are
+  percent-encoded so `../` or `?sysparm_query=` in an identifier can no longer
+  rewrite a request or bypass a denylist.
+- Static MCP tokens are tagged `sn_auth: service-account` and never forwarded
+  to ServiceNow as a bearer.
+- **`mcp-publisher` is pinned and checksum-verified** in `publish-mcp.yml`
+  (v1.8.1, SHA-256 from that release's `checksums.txt`). It previously came
+  from `releases/latest` unverified while running in a job holding the OIDC
+  token that authorizes publishing to the `io.github.jschuller/*` namespace —
+  the one unpinned artifact in an otherwise SHA-pinned pipeline.
+
+### Fixed
+- HTTP + `MCP_STATIC_TOKENS` mode: the caller's MCP token was sent to
+  ServiceNow as `Authorization: Bearer`, so every call failed 401 with a
+  misleading "per-user OAuth token may be expired" message. The configured
+  service account is now used (any credential type), and the startup error is
+  explicit when it is missing.
+- `.claude-plugin/plugin.json` had drifted to 0.6.0; CI's version check now
+  covers it (five fields).
+- `SECURITY.md` supported-versions table (was still 0.3.x); README skills path
+  (`skills/`, shipped via the plugin).
+- **README's plugin install command never existed.** It documented
+  `claude plugin add --from <url>`; there is no `add` subcommand (the verbs are
+  `install`, `marketplace`, `list`, `validate`, …), so the advertised plugin
+  install has been broken since it was written. Replaced with the real
+  marketplace flow, verified end to end.
+- **README's HTTP "From Source" example could not start.** It passed only
+  ServiceNow credentials, so the fail-closed guard rejected it with
+  `refusing to start streamable-http listener without authentication`. Now
+  shows `--mcp-static-tokens`, verified to serve 200 with a bearer and 401
+  without.
+
+### Changed
+- **FastMCP 4.0 is stable** (4.0.0 landed 2026-08-31): pin `4.0.0b2` →
+  `>=4.0.3,<5`. `uvx mcp-server-servicenow` no longer needs `--prerelease
+  allow` — the flag is gone from the README, `.mcp.json.example`, the plugin
+  manifest, `docs/configuration.md` and the release checklist (13 occurrences),
+  together with the two workarounds that existed only to resolve a pre-release
+  at depth 2: the redundant `fastmcp-slim[client,server]` direct dependency and
+  `[tool.uv] prerelease = "allow"` (closes #8).
+- `anyio` declared as a direct dependency (async write tools run ServiceNow
+  I/O on a worker thread).
+- README: "developer data plane that runs alongside the native MCP Server"
+  positioning, corrected native comparison table (Zurich P9 / Australia P2,
+  Table API excluded, not on PDIs/GCC, OAuth 2.0 via Machine Identity
+  Console), new Safety & governance section.
+- `server.json` lists every environment variable; `docs/configuration.md`,
+  `docs/deployment.md`, `TROUBLESHOOTING.md`, `RELEASING.md` and
+  `.env.example` cover the new flags.
+
 ## [0.6.1] - 2026-08-13
 
 ### Added

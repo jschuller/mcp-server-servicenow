@@ -4,7 +4,7 @@ import argparse
 import logging
 import os
 import sys
-from typing import Any
+from typing import Any, List, Optional
 
 from dotenv import load_dotenv
 
@@ -23,6 +23,49 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+_TRUE_VALUES = {"1", "true", "yes", "on"}
+
+
+def _env_str(name: str, default: Optional[str] = None) -> Optional[str]:
+    """Read an env var, treating empty strings and unexpanded ``${VAR}`` as unset.
+
+    Claude Code passes plugin env vars through verbatim when they are not set
+    on the host (``"${SERVICENOW_TIMEOUT}"``), so the literal must not reach
+    ``int()`` or a file path.
+    """
+    value = os.environ.get(name)
+    if value is None:
+        return default
+    value = value.strip()
+    if not value or (value.startswith("${") and value.endswith("}")):
+        return default
+    return value
+
+
+def _env_bool(name: str, default: bool = False) -> bool:
+    value = _env_str(name)
+    if value is None:
+        return default
+    return value.lower() in _TRUE_VALUES
+
+
+def _env_int(name: str, default: int) -> int:
+    value = _env_str(name)
+    if value is None:
+        return default
+    try:
+        return int(value)
+    except ValueError:
+        logger.warning("Ignoring non-integer %s=%r; using %d", name, value, default)
+        return default
+
+
+def _parse_csv(value: Optional[str]) -> List[str]:
+    """Split a comma-separated list, dropping blanks."""
+    if not value:
+        return []
+    return [item.strip() for item in value.split(",") if item.strip()]
+
 
 def parse_args() -> argparse.Namespace:
     """Parse command-line arguments."""
@@ -31,44 +74,42 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--instance-url",
         help="ServiceNow instance URL",
-        default=os.environ.get("SERVICENOW_INSTANCE_URL"),
+        default=_env_str("SERVICENOW_INSTANCE_URL"),
     )
     parser.add_argument(
         "--debug",
         action="store_true",
-        default=os.environ.get("SERVICENOW_DEBUG", "false").lower() == "true",
+        default=_env_bool("SERVICENOW_DEBUG", False),
     )
     parser.add_argument(
         "--timeout",
         type=int,
-        default=int(os.environ.get("SERVICENOW_TIMEOUT", "30")),
+        default=_env_int("SERVICENOW_TIMEOUT", 30),
     )
     parser.add_argument(
         "--auth-type",
         choices=["basic", "oauth", "api_key"],
-        default=os.environ.get("SERVICENOW_AUTH_TYPE", "basic"),
+        default=_env_str("SERVICENOW_AUTH_TYPE", "basic"),
     )
-    parser.add_argument("--username", default=os.environ.get("SERVICENOW_USERNAME"))
-    parser.add_argument("--password", default=os.environ.get("SERVICENOW_PASSWORD"))
-    parser.add_argument("--client-id", default=os.environ.get("SERVICENOW_CLIENT_ID"))
-    parser.add_argument(
-        "--client-secret", default=os.environ.get("SERVICENOW_CLIENT_SECRET")
-    )
-    parser.add_argument("--token-url", default=os.environ.get("SERVICENOW_TOKEN_URL"))
-    parser.add_argument("--api-key", default=os.environ.get("SERVICENOW_API_KEY"))
+    parser.add_argument("--username", default=_env_str("SERVICENOW_USERNAME"))
+    parser.add_argument("--password", default=_env_str("SERVICENOW_PASSWORD"))
+    parser.add_argument("--client-id", default=_env_str("SERVICENOW_CLIENT_ID"))
+    parser.add_argument("--client-secret", default=_env_str("SERVICENOW_CLIENT_SECRET"))
+    parser.add_argument("--token-url", default=_env_str("SERVICENOW_TOKEN_URL"))
+    parser.add_argument("--api-key", default=_env_str("SERVICENOW_API_KEY"))
     parser.add_argument(
         "--api-key-header",
-        default=os.environ.get("SERVICENOW_API_KEY_HEADER", "X-ServiceNow-API-Key"),
+        default=_env_str("SERVICENOW_API_KEY_HEADER", "X-ServiceNow-API-Key"),
     )
     parser.add_argument(
         "--transport",
         choices=["stdio", "streamable-http"],
-        default=os.environ.get("MCP_TRANSPORT", "stdio"),
+        default=_env_str("MCP_TRANSPORT", "stdio"),
         help="MCP transport type (default: stdio)",
     )
     parser.add_argument(
         "--host",
-        default=os.environ.get("MCP_HOST", "127.0.0.1"),
+        default=_env_str("MCP_HOST", "127.0.0.1"),
         help=(
             "Host to bind to for HTTP transport (default: 127.0.0.1; "
             "set 0.0.0.0 explicitly to listen on all interfaces)"
@@ -77,45 +118,114 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--port",
         type=int,
-        default=int(os.environ.get("PORT", "8080")),
+        default=_env_int("PORT", 8080),
         help="Port for HTTP transport (default: 8080)",
     )
 
     # MCP endpoint OAuth (per-user SN auth via OAuth 2.1 + PKCE proxy)
     parser.add_argument(
         "--mcp-oauth-client-id",
-        default=os.environ.get("MCP_OAUTH_CLIENT_ID"),
+        default=_env_str("MCP_OAUTH_CLIENT_ID"),
         help="SN OAuth app client ID (from Application Registry) for MCP endpoint auth",
     )
     parser.add_argument(
         "--mcp-oauth-client-secret",
-        default=os.environ.get("MCP_OAUTH_CLIENT_SECRET"),
+        default=_env_str("MCP_OAUTH_CLIENT_SECRET"),
         help="SN OAuth app client secret for MCP endpoint auth",
     )
     parser.add_argument(
         "--mcp-base-url",
-        default=os.environ.get("MCP_BASE_URL"),
+        default=_env_str("MCP_BASE_URL"),
         help="Public URL of this MCP server (e.g. https://my-server.run.app)",
     )
     parser.add_argument(
         "--mcp-static-tokens",
-        default=os.environ.get("MCP_STATIC_TOKENS"),
-        help="Comma-separated static bearer tokens for CI/CD auth (uses service account credentials)",
+        default=_env_str("MCP_STATIC_TOKENS"),
+        help=(
+            "Comma-separated static bearer tokens for CI/CD auth. Callers share the "
+            "configured ServiceNow service-account credentials."
+        ),
+    )
+
+    # Safety rails
+    safety = parser.add_argument_group("safety rails")
+    safety.add_argument(
+        "--read-only",
+        action="store_true",
+        default=_env_bool("SERVICENOW_READ_ONLY", False),
+        help="Hide write tools and refuse non-GET requests (SERVICENOW_READ_ONLY)",
+    )
+    safety.add_argument(
+        "--table-allowlist",
+        default=_env_str("SERVICENOW_TABLE_ALLOWLIST"),
+        help="Comma-separated tables/globs that may be accessed (SERVICENOW_TABLE_ALLOWLIST)",
+    )
+    safety.add_argument(
+        "--table-denylist",
+        default=_env_str("SERVICENOW_TABLE_DENYLIST"),
+        help="Comma-separated tables/globs that may never be accessed (SERVICENOW_TABLE_DENYLIST)",
+    )
+    safety.add_argument(
+        "--allow-js-queries",
+        action="store_true",
+        default=_env_bool("SERVICENOW_ALLOW_JS_QUERIES", False),
+        help="Permit arbitrary javascript: in caller queries (SERVICENOW_ALLOW_JS_QUERIES)",
+    )
+    safety.add_argument(
+        "--write-confirm",
+        action="store_true",
+        default=_env_bool("SERVICENOW_WRITE_CONFIRM", False),
+        help="Ask the user to confirm update/delete calls via MCP elicitation (SERVICENOW_WRITE_CONFIRM)",
+    )
+    safety.add_argument(
+        "--audit-log",
+        default=_env_str("SERVICENOW_AUDIT_LOG", "stderr"),
+        help="Audit log target: 'stderr' (default), 'off', or a file path (SERVICENOW_AUDIT_LOG)",
     )
 
     return parser.parse_args()
 
 
-def create_config(args: argparse.Namespace) -> ServerConfig:
-    """Create server configuration from parsed arguments."""
+def _safety_kwargs(args: argparse.Namespace) -> dict[str, Any]:
+    return {
+        "read_only": bool(getattr(args, "read_only", False)),
+        "table_allowlist": _parse_csv(getattr(args, "table_allowlist", None)),
+        "table_denylist": _parse_csv(getattr(args, "table_denylist", None)),
+        "allow_js_queries": bool(getattr(args, "allow_js_queries", False)),
+        "write_confirm": bool(getattr(args, "write_confirm", False)),
+        "audit_log": getattr(args, "audit_log", None) or "stderr",
+    }
+
+
+def create_config(
+    args: argparse.Namespace, *, require_sn_creds: bool = True
+) -> ServerConfig:
+    """Create server configuration from parsed arguments.
+
+    With ``require_sn_creds=False`` (OAuth-proxy mode without static tokens)
+    no ServiceNow service-account credentials are needed: every request
+    carries the caller's own token.
+    """
     instance_url = args.instance_url
     if not instance_url:
         raise ValueError(
             "ServiceNow instance URL is required (--instance-url or SERVICENOW_INSTANCE_URL)"
         )
 
-    auth_type = AuthType(args.auth_type.lower())
     auth_config: AuthConfig
+    if not require_sn_creds:
+        auth_config = AuthConfig(
+            type=AuthType.BASIC, basic=BasicAuthConfig(username="", password="")
+        )
+        return ServerConfig(
+            instance_url=instance_url,
+            auth=auth_config,
+            debug=args.debug,
+            timeout=args.timeout,
+            **_safety_kwargs(args),
+        )
+
+    auth_type = AuthType(args.auth_type.lower())
 
     if auth_type == AuthType.BASIC:
         if not args.username or not args.password:
@@ -163,6 +273,7 @@ def create_config(args: argparse.Namespace) -> ServerConfig:
         auth=auth_config,
         debug=args.debug,
         timeout=args.timeout,
+        **_safety_kwargs(args),
     )
 
 
@@ -170,7 +281,8 @@ def _parse_static_tokens(args: argparse.Namespace) -> dict[str, dict[str, Any]] 
     """Parse comma-separated static bearer tokens into StaticTokenVerifier format.
 
     Returns None if no tokens configured, otherwise a dict mapping each token
-    to its metadata (client_id for logging/identification).
+    to its metadata. ``sn_auth: service-account`` tells ``get_sn_bearer_token``
+    that this is an MCP credential, not a ServiceNow token to forward.
     """
     raw = getattr(args, "mcp_static_tokens", None)
     if not raw:
@@ -179,7 +291,11 @@ def _parse_static_tokens(args: argparse.Namespace) -> dict[str, dict[str, Any]] 
     for i, token in enumerate(raw.split(","), 1):
         token = token.strip()
         if token:
-            tokens[token] = {"client_id": f"static-client-{i}", "scopes": []}
+            tokens[token] = {
+                "client_id": f"static-client-{i}",
+                "scopes": [],
+                "sn_auth": "service-account",
+            }
     return tokens or None
 
 
@@ -201,38 +317,31 @@ def main() -> None:
             logging.getLogger().setLevel(logging.DEBUG)
 
         use_mcp_oauth = _has_mcp_oauth(args) and args.transport != "stdio"
+        static_tokens = _parse_static_tokens(args)
+        # Static-token callers share one ServiceNow identity, so the service
+        # account is required whenever they are configured — even alongside
+        # the OAuth proxy.
+        require_sn_creds = (not use_mcp_oauth) or bool(static_tokens)
 
-        if use_mcp_oauth:
-            # OAuth proxy mode: per-user SN auth, no global creds needed
-            instance_url = args.instance_url
-            if not instance_url:
+        try:
+            config = create_config(args, require_sn_creds=require_sn_creds)
+        except ValueError as exc:
+            if static_tokens and "instance URL" not in str(exc):
                 raise ValueError(
-                    "ServiceNow instance URL is required "
-                    "(--instance-url or SERVICENOW_INSTANCE_URL)"
-                )
-
-            # Minimal config — SN backend auth is optional in OAuth mode
-            config = ServerConfig(
-                instance_url=instance_url,
-                auth=AuthConfig(
-                    type=AuthType.BASIC, basic=BasicAuthConfig(username="", password="")
-                ),
-                debug=args.debug,
-                timeout=args.timeout,
-            )
-        else:
-            config = create_config(args)
+                    "MCP_STATIC_TOKENS requires ServiceNow service-account "
+                    "credentials (SERVICENOW_USERNAME/PASSWORD, SERVICENOW_API_KEY, "
+                    f"or OAuth client credentials): {exc}"
+                ) from exc
+            raise
 
         logger.info(f"Starting ServiceNow MCP server for {config.instance_url}")
 
         # Initialize services before importing tool modules
         from servicenow_mcp.server import mcp, init_services
 
-        init_services(config, require_auth_manager=not use_mcp_oauth)
+        init_services(config, require_auth_manager=require_sn_creds)
 
         # Wire up MCP endpoint auth
-        static_tokens = _parse_static_tokens(args)
-
         if use_mcp_oauth:
             from servicenow_mcp.auth.sn_oauth_provider import ServiceNowProvider
 
@@ -271,6 +380,24 @@ def main() -> None:
         import servicenow_mcp.tools.system_tools  # noqa: F401
         import servicenow_mcp.tools.update_set_tools  # noqa: F401
         import servicenow_mcp.resources  # noqa: F401
+
+        # Safety rails
+        if config.read_only:
+            mcp.disable(tags={"write"}, components={"tool"})
+            logger.info("Read-only mode: write tools hidden, non-GET requests refused")
+        if config.table_denylist or config.table_allowlist:
+            logger.info(
+                "Table policy: denylist=%s allowlist=%s",
+                config.table_denylist or "-",
+                config.table_allowlist or "-",
+            )
+        if config.write_confirm:
+            logger.info("Write confirmation: on (update/delete prompt via elicitation)")
+
+        from servicenow_mcp.middleware.audit import configure_audit_log
+
+        if configure_audit_log(config.audit_log, transport=args.transport):
+            logger.info("Audit log: %s", config.audit_log)
 
         logger.info(f"Transport: {args.transport}")
         if args.transport == "stdio":

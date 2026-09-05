@@ -6,10 +6,23 @@ Provides CRUD operations on any ServiceNow table via /api/now/table/{table_name}
 import logging
 from typing import Annotated, Any, Dict, Optional
 
+from fastmcp import Context
+from mcp.types import InputRequiredResult
 from pydantic import Field
 
-from servicenow_mcp.server import mcp, get_config, make_sn_request
-from servicenow_mcp.utils.http import parse_json_response
+from servicenow_mcp.confirm import (
+    CONFIRM_ARG_DESCRIPTION,
+    confirm_destructive,
+    fetch_preview,
+)
+from servicenow_mcp.server import (
+    get_config,
+    make_sn_request,
+    make_sn_request_async,
+    mcp,
+)
+from servicenow_mcp.tools import annotations
+from servicenow_mcp.utils.http import build_url, parse_json_response
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +37,7 @@ def _add_order_clause(query: str, order_by: str) -> str:
     return f"{query}^{order_clause}".lstrip("^")
 
 
-@mcp.tool(tags={"read", "table"})
+@mcp.tool(tags={"read", "table"}, annotations=annotations.READ)
 def list_records(
     table_name: Annotated[
         str,
@@ -51,7 +64,7 @@ def list_records(
     """List records from any ServiceNow table with optional filtering, field selection, and pagination"""
     config = get_config()
 
-    url = f"{config.api_url}/table/{table_name}"
+    url = build_url(config.api_url, "table", table_name)
     query_params: Dict[str, Any] = {
         "sysparm_limit": limit,
         "sysparm_offset": offset,
@@ -71,7 +84,7 @@ def list_records(
     return {"count": len(result), "records": result}
 
 
-@mcp.tool(tags={"read", "table"})
+@mcp.tool(tags={"read", "table"}, annotations=annotations.READ)
 def get_record(
     table_name: Annotated[str, Field(description="The ServiceNow table name")],
     sys_id: Annotated[str, Field(description="The sys_id of the record")],
@@ -82,7 +95,7 @@ def get_record(
     """Get a single record from a ServiceNow table by sys_id"""
     config = get_config()
 
-    url = f"{config.api_url}/table/{table_name}/{sys_id}"
+    url = build_url(config.api_url, "table", table_name, sys_id)
     query_params: Dict[str, str] = {}
     if fields:
         query_params["sysparm_fields"] = fields
@@ -92,7 +105,7 @@ def get_record(
     return data.get("result", {})
 
 
-@mcp.tool(tags={"write", "table"})
+@mcp.tool(tags={"write", "table"}, annotations=annotations.CREATE)
 def create_record(
     table_name: Annotated[str, Field(description="The ServiceNow table name")],
     data: Annotated[
@@ -102,45 +115,75 @@ def create_record(
     """Create a new record in any ServiceNow table"""
     config = get_config()
 
-    url = f"{config.api_url}/table/{table_name}"
+    url = build_url(config.api_url, "table", table_name)
     response = make_sn_request("POST", url, config.timeout, json_data=data)
     resp_data = parse_json_response(response, url)
     result = resp_data.get("result", {})
     return {"sys_id": result.get("sys_id"), "record": result}
 
 
-@mcp.tool(tags={"write", "table"})
-def update_record(
+@mcp.tool(tags={"write", "table"}, annotations=annotations.UPDATE)
+async def update_record(
+    ctx: Context,
     table_name: Annotated[str, Field(description="The ServiceNow table name")],
     sys_id: Annotated[str, Field(description="The sys_id of the record to update")],
     data: Annotated[
         Dict[str, Any], Field(description="Fields to update as key-value pairs")
     ],
-) -> Dict[str, Any]:
+    confirm: Annotated[bool, Field(description=CONFIRM_ARG_DESCRIPTION)] = False,
+) -> Dict[str, Any] | InputRequiredResult:
     """Update an existing record in a ServiceNow table"""
     config = get_config()
 
-    url = f"{config.api_url}/table/{table_name}/{sys_id}"
-    response = make_sn_request("PATCH", url, config.timeout, json_data=data)
+    url = build_url(config.api_url, "table", table_name, sys_id)
+    if config.write_confirm:
+        preview = await fetch_preview(url, config.timeout, list(data))
+        ask = await confirm_destructive(
+            ctx,
+            action="Update",
+            table=table_name,
+            sys_id=sys_id,
+            preview=preview,
+            confirm_arg=confirm,
+        )
+        if ask is not None:
+            return ask
+
+    response = await make_sn_request_async("PATCH", url, config.timeout, json_data=data)
     resp_data = parse_json_response(response, url)
     result = resp_data.get("result", {})
     return {"sys_id": result.get("sys_id"), "record": result}
 
 
-@mcp.tool(tags={"write", "table"})
-def delete_record(
+@mcp.tool(tags={"write", "table"}, annotations=annotations.DELETE)
+async def delete_record(
+    ctx: Context,
     table_name: Annotated[str, Field(description="The ServiceNow table name")],
     sys_id: Annotated[str, Field(description="The sys_id of the record to delete")],
-) -> str:
+    confirm: Annotated[bool, Field(description=CONFIRM_ARG_DESCRIPTION)] = False,
+) -> Dict[str, Any] | InputRequiredResult:
     """Delete a record from a ServiceNow table by sys_id"""
     config = get_config()
 
-    url = f"{config.api_url}/table/{table_name}/{sys_id}"
-    make_sn_request("DELETE", url, config.timeout)
-    return f"Record {sys_id} deleted from {table_name}"
+    url = build_url(config.api_url, "table", table_name, sys_id)
+    if config.write_confirm:
+        preview = await fetch_preview(url, config.timeout, ["short_description"])
+        ask = await confirm_destructive(
+            ctx,
+            action="Delete",
+            table=table_name,
+            sys_id=sys_id,
+            preview=preview,
+            confirm_arg=confirm,
+        )
+        if ask is not None:
+            return ask
+
+    await make_sn_request_async("DELETE", url, config.timeout)
+    return {"deleted": True, "table": table_name, "sys_id": sys_id}
 
 
-@mcp.tool(tags={"read", "table"})
+@mcp.tool(tags={"read", "table"}, annotations=annotations.READ)
 def aggregate_records(
     table_name: Annotated[
         str,
@@ -181,7 +224,7 @@ def aggregate_records(
     """Aggregate records using COUNT, AVG, MIN, MAX, SUM with optional GROUP BY via the Stats API"""
     config = get_config()
 
-    url = f"{config.api_url}/stats/{table_name}"
+    url = build_url(config.api_url, "stats", table_name)
     query_params: Dict[str, Any] = {}
 
     if count:

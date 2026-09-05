@@ -46,7 +46,8 @@ jobs:
         with:
           python-version: "3.12"
 
-      # The version lives in four places (pyproject, __init__, server.json x2);
+      # The version lives in five places (pyproject, __init__, server.json x2,
+      # .claude-plugin/plugin.json);
       # a missed bump ships a release where PyPI and the MCP Registry disagree.
       - name: Check version consistency
         run: |
@@ -63,11 +64,14 @@ jobs:
           server_json = json.load(open("server.json"))
           versions["server.json"] = server_json["version"]
           versions["server.json packages[0]"] = server_json["packages"][0]["version"]
+          versions[".claude-plugin/plugin.json"] = json.load(
+              open(".claude-plugin/plugin.json")
+          )["version"]
 
           if len(set(versions.values())) != 1:
               print(f"::error::Version mismatch: {versions}")
               sys.exit(1)
-          print(f"All four version fields agree: {versions['pyproject.toml']}")
+          print(f"All five version fields agree: {versions['pyproject.toml']}")
           EOF
 
       # The test job installs via pip, so nothing else exercises uv.lock —

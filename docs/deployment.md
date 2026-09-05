@@ -69,7 +69,7 @@ Three deployment modes with increasing security:
 | Mode | MCP Endpoint Auth | SN Backend Auth | Use Case |
 |------|------------------|-----------------|----------|
 | **stdio** | None (local process) | Global creds (env vars) | Claude Desktop, Claude Code |
-| **HTTP + static tokens** | Bearer tokens (`MCP_STATIC_TOKENS`) | Global creds (env vars) | CI/CD, development |
+| **HTTP + static tokens** | Bearer tokens (`MCP_STATIC_TOKENS`) | Service account (env vars, **required** — basic, api_key or OAuth client creds); every caller shares one ServiceNow identity, so pair with `--read-only` or a table denylist | CI/CD, development |
 | **HTTP + OAuth** | OAuth 2.1 + PKCE | Per-user SN token | Production, Cloud Run |
 
 An unauthenticated HTTP listener is not supported: the server **fails closed**
@@ -102,3 +102,17 @@ MCP_TRANSPORT=streamable-http
 4. In Claude.ai, add the server URL as an MCP connector — the OAuth flow handles the rest
 
 **Requires:** ServiceNow San Diego+ (2022) for PKCE support.
+
+### Guardrails in HTTP deployments
+
+All safety flags work over HTTP. Two notes specific to multi-user deployments:
+
+- The audit log records the OAuth user (`claims.user_name`) or the static token's `client_id`; send it to a file or let the platform collect stderr (Cloud Run → Cloud Logging).
+- `--write-confirm` on a 2026-07-28 client uses the multi round-trip pattern, whose `request_state` is sealed with a per-process key. Behind a load balancer with **more than one replica**, configure shared keys so the retry can land on any instance:
+
+  ```python
+  from mcp.server.request_state import RequestStateSecurity
+  mcp = FastMCP(..., request_state_security=RequestStateSecurity(keys=[os.environ["REQUEST_STATE_KEY"].encode()]))
+  ```
+
+  A single Cloud Run instance (`--max-instances 1`) needs nothing. Handshake-era clients and the default (confirmation off) are unaffected.
