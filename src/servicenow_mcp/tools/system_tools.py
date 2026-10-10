@@ -12,6 +12,7 @@ from servicenow_mcp.server import mcp, get_config, make_sn_request
 from servicenow_mcp.tools import annotations
 from servicenow_mcp.utils.http import build_url, parse_json_response
 from servicenow_mcp.utils.schema import fetch_table_schema
+from servicenow_mcp.utils.user import fetch_current_user
 
 logger = logging.getLogger(__name__)
 
@@ -50,43 +51,13 @@ def get_current_user(
     fields: Annotated[
         Optional[str],
         Field(
-            description="Comma-separated fields to return (default: user_name,name,email,roles)"
+            description="Extra sys_user fields to return besides user_name, user_display_name, user_email, user_sys_id and roles"
         ),
     ] = None,
 ) -> Dict[str, Any]:
     """Get the currently authenticated user's information"""
     config = get_config()
-
-    # Try the UI endpoint first (works with basic auth)
-    url = f"{config.instance_url}/api/now/ui/user/current_user"
-    try:
-        response = make_sn_request("GET", url, config.timeout)
-        data = parse_json_response(response, url)
-        return data.get("result", {})
-    except Exception:
-        pass
-
-    # Fallback: query sys_user via Table API (works with all auth types including OAuth).
-    # Server-authored query — not subject to the caller-query javascript: policy.
-    table_url = build_url(config.api_url, "table", "sys_user")
-    params: Dict[str, Any] = {
-        "sysparm_query": "user_name=javascript:gs.getUserName()",
-        "sysparm_limit": 1,
-        "sysparm_fields": fields or "user_name,name,email,sys_id,roles",
-    }
-    response = make_sn_request("GET", table_url, config.timeout, params=params)
-    data = parse_json_response(response, table_url)
-    results = data.get("result", [])
-    if results:
-        user = results[0]
-        return {
-            "user_name": user.get("user_name"),
-            "user_display_name": user.get("name"),
-            "user_email": user.get("email"),
-            "user_sys_id": user.get("sys_id"),
-            "roles": user.get("roles"),
-        }
-    return {}
+    return fetch_current_user(config.api_url, config.timeout, fields)
 
 
 @mcp.tool(tags={"read", "admin"}, annotations=annotations.READ)

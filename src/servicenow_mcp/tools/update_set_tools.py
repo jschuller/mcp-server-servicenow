@@ -10,9 +10,13 @@ from pydantic import Field
 
 from servicenow_mcp.server import mcp, get_config, make_sn_request
 from servicenow_mcp.tools import annotations
-from servicenow_mcp.utils.http import build_url, parse_json_response
+from servicenow_mcp.utils.http import ServiceNowAPIError, build_url, parse_json_response
+from servicenow_mcp.utils.user import fetch_current_user
 
 logger = logging.getLogger(__name__)
+
+# Server-authored, so not subject to the caller-query javascript: policy.
+CURRENT_UPDATE_SET_PREF_QUERY = "name=sys_update_set^user=javascript:gs.getUserID()"
 
 
 @mcp.tool(tags={"read", "updateset"}, annotations=annotations.READ)
@@ -120,12 +124,14 @@ def set_current_update_set(
     if state != "in progress":
         return f"Cannot set update set '{name}' as current - state is '{state}' (must be 'in progress')"
 
+    # Only the caller's own row: an admin can read everyone's preferences, and a
+    # row with an empty user is the system-wide default for every user.
     pref_url = build_url(config.api_url, "table", "sys_user_preference")
     pref_response = make_sn_request(
         "GET",
         pref_url,
         config.timeout,
-        params={"sysparm_query": "name=sys_update_set", "sysparm_limit": 1},
+        params={"sysparm_query": CURRENT_UPDATE_SET_PREF_QUERY, "sysparm_limit": 1},
     )
     pref_data = parse_json_response(pref_response, pref_url)
     prefs = pref_data.get("result", [])
@@ -139,11 +145,18 @@ def set_current_update_set(
             json_data={"value": sys_id},
         )
     else:
+        user_sys_id = fetch_current_user(config.api_url, config.timeout).get(
+            "user_sys_id"
+        )
+        if not user_sys_id:
+            raise ServiceNowAPIError(
+                "Cannot set the current update set: the caller's sys_user record is not readable"
+            )
         make_sn_request(
             "POST",
             pref_url,
             config.timeout,
-            json_data={"name": "sys_update_set", "value": sys_id},
+            json_data={"name": "sys_update_set", "value": sys_id, "user": user_sys_id},
         )
 
     return f"Current update set changed to '{name}' ({sys_id})"

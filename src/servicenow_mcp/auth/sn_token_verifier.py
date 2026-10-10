@@ -80,6 +80,10 @@ class ServiceNowTokenVerifier(TokenVerifier):
         if result is not None and cache_key is not None and self._cache_ttl is not None:
             if len(self._cache) >= self._max_cache_size:
                 self._evict_expired()
+            # Still full of live entries: drop the oldest (dicts keep insertion
+            # order) so the cache never grows past its bound.
+            while len(self._cache) >= self._max_cache_size:
+                del self._cache[next(iter(self._cache))]
             self._cache[cache_key] = _CacheEntry(
                 result=result,
                 expires_at=time.monotonic() + self._cache_ttl,
