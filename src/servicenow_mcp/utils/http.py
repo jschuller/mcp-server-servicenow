@@ -144,8 +144,18 @@ def api_request(
                 )
         else:
             ctx = _error_context(response)
+            if auth_manager and auth_manager.config.type.value == "api_key":
+                # API keys only authenticate where a REST API access policy maps
+                # the key's profile for this API and method; the global policy
+                # cannot carry token auth, so each API needs its own policy.
+                hint = (
+                    "Check the API key and that a REST API access policy maps it "
+                    f"for this API and method ({method.upper()})."
+                )
+            else:
+                hint = "Check your username/password."
             raise ServiceNowAPIError(
-                f"Authentication failed (401). Check your username/password. "
+                f"Authentication failed (401). {hint} "
                 f"URL: {url}" + (f" | {ctx}" if ctx else "")
             )
 

@@ -1,56 +1,65 @@
-"""Integration smoke tests against a live ServiceNow PDI.
+"""Integration smoke tests against a live ServiceNow instance.
 
-Credentials are loaded from .env.test (gitignored) or environment variables.
-Run with: python -m pytest tests/integration/ -v
+Credentials come only from the environment, as the server itself reads them;
+launch under a secret-store wrapper rather than keeping values in a file:
 
-Create .env.test with:
-    SERVICENOW_INSTANCE_URL=https://your-instance.service-now.com
-    SERVICENOW_USERNAME=admin
-    SERVICENOW_PASSWORD=your-password
+    with-secrets SERVICENOW_API_KEY=svc/homelab/servicenow-<instance>-apikey -- \\
+      env SERVICENOW_INSTANCE_URL=https://<instance>.service-now.com \\
+          SERVICENOW_API_KEY_HEADER=x-sn-apikey \\
+      uv run pytest tests/integration/ -v
+
+With SERVICENOW_API_KEY set the tests use API-key auth; otherwise basic auth
+with SERVICENOW_USERNAME / SERVICENOW_PASSWORD. Skipped when nothing is set.
+Read-only: nothing on the instance is changed.
 """
 
 import os
-from pathlib import Path
 
 import pytest
-from dotenv import load_dotenv
 from fastmcp import Client
+from fastmcp.exceptions import ToolError
 
 from servicenow_mcp.server import mcp, init_services
 from servicenow_mcp.utils.config import (
+    ApiKeyConfig,
     AuthConfig,
     AuthType,
     BasicAuthConfig,
     ServerConfig,
 )
 
-# Load .env.test from project root if it exists
-_env_test = Path(__file__).resolve().parents[2] / ".env.test"
-if _env_test.exists():
-    load_dotenv(_env_test)
-
 
 def _get_env_or_skip(name: str) -> str:
     val = os.environ.get(name)
     if not val:
-        pytest.skip(f"{name} not set (create .env.test or set env var)")
+        pytest.skip(f"{name} not set (see the module docstring)")
     return val
 
 
 @pytest.fixture(autouse=True, scope="module")
 def _init_pdi():
-    """Initialize services with real PDI credentials."""
+    """Initialize services with live credentials from the environment."""
     instance_url = _get_env_or_skip("SERVICENOW_INSTANCE_URL")
-    username = _get_env_or_skip("SERVICENOW_USERNAME")
-    password = _get_env_or_skip("SERVICENOW_PASSWORD")
-
-    config = ServerConfig(
-        instance_url=instance_url,
-        auth=AuthConfig(
+    api_key = os.environ.get("SERVICENOW_API_KEY")
+    if api_key:
+        auth = AuthConfig(
+            type=AuthType.API_KEY,
+            api_key=ApiKeyConfig(
+                api_key=api_key,
+                header_name=os.environ.get(
+                    "SERVICENOW_API_KEY_HEADER", "X-ServiceNow-API-Key"
+                ),
+            ),
+        )
+    else:
+        auth = AuthConfig(
             type=AuthType.BASIC,
-            basic=BasicAuthConfig(username=username, password=password),
-        ),
-    )
+            basic=BasicAuthConfig(
+                username=_get_env_or_skip("SERVICENOW_USERNAME"),
+                password=_get_env_or_skip("SERVICENOW_PASSWORD"),
+            ),
+        )
+    config = ServerConfig(instance_url=instance_url, auth=auth)
     init_services(config)
 
     import servicenow_mcp.tools.table_tools  # noqa: F401
@@ -58,6 +67,21 @@ def _init_pdi():
     import servicenow_mcp.tools.system_tools  # noqa: F401
     import servicenow_mcp.tools.update_set_tools  # noqa: F401
     import servicenow_mcp.resources  # noqa: F401
+
+
+async def _call(client: Client, tool: str, args: dict, needs: str):
+    """call_tool, skipping (not failing) when the identity is refused.
+
+    Least-privilege identities are refused some tools by design: schemas need
+    personalize_dictionary, update sets need admin, and an API key needs a REST
+    API access policy for each API it calls. A skip names what is missing.
+    """
+    try:
+        return await client.call_tool(tool, args)
+    except ToolError as exc:
+        if "(401)" in str(exc) or "(403)" in str(exc):
+            pytest.skip(f"{tool}: refused for this identity (needs {needs})")
+        raise
 
 
 class TestTableTools:
@@ -76,11 +100,11 @@ class TestTableTools:
     @pytest.mark.asyncio
     async def test_get_table_schema(self) -> None:
         async with Client(mcp) as client:
-            result = await client.call_tool(
+            result = await _call(
+                client,
                 "get_table_schema",
-                {
-                    "table_name": "incident",
-                },
+                {"table_name": "incident"},
+                "personalize_dictionary",
             )
             assert result is not None
             data = result.data
@@ -147,11 +171,8 @@ class TestUpdateSetTools:
     @pytest.mark.asyncio
     async def test_list_update_sets(self) -> None:
         async with Client(mcp) as client:
-            result = await client.call_tool(
-                "list_update_sets",
-                {
-                    "limit": 5,
-                },
+            result = await _call(
+                client, "list_update_sets", {"limit": 5}, "admin on sys_update_set"
             )
             assert result is not None
 
@@ -161,12 +182,11 @@ class TestAggregateRecords:
     async def test_count_without_group_by(self) -> None:
         """Stats API returns a dict without group_by."""
         async with Client(mcp) as client:
-            result = await client.call_tool(
+            result = await _call(
+                client,
                 "aggregate_records",
-                {
-                    "table_name": "incident",
-                    "count": True,
-                },
+                {"table_name": "incident", "count": True},
+                "an Aggregate API access policy for API keys",
             )
             assert result is not None
 
@@ -174,13 +194,11 @@ class TestAggregateRecords:
     async def test_count_with_group_by(self) -> None:
         """Stats API returns a list with group_by — must be wrapped in a dict."""
         async with Client(mcp) as client:
-            result = await client.call_tool(
+            result = await _call(
+                client,
                 "aggregate_records",
-                {
-                    "table_name": "incident",
-                    "count": True,
-                    "group_by": "priority",
-                },
+                {"table_name": "incident", "count": True, "group_by": "priority"},
+                "an Aggregate API access policy for API keys",
             )
             assert result is not None
 
@@ -204,7 +222,12 @@ class TestResources:
     @pytest.mark.asyncio
     async def test_read_schema_template(self) -> None:
         async with Client(mcp) as client:
-            content = await client.read_resource("servicenow://schema/incident")
+            try:
+                content = await client.read_resource("servicenow://schema/incident")
+            except Exception as exc:
+                if "personalize_dictionary" in str(exc) or "(403)" in str(exc):
+                    pytest.skip("schema resource: needs personalize_dictionary")
+                raise
             text = content[0].text if hasattr(content[0], "text") else str(content[0])
             assert "incident" in text
 
