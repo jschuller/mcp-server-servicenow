@@ -11,7 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ["3.11", "3.12", "3.13"]
+        python-version: ["3.11", "3.12", "3.13", "3.14"]
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -87,3 +87,19 @@ jobs:
           pip install build twine
           python -m build
           twine check --strict dist/*
+
+      # The skills ship as package data; a packaging change that drops them
+      # would still pass every unit test, since those read the source tree.
+      - name: Check the wheel carries the skills
+        run: |
+          python - << 'EOF'
+          import glob, sys, zipfile
+
+          names = zipfile.ZipFile(glob.glob("dist/*.whl")[0]).namelist()
+          skills = [n for n in names if n.startswith("servicenow_mcp/skills/") and n.endswith("/SKILL.md")]
+          refs = [n for n in names if "/skills/" in n and "/references/" in n]
+          if len(skills) != 4 or len(refs) != 3:
+              print(f"::error::Wheel has {len(skills)} SKILL.md and {len(refs)} reference files (want 4 and 3)")
+              sys.exit(1)
+          print(f"Wheel carries {len(skills)} skills and {len(refs)} reference files")
+          EOF
