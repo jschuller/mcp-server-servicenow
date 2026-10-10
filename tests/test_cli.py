@@ -315,6 +315,27 @@ class TestSafetyFlags:
 
         assert asyncio.run(count()) == 12
 
+    def test_server_instructions_on_wire(self, monkeypatch):
+        """The model-facing instructions name the skill resources (SEP-2640 pattern)."""
+        import asyncio
+
+        from fastmcp import Client
+
+        from servicenow_mcp.server import SERVER_INSTRUCTIONS, mcp
+
+        monkeypatch.setattr("sys.argv", list(_BASIC_ARGV))
+        with patch("servicenow_mcp.server.mcp.run"):
+            cli.main()
+
+        async def instructions():
+            async with Client(mcp) as client:
+                return client.instructions
+
+        wire = asyncio.run(instructions())
+        assert wire == SERVER_INSTRUCTIONS
+        assert "skill://triaging-incidents/SKILL.md" in wire
+        assert "servicenow://help/query-syntax" in wire
+
     def test_audit_log_configured(self, monkeypatch):
         from servicenow_mcp.middleware import audit
 

@@ -4,8 +4,8 @@ build-backend = "hatchling.build"
 
 [project]
 name = "mcp-server-servicenow"
-version = "0.7.0"
-description = "MCP server for ServiceNow - 19 tools + 5 resources for table, CMDB, system, and update set operations"
+version = "0.8.0"
+description = "MCP server for ServiceNow - 19 tools, 5 resources, and 4 Agent Skills served over MCP for table, CMDB, system, and update set operations"
 readme = "README.md"
 requires-python = ">=3.11"
 license = {text = "MIT"}
@@ -73,9 +73,6 @@ exclude = [
     ".github/",
     ".claude/",
     ".claude-plugin/",
-    "agents/",
-    "commands/",
-    "skills/",
     "dist/",
     "*.png",
     "uv.lock",

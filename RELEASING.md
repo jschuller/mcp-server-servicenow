@@ -60,7 +60,7 @@ the release (see Failure modes).
      `confirm=true` retry succeeds.
    - Plugin: `claude --plugin-dir .` with only `SERVICENOW_INSTANCE_URL/USERNAME/PASSWORD`
      set must start (the `${VAR:-default}` passthrough check).
-   - `/servicenow:review-update-set` and `/servicenow:triage` still work.
+   - the four `skill://…/SKILL.md` resources list and read (Claude Code `/mcp` → resources).
 
 4. Push to main and wait for CI green — the test matrix (3.11/3.12/3.13)
    plus the `package` job (version consistency, `uv lock --check`,

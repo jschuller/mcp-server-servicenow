@@ -1,16 +1,24 @@
-"""MCP Resources — read-only context for LLM clients.
+"""MCP resources — read-only context that clients fetch without a tool call.
 
-Provides 5 resources:
-- servicenow://schema/{table_name} — field definitions for any table (incl. inherited)
-- servicenow://instance — instance URL, version, user, timezone
-- servicenow://update-set/current — currently active update set
-- servicenow://cmdb/classes — CMDB CI class hierarchy
-- servicenow://help/query-syntax — encoded query operators reference
+Five hand-written resources:
+- servicenow://schema/{table_name} — field names, types, references (template)
+- servicenow://instance — instance URL, version, logged-in user, timezone
+- servicenow://update-set/current — the caller's current update set
+- servicenow://cmdb/classes — CMDB class hierarchy from sys_db_object
+- servicenow://help/query-syntax — encoded query operators (static markdown)
+
+Plus the four Agent Skills under src/servicenow_mcp/skills/, served by FastMCP's
+SkillsDirectoryProvider as skill://<name>/SKILL.md, skill://<name>/_manifest
+(SHA-256 per file) and skill://<name>/references/<file> — the SEP-2640 convention.
 """
 
 import json
 import logging
+from importlib.resources import files
+from pathlib import Path
 from typing import Any, Dict
+
+from fastmcp.server.providers.skills import SkillsDirectoryProvider
 
 from servicenow_mcp.server import mcp, get_config, make_sn_request
 from servicenow_mcp.utils.http import build_url, parse_json_response
@@ -313,3 +321,16 @@ sys_updated_on>=javascript:gs.beginningOfToday()
 def query_syntax_help() -> str:
     """Return the encoded query syntax reference."""
     return _QUERY_SYNTAX_REFERENCE
+
+
+# ---------------------------------------------------------------------------
+# skill://<name>/... — Agent Skills served over MCP (SEP-2640 convention)
+# ---------------------------------------------------------------------------
+
+# The four SKILL.md directories ship as package data. FastMCP's provider exposes
+# each as skill://<name>/SKILL.md plus a skill://<name>/_manifest (SHA-256 per
+# file) and, with supporting_files="resources", every reference file by URI.
+_SKILLS_ROOT = Path(str(files("servicenow_mcp").joinpath("skills")))
+mcp.add_provider(
+    SkillsDirectoryProvider(roots=_SKILLS_ROOT, supporting_files="resources")
+)

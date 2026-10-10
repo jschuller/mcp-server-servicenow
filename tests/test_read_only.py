@@ -21,7 +21,9 @@ async def test_disable_write_tag_hides_only_tools() -> None:
             "write" not in (t.meta or {}).get("_fastmcp", {}).get("tags", [])
             for t in tools
         )
-        assert len(await client.list_resources()) == 4
+        assert (
+            len(await client.list_resources()) == 15
+        )  # 4 static + 11 skill:// entries
         assert len(await client.list_resource_templates()) == 1
         with pytest.raises(ToolError, match="Unknown tool"):
             await client.call_tool(

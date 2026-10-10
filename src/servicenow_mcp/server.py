@@ -24,7 +24,21 @@ logger = logging.getLogger(__name__)
 _config: ServerConfig | None = None
 _auth_manager: AuthManager | None = None
 
-mcp = FastMCP("servicenow-mcp", version=__version__)
+SERVER_INSTRUCTIONS = """\
+ServiceNow developer data plane: Table API, CMDB, update sets, schema.
+Before multi-step ITSM or CMDB work, read the matching skill resource (a guided
+workflow with encoded-query patterns), then use the tools:
+- skill://triaging-incidents/SKILL.md — incidents, INC numbers, outages, P1s, triage, SLAs
+- skill://servicenow-cmdb/SKILL.md — CIs, classes, dependencies, CMDB health, CSDM
+- skill://reviewing-update-sets/SKILL.md — update sets, promotion, "is this safe to promote"
+- skill://exploring-tables/SKILL.md — table schemas, fields, data profiling
+Each skill's references/ files are sibling resources; servicenow://help/query-syntax
+lists the encoded-query operators. Queries join with ^ (AND) and ^OR; javascript:
+values are refused unless the server allows them. Prefer fields= and limit=; treat
+audits and reviews as read-only unless the user asks for a change.
+"""
+
+mcp = FastMCP("servicenow-mcp", version=__version__, instructions=SERVER_INSTRUCTIONS)
 # The first middleware added is the outermost. Audit wraps everything so policy
 # denials and truncated responses are recorded; policy runs before the tool;
 # the response limiter stays innermost. Both of ours read the config lazily per

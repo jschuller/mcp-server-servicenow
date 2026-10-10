@@ -1,10 +1,11 @@
 ---
 name: reviewing-update-sets
-description: "Reviewing, analyzing, and comparing ServiceNow update sets before promotion. Shows changes, risks, dependencies, and conflicts. Use when the user mentions update sets, customizations, promotion, code review, change tracking, pre-deployment review, sys_update_xml, customer updates, \"what changed in this update set,\" or \"is this safe to promote.\""
-allowed-tools: "mcp__plugin_servicenow_servicenow__list_update_sets, mcp__plugin_servicenow_servicenow__get_update_set, mcp__plugin_servicenow_servicenow__list_update_set_changes, mcp__plugin_servicenow_servicenow__list_records, mcp__plugin_servicenow_servicenow__get_record, mcp__plugin_servicenow_servicenow__get_table_schema"
+description: "Reviewing, analyzing, and comparing ServiceNow update sets before promotion, singly or in batches. Shows changes, risks, dependencies, and conflicts. Use when the user mentions update sets, customizations, promotion, code review, change tracking, pre-deployment review, sys_update_xml, customer updates, 'what changed in this update set', or 'is this safe to promote'."
+license: MIT
 metadata:
   author: jschuller
-  version: "1.0.0"
+  version: "2.0.0"
+
 ---
 
 # Reviewing ServiceNow Update Sets
@@ -34,6 +35,7 @@ Get an overview of update sets by state with change counts.
    list_update_set_changes(update_set_sys_id="<sys_id>", limit=1)
    ```
 3. Summarize: name, state, developer, change count, last modified date.
+4. **Batch review** (all sets in one state, e.g. everything "complete" awaiting promotion): for each set run the Deep Review steps below in brief — categorize changes by type, flag high-risk items — then check for cross-set conflicts (the same `target_name` / `name` in `sys_update_xml` across two sets), give each set a promotion-readiness verdict, and recommend a promotion order that respects dependencies.
 
 ### 2. Deep Review a Single Update Set
 

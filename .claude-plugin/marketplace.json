@@ -9,7 +9,7 @@
   "plugins": [
     {
       "name": "servicenow",
-      "description": "ServiceNow developer data plane — incidents, CMDB, update sets, table explorer. 19 MCP tools + 4 guided skills, read-only mode, audit log.",
+      "description": "ServiceNow developer data plane — incidents, CMDB, update sets, table explorer. 19 MCP tools, 5 resources, 4 Agent Skills served over MCP, read-only mode, audit log.",
       "source": "./",
       "category": "development",
       "author": {

@@ -112,6 +112,21 @@ async def test_resource_read_line(captured: _Capture, monkeypatch) -> None:
     assert captured.lines[1]["table"] == "incident"
 
 
+@pytest.mark.asyncio
+async def test_skill_resource_read_line(captured: _Capture) -> None:
+    """Every skill load is audited; an unknown URI is labelled unknown_resource."""
+    init_test_services()
+    async with Client(mcp) as client:
+        await client.read_resource("skill://triaging-incidents/SKILL.md")
+        with pytest.raises(Exception):
+            await client.read_resource("skill://no-such-skill/SKILL.md")
+    assert captured.lines[0]["event"] == "resource_read"
+    assert captured.lines[0]["name"] == "skill://triaging-incidents/SKILL.md"
+    assert captured.lines[0].get("table") is None  # None fields are not emitted
+    assert captured.lines[0]["outcome"] == "ok"
+    assert captured.lines[1]["outcome"] == "unknown_resource"
+
+
 def test_truncated_response_is_detected() -> None:
     """ResponseLimitingMiddleware returns (never raises) a suffixed result."""
     from fastmcp.tools.base import ToolResult
