@@ -104,16 +104,26 @@ def fetch_table_schema(
         if remaining <= 0:
             truncated = True
             break
-        response = make_sn_request(
-            "GET",
-            url,
-            timeout,
-            params={
-                "sysparm_query": f"name={table}^internal_type!=collection",
-                "sysparm_fields": DICTIONARY_FIELDS,
-                "sysparm_limit": remaining,
-            },
-        )
+        try:
+            response = make_sn_request(
+                "GET",
+                url,
+                timeout,
+                params={
+                    "sysparm_query": f"name={table}^internal_type!=collection",
+                    "sysparm_fields": DICTIONARY_FIELDS,
+                    "sysparm_limit": remaining,
+                },
+            )
+        except ServiceNowAPIError as exc:
+            if "(403)" not in str(exc):
+                raise
+            # The base system's sys_dictionary ACLs need personalize_dictionary
+            # (admin includes it); itil and snc_read_only are not enough.
+            raise ServiceNowAPIError(
+                f"{exc} | Hint: reading table schemas (sys_dictionary) needs the "
+                "personalize_dictionary role"
+            ) from exc
         rows = parse_json_response(response, url).get("result", [])
         kept = 0
         for row in rows:

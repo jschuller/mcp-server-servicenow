@@ -60,6 +60,20 @@ class TestApiRequest:
             api_request("GET", URL, basic_auth_manager)
 
     @patch("servicenow_mcp.utils.http.requests.request")
+    def test_401_api_key_points_at_access_policies(
+        self, mock_request: MagicMock
+    ) -> None:
+        from servicenow_mcp.utils.config import ApiKeyConfig, AuthConfig, AuthType
+
+        manager = AuthManager(
+            AuthConfig(type=AuthType.API_KEY, api_key=ApiKeyConfig(api_key="k")),
+            "https://test.service-now.com",
+        )
+        mock_request.return_value = _mock_response(401)
+        with pytest.raises(ServiceNowAPIError, match="REST API access policy.*GET"):
+            api_request("GET", URL, manager)
+
+    @patch("servicenow_mcp.utils.http.requests.request")
     def test_401_oauth_retries_on_success(
         self, mock_request: MagicMock, oauth_auth_manager: AuthManager
     ) -> None:

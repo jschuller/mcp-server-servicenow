@@ -162,3 +162,17 @@ async def test_tool_and_resource_share_shape(monkeypatch) -> None:
         == set(via_resource)
         == {"table", "hierarchy", "field_count", "fields"}
     )
+
+
+def test_dictionary_refusal_names_the_role(monkeypatch) -> None:
+    """itil / snc_read_only callers get a 403 on sys_dictionary; say which role fixes it."""
+    from servicenow_mcp import server
+
+    def fake(method, url, timeout, params=None, json_data=None):
+        raise ServiceNowAPIError("Access denied (403). The user may lack permissions")
+
+    monkeypatch.setattr(server, "make_sn_request", fake)
+    with pytest.raises(ServiceNowAPIError, match="personalize_dictionary"):
+        fetch_table_schema(
+            "incident", limit=10, timeout=30, api_url=API, include_inherited=False
+        )

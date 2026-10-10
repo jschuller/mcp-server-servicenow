@@ -1,13 +1,27 @@
-"""End-to-end smoke over a real stdio subprocess against a live PDI.
+"""End-to-end smoke over a real stdio subprocess against a live instance.
 
 Complements the pytest suites: exercises the actual server process (CLI flags,
 audit file, skills served as resources, both protocol eras) the way a real MCP
-client does. Credentials
-come from .env.test. Creates and deletes scratch incidents on the instance.
+client does.
 
-Run: .venv/bin/python scripts/stdio_smoke.py
+Credentials come only from the environment (SERVICENOW_* variables, as the
+server itself reads them), so launch it under a secret-store wrapper, never
+with values in a file:
+
+    with-secrets SERVICENOW_API_KEY=svc/homelab/servicenow-<instance>-apikey -- \\
+      env SERVICENOW_INSTANCE_URL=https://<instance>.service-now.com \\
+          SERVICENOW_AUTH_TYPE=api_key SERVICENOW_API_KEY_HEADER=x-sn-apikey \\
+      uv run python scripts/stdio_smoke.py --profile readonly
+
+Profiles:
+  readonly  the identity cannot write (the default). Write tools are called
+            anyway and must come back as a clean ServiceNow refusal; write
+            confirmation is exercised up to the refused write. Changes nothing.
+  write     the identity can create, update and delete incidents. Creates and
+            deletes scratch incidents.
 """
 
+import argparse
 import asyncio
 import hashlib
 import json
@@ -16,21 +30,28 @@ import sys
 import tempfile
 from pathlib import Path
 
-from dotenv import dotenv_values
 from fastmcp import Client
 from fastmcp.client.elicitation import ElicitResult
 from fastmcp.client.transports import StdioTransport
 from fastmcp.exceptions import ToolError
 
 REPO = str(Path(__file__).resolve().parents[1])
-PY = f"{REPO}/.venv/bin/python"
-creds = {k: v for k, v in dotenv_values(f"{REPO}/.env.test").items() if v}
-creds["SERVICENOW_AUTH_TYPE"] = "basic"
+SKILLS = (
+    "exploring-tables",
+    "reviewing-update-sets",
+    "servicenow-cmdb",
+    "triaging-incidents",
+)
+REFUSED = ("401", "403", "ACL", "not authorized", "Insufficient")
 
 
 def transport(*flags):
-    env = {**os.environ, **creds}
-    return StdioTransport(PY, ["-m", "servicenow_mcp.cli", *flags], env=env, cwd=REPO)
+    return StdioTransport(
+        sys.executable,
+        ["-m", "servicenow_mcp.cli", *flags],
+        env=dict(os.environ),
+        cwd=REPO,
+    )
 
 
 def ok(label, cond, extra=""):
@@ -38,11 +59,28 @@ def ok(label, cond, extra=""):
     return cond
 
 
-async def main():
-    results = []
-    audit = tempfile.NamedTemporaryFile(suffix=".jsonl", delete=False).name
+def info(label, extra=""):
+    print("INFO " + label + (f"  [{extra}]" if extra else ""))
 
-    # A. read-only
+
+def refused(exc):
+    return any(marker in str(exc) for marker in REFUSED)
+
+
+def accept_handler(seen):
+    async def accept(message, response_type, params, context):
+        seen.append(message)
+        return True
+
+    return accept
+
+
+async def decline(message, response_type, params, context):
+    return ElicitResult(action="decline")
+
+
+async def section_a(results):
+    """--read-only hides the write tools; annotations and resources on the wire."""
     async with Client(transport("--read-only", "--audit-log", "off")) as c:
         tools = await c.list_tools()
         results.append(
@@ -75,7 +113,9 @@ async def main():
                 ok("read-only: delete_record -> Unknown tool", "Unknown tool" in str(e))
             )
 
-    # B. default mode + denylist + audit file + JS policy + schema + scratch CRUD
+
+async def section_b(results, profile, audit):
+    """Default mode: denylist, javascript: policy, schema, paging, then writes."""
     async with Client(
         transport("--table-denylist", "sys_user*", "--audit-log", audit)
     ) as c:
@@ -105,27 +145,68 @@ async def main():
             {
                 "table_name": "incident",
                 "query": "sys_created_on>=javascript:gs.daysAgo(3650)",
+                "fields": "sys_id,number,urgency",
                 "limit": 1,
             },
         )
         results.append(ok("JS policy allows gs.daysAgo()", "records" in r.data))
-        schema = (
-            await c.call_tool("get_table_schema", {"table_name": "incident"})
-        ).data
-        by_name = {f["name"]: f for f in schema["fields"]}
-        results.append(
-            ok(
-                "schema: incident inherits task.number",
-                by_name.get("number", {}).get("defined_in") == "task",
-                f"hierarchy={schema['hierarchy']} fields={schema['field_count']}",
+        existing = (r.data.get("records") or [{}])[0].get("sys_id")
+        try:
+            schema = (
+                await c.call_tool("get_table_schema", {"table_name": "incident"})
+            ).data
+            by_name = {f["name"]: f for f in schema["fields"]}
+            results.append(
+                ok(
+                    "schema: incident inherits task.number",
+                    by_name.get("number", {}).get("defined_in") == "task",
+                    f"hierarchy={schema['hierarchy']} fields={schema['field_count']}",
+                )
             )
-        )
+        except ToolError as e:
+            # Without personalize_dictionary the instance refuses sys_dictionary.
+            results.append(
+                ok(
+                    "schema: refused with the role hint (identity lacks personalize_dictionary)",
+                    "personalize_dictionary" in str(e),
+                )
+            )
         rel = await c.call_tool(
             "get_ci_relationships", {"sys_id": "0" * 32, "limit": 5}
         )
         results.append(
             ok("get_ci_relationships paging arg accepted", rel.data["count"] == 0)
         )
+        try:
+            agg = await c.call_tool(
+                "aggregate_records", {"table_name": "incident", "group_by": "priority"}
+            )
+            info("aggregate_records", f"ok, {len(agg.data.get('result') or [])} groups")
+        except ToolError as e:
+            # API keys need a REST API access policy for the Aggregate API too.
+            info("aggregate_records refused", str(e).splitlines()[0][:140])
+
+        if profile == "readonly":
+            try:
+                await c.call_tool(
+                    "update_record",
+                    {
+                        "table_name": "incident",
+                        "sys_id": existing or "0" * 32,
+                        "data": {"urgency": "3"},
+                    },
+                )
+                results.append(ok("read-only identity: write refused cleanly", False))
+            except ToolError as e:
+                results.append(
+                    ok(
+                        "read-only identity: write refused cleanly",
+                        refused(e),
+                        str(e).splitlines()[0][:120],
+                    )
+                )
+            return existing
+
         created = (
             await c.call_tool(
                 "create_record",
@@ -166,60 +247,95 @@ async def main():
                 dele == {"deleted": True, "table": "incident", "sys_id": sid},
             )
         )
-    lines = [json.loads(line) for line in open(audit).read().splitlines()]
-    outcomes = [(line["name"], line["outcome"]) for line in lines]
+        return None
+
+
+def check_audit(results, profile, audit):
+    text = Path(audit).read_text()
+    outcomes = [
+        (line["name"], line["outcome"]) for line in map(json.loads, text.splitlines())
+    ]
     print("   audit outcomes:", outcomes)
+    wanted_ok = (
+        ("list_records", "ok") if profile == "readonly" else ("delete_record", "ok")
+    )
     results.append(
         ok(
             "audit file: denied + ok lines, no values",
             ("list_records", "denied") in outcomes
-            and ("delete_record", "ok") in outcomes
-            and "safe to delete" not in open(audit).read(),
+            and wanted_ok in outcomes
+            and "safe to delete" not in text,
         )
     )
 
-    # C. --write-confirm over stdio, both client modes
+
+async def section_c(results, profile, existing):
+    """--write-confirm over stdio, both protocol eras."""
     for mode in ("legacy", "auto"):
         seen = []
-
-        async def accept(message, response_type, params, context):
-            seen.append(message)
-            return True
-
-        async def decline(message, response_type, params, context):
-            return ElicitResult(action="decline")
-
-        async with Client(
-            transport("--write-confirm", "--audit-log", "off"),
-            mode=mode,
-            elicitation_handler=accept,
-        ) as c:
-            created = (
-                await c.call_tool(
-                    "create_record",
-                    {
-                        "table_name": "incident",
-                        "data": {
-                            "short_description": "mcp confirm smoke (safe to delete)"
+        if profile == "readonly":
+            target = existing or "0" * 32
+            async with Client(
+                transport("--write-confirm", "--audit-log", "off"),
+                mode=mode,
+                elicitation_handler=accept_handler(seen),
+            ) as c:
+                try:
+                    await c.call_tool(
+                        "update_record",
+                        {
+                            "table_name": "incident",
+                            "sys_id": target,
+                            "data": {"urgency": "1"},
                         },
-                    },
+                    )
+                    results.append(
+                        ok(f"write-confirm[{mode}]: accepted -> refused", False)
+                    )
+                except ToolError as e:
+                    results.append(
+                        ok(
+                            f"write-confirm[{mode}]: prompt shown, accepted write refused by instance",
+                            any("Update incident/" in m for m in seen) and refused(e),
+                            seen[0].splitlines()[0] if seen else str(e)[:80],
+                        )
+                    )
+        else:
+            async with Client(
+                transport("--write-confirm", "--audit-log", "off"),
+                mode=mode,
+                elicitation_handler=accept_handler(seen),
+            ) as c:
+                created = (
+                    await c.call_tool(
+                        "create_record",
+                        {
+                            "table_name": "incident",
+                            "data": {
+                                "short_description": "mcp confirm smoke (safe to delete)"
+                            },
+                        },
+                    )
+                ).data
+                target = created["sys_id"]
+                upd = (
+                    await c.call_tool(
+                        "update_record",
+                        {
+                            "table_name": "incident",
+                            "sys_id": target,
+                            "data": {"urgency": "1"},
+                        },
+                    )
+                ).data
+                results.append(
+                    ok(
+                        f"write-confirm[{mode}]: prompt accepted -> updated",
+                        upd["record"].get("urgency") == "1"
+                        and any("Update incident/" in m for m in seen),
+                        seen[0].splitlines()[0] if seen else "",
+                    )
                 )
-            ).data
-            sid = created["sys_id"]
-            upd = (
-                await c.call_tool(
-                    "update_record",
-                    {"table_name": "incident", "sys_id": sid, "data": {"urgency": "1"}},
-                )
-            ).data
-            results.append(
-                ok(
-                    f"write-confirm[{mode}]: prompt accepted -> updated",
-                    upd["record"].get("urgency") == "1"
-                    and any("Update incident/" in m for m in seen),
-                    seen[0].splitlines()[0] if seen else "",
-                )
-            )
         async with Client(
             transport("--write-confirm", "--audit-log", "off"),
             mode=mode,
@@ -228,7 +344,11 @@ async def main():
             try:
                 await c.call_tool(
                     "update_record",
-                    {"table_name": "incident", "sys_id": sid, "data": {"urgency": "3"}},
+                    {
+                        "table_name": "incident",
+                        "sys_id": target,
+                        "data": {"urgency": "3"},
+                    },
                 )
                 results.append(ok(f"write-confirm[{mode}]: decline blocks", False))
             except ToolError as e:
@@ -243,7 +363,7 @@ async def main():
         ) as c:
             try:
                 await c.call_tool(
-                    "delete_record", {"table_name": "incident", "sys_id": sid}
+                    "delete_record", {"table_name": "incident", "sys_id": target}
                 )
                 results.append(
                     ok(
@@ -258,42 +378,42 @@ async def main():
                         "confirmation_required" in str(e),
                     )
                 )
-            dele = (
-                await c.call_tool(
-                    "delete_record",
-                    {"table_name": "incident", "sys_id": sid, "confirm": True},
+            try:
+                dele = (
+                    await c.call_tool(
+                        "delete_record",
+                        {"table_name": "incident", "sys_id": target, "confirm": True},
+                    )
+                ).data
+                results.append(
+                    ok(
+                        f"write-confirm[{mode}]: confirm=true deletes",
+                        profile == "write" and dele.get("deleted") is True,
+                    )
                 )
-            ).data
-            results.append(
-                ok(
-                    f"write-confirm[{mode}]: confirm=true deletes",
-                    dele.get("deleted") is True,
+            except ToolError as e:
+                results.append(
+                    ok(
+                        f"write-confirm[{mode}]: confirm=true reaches the instance (refused)",
+                        profile == "readonly" and refused(e),
+                        str(e).splitlines()[0][:120],
+                    )
                 )
-            )
 
-    # D. skills over MCP (SEP-2640 convention) + help resource, both protocol eras
-    skills_audit = tempfile.NamedTemporaryFile(suffix=".jsonl", delete=False).name
+
+async def section_d(results, skills_audit):
+    """Skills over MCP (SEP-2640 shape) and the help resource, both eras."""
     skill_dir = Path(REPO) / "src/servicenow_mcp/skills/triaging-incidents"
     for mode in ("legacy", "auto"):
         async with Client(transport("--audit-log", skills_audit), mode=mode) as c:
             uris = {str(r.uri) for r in await c.list_resources()}
+            listed = {
+                u for u in uris if u.startswith("skill://") and u.endswith("/SKILL.md")
+            }
             results.append(
                 ok(
                     f"skills[{mode}]: 4 SKILL.md listed",
-                    {
-                        u
-                        for u in uris
-                        if u.startswith("skill://") and u.endswith("/SKILL.md")
-                    }
-                    == {
-                        f"skill://{n}/SKILL.md"
-                        for n in (
-                            "exploring-tables",
-                            "reviewing-update-sets",
-                            "servicenow-cmdb",
-                            "triaging-incidents",
-                        )
-                    },
+                    listed == {f"skill://{n}/SKILL.md" for n in SKILLS},
                 )
             )
             body = (await c.read_resource("skill://triaging-incidents/SKILL.md"))[
@@ -349,9 +469,28 @@ async def main():
         )
     )
 
+
+async def main(profile):
+    if not os.environ.get("SERVICENOW_INSTANCE_URL"):
+        sys.exit("SERVICENOW_INSTANCE_URL is not set (see the module docstring)")
+    print(
+        f"profile={profile} instance={os.environ['SERVICENOW_INSTANCE_URL']} "
+        f"auth={os.environ.get('SERVICENOW_AUTH_TYPE', 'basic')}"
+    )
+    results = []
+    with tempfile.TemporaryDirectory() as tmp:
+        audit = f"{tmp}/audit.jsonl"
+        await section_a(results)
+        existing = await section_b(results, profile, audit)
+        check_audit(results, profile, audit)
+        await section_c(results, profile, existing)
+        await section_d(results, f"{tmp}/skills-audit.jsonl")
     print(f"\n{sum(results)}/{len(results)} passed")
     return all(results)
 
 
 if __name__ == "__main__":
-    sys.exit(0 if asyncio.run(main()) else 1)
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser.add_argument("--profile", choices=("readonly", "write"), default="readonly")
+    args = parser.parse_args()
+    sys.exit(0 if asyncio.run(main(args.profile)) else 1)
