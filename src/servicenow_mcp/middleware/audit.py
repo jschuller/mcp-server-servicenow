@@ -235,6 +235,8 @@ class AuditMiddleware(Middleware):
             result = await call_next(context)
         except BaseException as exc:
             record["outcome"], record["error"] = _classify_exception(exc)
+            if record["outcome"] == "unknown_tool":
+                record["outcome"] = "unknown_resource"
             record["duration_ms"] = round((time.perf_counter() - start) * 1000, 1)
             _emit(record)
             raise

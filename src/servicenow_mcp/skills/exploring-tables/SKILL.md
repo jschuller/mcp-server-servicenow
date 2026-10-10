@@ -1,10 +1,11 @@
 ---
 name: exploring-tables
-description: "Exploring any ServiceNow table — schema, field types, sample records, relationships, and data patterns. Use when the user mentions tables, schemas, fields, data dictionary, sys_dictionary, sys_db_object, table structure, \"what fields does X have,\" or wants to understand a ServiceNow table they haven't worked with before."
-allowed-tools: "mcp__plugin_servicenow_servicenow__get_table_schema, mcp__plugin_servicenow_servicenow__list_records, mcp__plugin_servicenow_servicenow__get_record, mcp__plugin_servicenow_servicenow__list_ci"
+description: "Exploring any ServiceNow table: schema, field types, sample records, relationships, and data patterns. Use when the user mentions tables, schemas, fields, data dictionary, sys_dictionary, sys_db_object, table structure, 'what fields does X have', or wants to understand a ServiceNow table they haven't worked with before."
+license: MIT
 metadata:
   author: jschuller
-  version: "1.0.0"
+  version: "2.0.0"
+
 ---
 
 # Exploring ServiceNow Tables

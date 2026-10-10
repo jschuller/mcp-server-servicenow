@@ -1,4 +1,4 @@
-<!-- mcp-server: servicenow | tools: 19 | resources: 5 | transport: stdio,streamable-http | auth: basic,oauth,api_key | framework: fastmcp-4.0 -->
+<!-- mcp-server: servicenow | tools: 19 | resources: 5 | skills: 4 | transport: stdio,streamable-http | auth: basic,oauth,api_key | framework: fastmcp-4.0 -->
 <!-- mcp-name: io.github.jschuller/mcp-server-servicenow -->
 
 <p align="center">
@@ -13,6 +13,7 @@
   <a href="https://gofastmcp.com"><img src="https://img.shields.io/badge/FastMCP-4.0-00A893" alt="FastMCP"></a>
   <a href="#available-tools"><img src="https://img.shields.io/badge/Tools-19-00A893" alt="Tools"></a>
   <a href="#resources"><img src="https://img.shields.io/badge/Resources-5-00A893" alt="Resources"></a>
+  <a href="#skills-served-over-mcp"><img src="https://img.shields.io/badge/Skills-4-00A893" alt="Skills"></a>
   <a href="https://modelcontextprotocol.io"><img src="https://img.shields.io/badge/MCP-2026--07--28-5436DA" alt="MCP Protocol"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue" alt="License"></a>
   <a href="https://github.com/jschuller/mcp-server-servicenow/actions/workflows/ci.yml"><img src="https://github.com/jschuller/mcp-server-servicenow/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
@@ -26,11 +27,11 @@
 
 ---
 
-`Table API` · `CMDB` · `Update Sets` · `Aggregation` · `Resources` · `Read-only mode` · `Audit log` · `OAuth 2.1+PKCE` · `Streamable HTTP` · `Claude Code Plugin` · `4 Skills`
+`Table API` · `CMDB` · `Update Sets` · `Aggregation` · `Resources` · `Read-only mode` · `Audit log` · `OAuth 2.1+PKCE` · `Streamable HTTP` · `4 Skills over MCP` · `Claude Code Plugin`
 
 ## What This Does
 
-This MCP server gives AI assistants the raw ServiceNow data plane: any table via the Table API, the data dictionary (with inherited fields), Stats API aggregates, CMDB classes and relationships, and update sets. 19 tools and 5 resources, with tool annotations, an optional read-only mode, table allow/deny lists, hardened encoded queries, and a JSON audit line per call.
+This MCP server gives AI assistants the raw ServiceNow data plane: any table via the Table API, the data dictionary (with inherited fields), Stats API aggregates, CMDB classes and relationships, and update sets. 19 tools, 5 resources and 4 Agent Skills served over MCP, with tool annotations, an optional read-only mode, table allow/deny lists, hardened encoded queries, and a JSON audit line per call.
 
 Built with [FastMCP 4.0](https://gofastmcp.com) — speaks both the stateless MCP 2026-07-28 protocol and the legacy handshake, negotiated per connection.
 
@@ -48,7 +49,7 @@ ServiceNow's **MCP Server Console** (Action Fabric) exposes Now Assist skills, K
 | **Auth** | OAuth 2.0 auth-code via Machine Identity Console (JWT, no DCR) | OAuth 2.1 + PKCE proxy (DCR + CIMD), static tokens, or a service account |
 | **Governance** | AI Control Tower / AI Gateway | Self-managed: `--read-only`, table allow/deny, opt-in write confirmation, audit log, tool annotations |
 | **Transport** | Streamable HTTP only | stdio + Streamable HTTP |
-| **Resources / prompts** | Roadmap | 5 resources |
+| **Resources / skills / prompts** | Roadmap | 5 resources; 4 Agent Skills served as `skill://` resources (SEP-2640); prompts planned for 0.9 |
 
 **Run both.** Native tells Claude what ServiceNow *means* (skills, summaries, semantic search); this server tells Claude what ServiceNow *contains* (rows, schema, aggregates, update sets). No tool-name collisions today.
 
@@ -161,6 +162,28 @@ MCP Resources provide read-only context that LLM clients can fetch without tool 
 | `servicenow://cmdb/classes` | CMDB CI class hierarchy (names, labels, parent classes) |
 | `servicenow://help/query-syntax` | Encoded query operators reference (prevents hallucinated syntax) |
 
+## Skills (served over MCP)
+
+Four [Agent Skills](https://agentskills.io) — guided, multi-step workflows that chain the tools above — ship inside the package and are served over MCP as resources, following the convention the MCP Skills Over MCP working group standardised in [SEP-2640](https://github.com/modelcontextprotocol/modelcontextprotocol/pull/2640). Every install gets them, on every client, with no plugin.
+
+| Skill | URI | What it guides |
+|-------|-----|----------------|
+| **triaging-incidents** | `skill://triaging-incidents/SKILL.md` | List, triage, investigate and create incidents; 30-day trend reports; SLA breaches |
+| **servicenow-cmdb** | `skill://servicenow-cmdb/SKILL.md` | CI class hierarchy, dependency maps, CMDB health and full audits, data quality, CSDM taxonomy |
+| **reviewing-update-sets** | `skill://reviewing-update-sets/SKILL.md` | Deep review, batch review, comparison and pre-promotion checks for update sets |
+| **exploring-tables** | `skill://exploring-tables/SKILL.md` | Schema discovery, field types, data profiling, table search and comparison |
+
+Each skill also exposes `skill://<name>/_manifest` (a JSON file list with SHA-256 digests, so a host can verify what it loaded) and its reference material as sibling resources, e.g. `skill://triaging-incidents/references/incident-fields.md`. Every read is an audit line.
+
+How clients pick them up:
+
+- **Claude Code** reads them on its own: the server's `instructions` tell the model which skill matches which request, and the model fetches the resource before calling tools. The Claude Code plugin additionally installs the same four files as filesystem skills.
+- **Hosts implementing SEP-2640** (prototypes exist for Gemini CLI, Goose and Claude Code) list them next to local skills and load them on activation.
+- **Claude Desktop** lists them under the server's connector entry in the `+` menu; attaching one reads it over MCP and lands an audit line (verified on Desktop 1.46388.4).
+- **Any other client that surfaces MCP resources** — VS Code's *Add Context → MCP Resources*, Gemini CLI's `@skill://…` — can attach them like any resource.
+
+The **update set reviewer** remains a differentiator: no other open-source ServiceNow MCP server provides guided update set review with risk categorization and pre-promotion checklists — and none serves skills over MCP.
+
 ## Safety & governance
 
 Every tool carries MCP annotations (`readOnlyHint`, `destructiveHint`, `idempotentHint`, `openWorldHint`) so clients such as Claude Code can apply their own permission policy. On top of that, the server ships its own guardrails — all off by default except the audit log:
@@ -202,6 +225,7 @@ graph TD
         ST["system_tools (3)"]
         UT["update_set_tools (5)"]
         RS["resources (5)"]
+        SK["skills (4)"]
         SNR["make_sn_request"]
     end
     subgraph AUTH["Auth + HTTP"]
@@ -312,22 +336,9 @@ python -m pytest tests/integration/ -v
 ruff check src/ tests/
 ```
 
-## Skills (Claude Code)
-
-This project ships 4 Claude Code skills in `skills/` (installed via the plugin, not the PyPI package) — guided workflows that chain MCP tools for common ServiceNow tasks. Skills auto-trigger from natural conversation or can be invoked directly.
-
-| Skill | What It Does | Try Saying |
-|-------|-------------|------------|
-| **servicenow-cmdb** | CI classes, dependencies, CMDB health, data quality, CSDM compliance | "show me CMDB health" / "what depends on this server" |
-| **exploring-tables** | Schema discovery, field types, data profiling, table comparison | "what fields does incident have" / "find tables matching cmdb" |
-| **reviewing-update-sets** | Update set review, risk flagging, conflict detection, pre-promotion checks | "review my update sets" / "is this safe to promote" |
-| **triaging-incidents** | Incident triage, priority assessment, CI correlation, bulk analysis | "what's on fire" / "open P1 incidents" |
-
-The **update set reviewer** is a unique differentiator — no other open-source ServiceNow MCP server provides guided update set review workflows with risk categorization and pre-promotion checklists.
-
 ## Claude Code Plugin
 
-Install as a Claude Code plugin for zero-config setup — the MCP server, skills, slash commands, and admin agent are bundled together.
+Install as a Claude Code plugin for zero-config setup: the plugin wires up the MCP server and installs the same four skills as filesystem skills, so they auto-trigger from conversation even before Claude Code consumes skills over MCP natively.
 
 ### Prerequisites
 
@@ -356,18 +367,7 @@ claude plugin install servicenow@mcp-server-servicenow
 claude --plugin-dir /path/to/mcp-server-servicenow
 ```
 
-### Slash Commands
-
-| Command | Description |
-|---------|-------------|
-| `/servicenow:triage` | Triage incidents — list, investigate, assess priority, analyze trends |
-| `/servicenow:cmdb` | Explore CMDB — CI hierarchy, dependencies, health, CSDM taxonomy |
-| `/servicenow:review-update-set` | Review update sets — deep review, compare, pre-promotion checks |
-| `/servicenow:explore-table` | Explore tables — schema, fields, data profiling, table search |
-
-### Agent
-
-The `servicenow-admin` agent handles complex multi-step tasks autonomously (CMDB audits, incident trend reports, batch update set reviews). Claude can spawn it as a background worker for long-running analysis.
+The skills appear as `servicenow:triaging-incidents`, `servicenow:servicenow-cmdb`, `servicenow:reviewing-update-sets` and `servicenow:exploring-tables`. The `/servicenow:*` slash commands and the `servicenow-admin` subagent shipped in 0.7.x were removed in 0.8.0 — their workflows now live in the skills.
 
 > **Note:** The plugin auto-configures the MCP server — no manual `.mcp.json` setup required.
 
@@ -384,7 +384,8 @@ The `servicenow-admin` agent handles complex multi-step tasks autonomously (CMDB
 - **v0.6.0** &#x2705; FastMCP 4.0 — MCP 2026-07-28 stateless protocol support, fail-closed HTTP hardening, community fixes
 - **v0.6.1** &#x2705; OAuth ROPC timeout + refresh-token grant, mypy in CI, dependency refresh
 - **v0.7.0** &#x2705; Safety & governance — tool annotations, read-only mode, table allow/deny lists, opt-in destructive-call confirmation, JSON audit log, schema inheritance
-- **Next** — "Run alongside native" guide, MCP prompts from the skills, per-token scopes over HTTP, developer-plane tools (system logs, health checks)
+- **v0.8.0** &#x2705; Skills over MCP — the four skills ship in the wheel as `skill://` resources (SEP-2640), server instructions, plugin slimmed to server + skills
+- **Next** — MCP prompts (v0.9), "Run alongside native" guide, per-token scopes over HTTP, developer-plane tools (system logs, health checks)
 
 ## Related Projects
 

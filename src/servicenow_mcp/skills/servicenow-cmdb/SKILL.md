@@ -1,10 +1,11 @@
 ---
 name: servicenow-cmdb
-description: "Exploring CMDB configuration items, CI class hierarchy, relationships, health metrics, data quality, and CSDM compliance. Use when the user mentions CMDB, configuration items, CIs, CI classes, dependencies, relationships, CMDB health, data quality, duplicates, orphaned CIs, CSDM, service taxonomy, Data Foundations certification, staleness, compliance scores, or \"show me what depends on X.\""
-allowed-tools: "mcp__plugin_servicenow_servicenow__list_ci, mcp__plugin_servicenow_servicenow__get_ci, mcp__plugin_servicenow_servicenow__get_ci_relationships, mcp__plugin_servicenow_servicenow__list_records, mcp__plugin_servicenow_servicenow__get_record, mcp__plugin_servicenow_servicenow__get_table_schema"
+description: "Exploring and auditing CMDB configuration items: CI class hierarchy, relationships, health metrics, data quality, and CSDM compliance. Use when the user mentions CMDB, configuration items, CIs, CI classes, dependencies, relationships, CMDB health, CMDB audit, data quality, duplicates, orphaned CIs, CSDM, service taxonomy, Data Foundations certification, staleness, compliance scores, or 'show me what depends on X'."
+license: MIT
 metadata:
   author: jschuller
-  version: "1.0.0"
+  version: "2.0.0"
+
 ---
 
 # ServiceNow CMDB Data Foundations
@@ -98,6 +99,7 @@ Query the CMDB Health Dashboard tables for data quality KPIs. Uses a validation 
 4. Summarize: overall health score, top failing rules, classes with lowest scores.
 5. Recommend specific remediation actions for each failing rule.
 6. After remediation, re-query health scores to verify improvement.
+7. **Full CMDB audit** (when asked for an audit or the health tables are empty): enumerate the populated CI classes (`list_records(table_name="sys_db_object", query="super_classISNOTEMPTY^nameSTARTSWITHcmdb_ci", fields="name,label", limit=100)` then `aggregate_records` per class), sample records per class for missing key fields (`name`, `sys_class_name`, `operational_status`, `support_group`), find orphaned CIs (no `cmdb_rel_ci` rows in either direction), flag duplicates (same `name` across classes), and close with a findings-then-recommendations report. Keep it read-only unless the user asks for fixes.
 
 ### 4. Investigate Data Quality
 

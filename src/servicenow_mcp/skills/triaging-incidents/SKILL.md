@@ -1,10 +1,11 @@
 ---
 name: triaging-incidents
-description: "Creating, triaging, updating, and analyzing ServiceNow incidents. Assess severity, check affected CIs, find related incidents, and recommend assignments. Use when the user mentions incidents, INC numbers, outages, service disruptions, ticket creation, triage, priority, severity, ITSM operations, SLA breaches, assignment groups, \"what's on fire,\" or \"open P1 incidents.\""
-allowed-tools: "mcp__plugin_servicenow_servicenow__list_records, mcp__plugin_servicenow_servicenow__get_record, mcp__plugin_servicenow_servicenow__create_record, mcp__plugin_servicenow_servicenow__update_record, mcp__plugin_servicenow_servicenow__list_ci, mcp__plugin_servicenow_servicenow__get_ci, mcp__plugin_servicenow_servicenow__get_ci_relationships, mcp__plugin_servicenow_servicenow__get_table_schema"
+description: "Creating, triaging, updating, and analyzing ServiceNow incidents, including trend reports. Assess severity, check affected CIs, find related incidents, and recommend assignments. Use when the user mentions incidents, INC numbers, outages, service disruptions, ticket creation, triage, priority, severity, ITSM operations, SLA breaches, assignment groups, incident trends, 'what's on fire', or 'open P1 incidents'."
+license: MIT
 metadata:
   author: jschuller
-  version: "1.0.0"
+  version: "2.0.0"
+
 ---
 
 # Triaging ServiceNow Incidents
@@ -145,7 +146,7 @@ Analyze incident trends — top categories, repeat offenders, SLA status.
    ```
    list_records(table_name="incident", query="sys_created_on>=javascript:gs.daysAgoStart(30)^active=true", fields="number,category,cmdb_ci,priority,state,assignment_group,sla_due", limit=100, order_by="-sys_created_on")
    ```
-2. Group by category — which categories generate the most incidents?
+2. Group by category, priority, and assignment group — which generate the most incidents? `aggregate_records(table_name="incident", query="sys_created_on>=javascript:gs.daysAgoStart(30)", group_by="category")` avoids pulling every row.
 3. Identify repeat CIs — which CIs appear in multiple incidents?
    ```
    list_records(table_name="incident", query="cmdb_ci=<frequent_ci_sys_id>^sys_created_on>=javascript:gs.daysAgoStart(30)", fields="number,short_description,priority,state", limit=20)
@@ -154,7 +155,8 @@ Analyze incident trends — top categories, repeat offenders, SLA status.
    ```
    list_records(table_name="incident", query="active=true^sla_due<javascript:gs.daysAgoEnd(0)", fields="number,short_description,priority,sla_due,assignment_group", limit=20)
    ```
-5. Present: top incident categories, repeat-offender CIs, SLA breach count, recommendations for reducing incident volume.
+5. Find resolution patterns: which categories resolve fastest and slowest (`resolved_at` minus `opened_at` on closed incidents, `state=7`, same window).
+6. Present as a trend report: top incident categories, repeat-offender CIs, SLA breach count, resolution patterns, and recommendations for reducing incident volume. Separate facts from recommendations.
 
 ## Tips
 
@@ -166,4 +168,4 @@ Analyze incident trends — top categories, repeat offenders, SLA status.
 
 ## Notes on writes
 
-`update_record` mutates the incident immediately. If the server was started with `--write-confirm`, the call may instead return a `confirmation_required` error containing the record's current values (clients that cannot show a dialog, such as Claude Desktop) — show that preview to the user and re-run with `confirm=true` only once they agree. `Declined by user` means stop.
+`update_record` mutates the incident immediately. If the server was started with `--write-confirm`, the call may instead return a `confirmation_required` error containing the record's current values (clients that cannot show a dialog, such as Claude Desktop) — show that preview to the user and re-run with `confirm=true` only once they agree. `Declined by user` means stop. A subagent or headless run cannot answer an elicitation dialog, so surface the preview in your report instead of retrying.

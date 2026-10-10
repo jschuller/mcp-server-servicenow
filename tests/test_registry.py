@@ -1,6 +1,7 @@
-"""Tool registry regression tests.
+"""Registry regression tests for tools, resources, and skills.
 
-Safety net to ensure all 19 tools remain registered after FastMCP migration.
+Safety net: 19 tools, 15 static resources (4 hand-written + 11 skill:// entries)
+and 1 resource template must stay registered exactly.
 """
 
 import pytest
@@ -41,6 +42,25 @@ EXPECTED_TOOLS = {
     "list_update_set_changes",
 }
 
+SKILLS = (
+    "exploring-tables",
+    "reviewing-update-sets",
+    "servicenow-cmdb",
+    "triaging-incidents",
+)
+EXPECTED_RESOURCES = {
+    "servicenow://instance",
+    "servicenow://update-set/current",
+    "servicenow://cmdb/classes",
+    "servicenow://help/query-syntax",
+    *(f"skill://{n}/SKILL.md" for n in SKILLS),
+    *(f"skill://{n}/_manifest" for n in SKILLS),
+    "skill://reviewing-update-sets/references/update-set-fields.md",
+    "skill://servicenow-cmdb/references/cmdb-tables.md",
+    "skill://triaging-incidents/references/incident-fields.md",
+}
+EXPECTED_TEMPLATES = {"servicenow://schema/{table_name}"}
+
 
 @pytest.fixture(autouse=True)
 def _init_services():
@@ -59,6 +79,7 @@ def _init_services():
     import servicenow_mcp.tools.cmdb_tools  # noqa: F401
     import servicenow_mcp.tools.system_tools  # noqa: F401
     import servicenow_mcp.tools.update_set_tools  # noqa: F401
+    import servicenow_mcp.resources  # noqa: F401
 
 
 class TestToolRegistry:
@@ -96,3 +117,28 @@ class TestToolRegistry:
             tools = await client.list_tools()
             for tool in tools:
                 assert tool.description, f"Tool '{tool.name}' has no description"
+
+
+class TestResourceRegistry:
+    @pytest.mark.asyncio
+    async def test_exact_resource_set(self) -> None:
+        """Exactly the 15 static resources — no extras, none missing."""
+        async with Client(mcp) as client:
+            registered = {str(r.uri) for r in await client.list_resources()}
+        assert registered == EXPECTED_RESOURCES, (
+            f"missing={EXPECTED_RESOURCES - registered} extra={registered - EXPECTED_RESOURCES}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_exact_template_set(self) -> None:
+        async with Client(mcp) as client:
+            templates = {
+                str(t.uri_template) for t in await client.list_resource_templates()
+            }
+        assert templates == EXPECTED_TEMPLATES
+
+    @pytest.mark.asyncio
+    async def test_all_resources_have_description(self) -> None:
+        async with Client(mcp) as client:
+            for r in await client.list_resources():
+                assert r.description, f"Resource '{r.uri}' has no description"

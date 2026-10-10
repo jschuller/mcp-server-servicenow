@@ -23,5 +23,5 @@ docs/mcp-enhancement-roadmap.md
 *.key
 *.log
 *.token
-# local skill copies — skills/ (plugin) is the tracked source
+# local skill copies — src/servicenow_mcp/skills/ is the tracked source
 .claude/skills/
