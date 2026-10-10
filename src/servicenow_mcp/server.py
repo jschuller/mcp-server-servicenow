@@ -24,19 +24,45 @@ logger = logging.getLogger(__name__)
 _config: ServerConfig | None = None
 _auth_manager: AuthManager | None = None
 
-SERVER_INSTRUCTIONS = """\
-ServiceNow developer data plane: Table API, CMDB, update sets, schema.
-Before multi-step ITSM or CMDB work, read the matching skill resource (a guided
-workflow with encoded-query patterns), then use the tools:
-- skill://triaging-incidents/SKILL.md — incidents, INC numbers, outages, P1s, triage, SLAs
-- skill://servicenow-cmdb/SKILL.md — CIs, classes, dependencies, CMDB health, CSDM
-- skill://reviewing-update-sets/SKILL.md — update sets, promotion, "is this safe to promote"
-- skill://exploring-tables/SKILL.md — table schemas, fields, data profiling
-Each skill's references/ files are sibling resources; servicenow://help/query-syntax
-lists the encoded-query operators. Queries join with ^ (AND) and ^OR; javascript:
-values are refused unless the server allows them. Prefer fields= and limit=; treat
-audits and reviews as read-only unless the user asks for a change.
-"""
+# (skill directory, when the model should read it) — the order the model sees.
+_SKILL_HINTS = (
+    ("triaging-incidents", "incidents, INC numbers, outages, P1s, triage, SLAs"),
+    ("servicenow-cmdb", "CIs, classes, dependencies, CMDB health, CSDM"),
+    ("reviewing-update-sets", 'update sets, promotion, "is this safe to promote"'),
+    ("exploring-tables", "table schemas, fields, data profiling"),
+)
+
+
+def render_instructions(namespace: str | None = None) -> str:
+    """Return the model-facing server instructions.
+
+    FastMCP does not pass a mounted server's instructions on to its parent, and
+    ``parent.mount(mcp, namespace="snow")`` rewrites resource URIs the same way
+    this does (``skill://x/SKILL.md`` becomes ``skill://snow/x/SKILL.md``). A
+    server that mounts this one can include ``render_instructions("snow")`` in
+    its own instructions so the URIs the model is told about are the ones it can
+    read.
+    """
+
+    def uri(scheme: str, path: str) -> str:
+        return f"{scheme}://{namespace}/{path}" if namespace else f"{scheme}://{path}"
+
+    skills = "\n".join(
+        f"- {uri('skill', name + '/SKILL.md')} — {hint}" for name, hint in _SKILL_HINTS
+    )
+    return (
+        "ServiceNow developer data plane: Table API, CMDB, update sets, schema.\n"
+        "Before multi-step ITSM or CMDB work, read the matching skill resource (a guided\n"
+        "workflow with encoded-query patterns), then use the tools:\n"
+        f"{skills}\n"
+        f"Each skill's references/ files are sibling resources; {uri('servicenow', 'help/query-syntax')}\n"
+        "lists the encoded-query operators. Queries join with ^ (AND) and ^OR; javascript:\n"
+        "values are refused unless the server allows them. Prefer fields= and limit=; treat\n"
+        "audits and reviews as read-only unless the user asks for a change.\n"
+    )
+
+
+SERVER_INSTRUCTIONS = render_instructions()
 
 mcp = FastMCP("servicenow-mcp", version=__version__, instructions=SERVER_INSTRUCTIONS)
 # The first middleware added is the outermost. Audit wraps everything so policy

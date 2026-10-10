@@ -12,8 +12,8 @@ from importlib.resources import files
 from pathlib import Path
 
 import pytest
+import yaml
 from fastmcp import Client
-from fastmcp.server.providers.skills._common import parse_frontmatter
 
 from servicenow_mcp.server import init_services, mcp
 from servicenow_mcp.utils.config import (
@@ -35,6 +35,12 @@ REFERENCE_URIS = {
     "skill://triaging-incidents/references/incident-fields.md",
 }
 SKILLS_ROOT = Path(str(files("servicenow_mcp").joinpath("skills")))
+
+
+def _frontmatter(path: Path) -> dict:
+    """Parse a SKILL.md frontmatter block the way FastMCP 4.0.4+ does (YAML)."""
+    _, block, _ = path.read_text(encoding="utf-8").split("---", 2)
+    return yaml.safe_load(block)
 
 
 @pytest.fixture(autouse=True)
@@ -98,9 +104,7 @@ class TestSkillListing:
 class TestSkillFrontmatter:
     @pytest.mark.parametrize("name", sorted(SKILL_NAMES))
     async def test_description_is_the_frontmatter_description(self, name: str) -> None:
-        frontmatter, _ = parse_frontmatter(
-            (SKILLS_ROOT / name / "SKILL.md").read_text(encoding="utf-8")
-        )
+        frontmatter = _frontmatter(SKILLS_ROOT / name / "SKILL.md")
         async with Client(mcp) as client:
             by_uri = {str(r.uri): r for r in await client.list_resources()}
         wire = by_uri[f"skill://{name}/SKILL.md"].description
@@ -113,9 +117,7 @@ class TestSkillFrontmatter:
     def test_no_client_specific_allowed_tools(self, name: str) -> None:
         """allowed-tools is experimental in the Agent Skills spec and its old values
         hardcoded plugin-only tool names; the skills must stay client-neutral."""
-        frontmatter, _ = parse_frontmatter(
-            (SKILLS_ROOT / name / "SKILL.md").read_text(encoding="utf-8")
-        )
+        frontmatter = _frontmatter(SKILLS_ROOT / name / "SKILL.md")
         assert "allowed-tools" not in frontmatter
         assert (
             "mcp__plugin_servicenow"
