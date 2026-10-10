@@ -23,6 +23,8 @@ from fastmcp.server.providers.skills import SkillsDirectoryProvider
 from servicenow_mcp.server import mcp, get_config, make_sn_request
 from servicenow_mcp.utils.http import build_url, parse_json_response
 from servicenow_mcp.utils.schema import _reference_value, fetch_table_schema
+from servicenow_mcp.utils.user import fetch_current_user
+from servicenow_mcp.tools.update_set_tools import CURRENT_UPDATE_SET_PREF_QUERY
 
 logger = logging.getLogger(__name__)
 
@@ -87,41 +89,16 @@ def instance_info() -> str:
     except Exception:
         logger.debug("Failed to fetch system properties for instance resource")
 
-    # Fetch current user
     try:
-        user_url = f"{config.instance_url}/api/now/ui/user/current_user"
-        user_resp = make_sn_request("GET", user_url, config.timeout)
-        user_data = parse_json_response(user_resp, user_url)
-        user = user_data.get("result", {})
-        result["user"] = {
-            "user_name": user.get("user_name"),
-            "name": user.get("name"),
-            "email": user.get("email"),
-        }
-    except Exception:
-        # Fallback: Table API. Server-authored query — not subject to the
-        # caller-query javascript: policy.
-        try:
-            table_url = build_url(config.api_url, "table", "sys_user")
-            user_params = {
-                "sysparm_query": "user_name=javascript:gs.getUserName()",
-                "sysparm_limit": 1,
-                "sysparm_fields": "user_name,name,email",
+        user = fetch_current_user(config.api_url, config.timeout)
+        if user:
+            result["user"] = {
+                "user_name": user["user_name"],
+                "name": user["user_display_name"],
+                "email": user["user_email"],
             }
-            user_resp = make_sn_request(
-                "GET", table_url, config.timeout, params=user_params
-            )
-            user_data = parse_json_response(user_resp, table_url)
-            users = user_data.get("result", [])
-            if users:
-                u = users[0]
-                result["user"] = {
-                    "user_name": u.get("user_name"),
-                    "name": u.get("name"),
-                    "email": u.get("email"),
-                }
-        except Exception:
-            logger.debug("Failed to fetch current user for instance resource")
+    except Exception:
+        logger.debug("Failed to fetch current user for instance resource")
 
     return json.dumps(result)
 
@@ -141,10 +118,11 @@ def current_update_set() -> str:
     """Return the currently active update set."""
     config = get_config()
 
-    # Get current update set sys_id from user preference
+    # The caller's own preference row: a row with an empty user is the
+    # system-wide default, and another user's row is not ours to report.
     pref_url = build_url(config.api_url, "table", "sys_user_preference")
     pref_params = {
-        "sysparm_query": "name=sys_update_set",
+        "sysparm_query": CURRENT_UPDATE_SET_PREF_QUERY,
         "sysparm_limit": 1,
         "sysparm_fields": "value",
     }

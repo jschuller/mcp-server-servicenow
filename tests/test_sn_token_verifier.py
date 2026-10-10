@@ -1,5 +1,6 @@
 """Tests for ServiceNow token verifier."""
 
+import hashlib
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx2
@@ -240,6 +241,29 @@ class TestTokenVerificationCache:
 
         # token-3 should be cached, expired entries evicted
         assert len(verifier._cache) == 1
+
+    @pytest.mark.asyncio
+    async def test_cache_never_exceeds_max_size(self) -> None:
+        """With every entry still live, the oldest is evicted to stay in bounds."""
+        verifier = ServiceNowTokenVerifier(
+            instance_url=INSTANCE_URL,
+            cache_ttl_seconds=300,
+            max_cache_size=2,
+        )
+        mock_cls = _make_mock_client(response=_valid_sn_response())
+
+        with patch(
+            "servicenow_mcp.auth.sn_token_verifier.httpx2.AsyncClient", mock_cls
+        ):
+            for token in ("token-1", "token-2", "token-3", "token-4"):
+                await verifier.verify_token(token)
+                assert len(verifier._cache) <= 2
+
+        # The two newest tokens survive; the oldest were evicted first.
+        survivors = {
+            hashlib.sha256(t.encode()).hexdigest() for t in ("token-3", "token-4")
+        }
+        assert set(verifier._cache) == survivors
 
 
 class TestConnectionPooling:

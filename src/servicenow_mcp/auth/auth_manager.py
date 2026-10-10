@@ -73,13 +73,25 @@ class AuthManager:
         }
         return token_url, headers
 
-    def _store_token_response(self, token_data: Dict) -> None:
-        """Store tokens from a successful token-endpoint response.
+    def _store_token_response(self, response: requests.Response) -> None:
+        """Store tokens from a successful (HTTP 200) token-endpoint response.
 
-        ServiceNow may rotate the refresh token on a refresh grant; when the
-        response omits one, keep the refresh token already held.
+        A 200 without an ``access_token`` (an error body, an HTML login page from
+        a hibernating instance) raises instead of storing ``None``, which would
+        otherwise go out as ``Authorization: Bearer None`` (#12). The body is not
+        echoed: it may carry token material. ServiceNow may rotate the refresh
+        token on a refresh grant; when the response omits one, keep the one held.
         """
-        self.token = token_data.get("access_token")
+        try:
+            token_data = response.json()
+        except ValueError:
+            token_data = None
+        if not isinstance(token_data, dict) or not token_data.get("access_token"):
+            raise ValueError(
+                "OAuth token endpoint answered 200 without an access_token; "
+                "check the client id/secret and that the instance is awake"
+            )
+        self.token = token_data["access_token"]
         self.token_type = token_data.get("token_type", "Bearer")
         self._refresh_token = token_data.get("refresh_token") or self._refresh_token
 
@@ -100,7 +112,7 @@ class AuthManager:
         )
 
         if response.status_code == 200:
-            self._store_token_response(response.json())
+            self._store_token_response(response)
             return
 
         raise ValueError(
@@ -128,13 +140,13 @@ class AuthManager:
                     token_url, headers=headers, data=data, timeout=self.timeout
                 )
                 if response.status_code == 200:
-                    self._store_token_response(response.json())
+                    self._store_token_response(response)
                     return
                 logger.warning(
                     "OAuth refresh grant failed (%s); falling back to password grant",
                     response.status_code,
                 )
-            except requests.RequestException as e:
+            except (requests.RequestException, ValueError) as e:
                 logger.warning(
                     "OAuth refresh grant errored (%s); falling back to password grant",
                     e,

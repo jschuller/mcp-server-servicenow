@@ -186,3 +186,49 @@ class TestServerWiring:
             assert server._auth_manager.timeout == 12
         finally:
             server._config, server._auth_manager = saved_config, saved_manager
+
+
+def _bare_200(json_value: object) -> MagicMock:
+    resp = MagicMock(spec=requests.Response)
+    resp.status_code = 200
+    if isinstance(json_value, Exception):
+        resp.json.side_effect = json_value
+    else:
+        resp.json.return_value = json_value
+    resp.text = "<html>login</html>"
+    return resp
+
+
+class TestTokenResponseWithoutAccessToken:
+    """#12: a 200 without access_token must not become 'Bearer None'."""
+
+    @patch("servicenow_mcp.auth.auth_manager.requests.post")
+    def test_error_body_raises(
+        self, mock_post: MagicMock, oauth_auth_manager: AuthManager
+    ) -> None:
+        mock_post.return_value = _bare_200({"error": "invalid_client"})
+        with pytest.raises(ValueError, match="without an access_token"):
+            oauth_auth_manager.get_headers()
+        assert oauth_auth_manager.token is None
+
+    @patch("servicenow_mcp.auth.auth_manager.requests.post")
+    def test_non_json_body_raises(
+        self, mock_post: MagicMock, oauth_auth_manager: AuthManager
+    ) -> None:
+        mock_post.return_value = _bare_200(ValueError("not JSON"))
+        with pytest.raises(ValueError, match="without an access_token"):
+            oauth_auth_manager.get_headers()
+
+    @patch("servicenow_mcp.auth.auth_manager.requests.post")
+    def test_refresh_without_token_falls_back_to_password_grant(
+        self, mock_post: MagicMock, oauth_auth_manager: AuthManager
+    ) -> None:
+        oauth_auth_manager._refresh_token = "refresh-old"
+        mock_post.side_effect = [
+            _bare_200({"error": "server_error"}),
+            _token_response(access_token="access-2"),
+        ]
+        oauth_auth_manager.refresh_token()
+        assert oauth_auth_manager.token == "access-2"
+        grants = [c.kwargs["data"]["grant_type"] for c in mock_post.call_args_list]
+        assert grants == ["refresh_token", "password"]

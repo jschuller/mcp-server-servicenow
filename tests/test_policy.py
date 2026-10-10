@@ -7,6 +7,7 @@ from fastmcp import Client
 from fastmcp.exceptions import ToolError
 
 from servicenow_mcp.middleware.policy import find_unsafe_js
+from servicenow_mcp import server
 from servicenow_mcp.server import mcp
 from servicenow_mcp.tools import cmdb_tools, system_tools, table_tools
 from servicenow_mcp.utils.http import build_url
@@ -216,12 +217,11 @@ class TestQueryPolicy:
         init_test_services()
 
         def fake(method, url, timeout, params=None, json_data=None):
-            if url.endswith("/ui/user/current_user"):
-                raise RuntimeError("ui endpoint unavailable")
             assert params["sysparm_query"] == "user_name=javascript:gs.getUserName()"
             return sn_response({"result": [{"user_name": "admin", "name": "Admin"}]})
 
-        monkeypatch.setattr(system_tools, "make_sn_request", fake)
+        # fetch_current_user resolves make_sn_request from the server module.
+        monkeypatch.setattr(server, "make_sn_request", fake)
         async with Client(mcp) as client:
             result = await client.call_tool("get_current_user", {})
         assert result.data["user_name"] == "admin"
