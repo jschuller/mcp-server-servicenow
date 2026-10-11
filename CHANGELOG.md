@@ -1,67 +1,72 @@
 # Changelog
 
-## [0.8.0] - 2026-09-05
+## [Unreleased] — 0.8.0
 
 "One server, spec-native surface." The four ServiceNow skills stop being a
 Claude-Code-plugin-only artifact and become part of the MCP contract: they ship
-in the wheel and are served over MCP as `skill://` resources, the convention the
-MCP Skills Over MCP working group standardised in SEP-2640 (accepted
-2026-09-03). Every `pip`/`uvx` install on every client now gets the guided
-workflows that previously reached plugin installers only. MCP prompts are
-deferred to 0.9 (see the roadmap).
+in the wheel and are served over MCP as `skill://` resources in the SEP-2640
+URI shape (the Skills extension went Final on 2026-09-11). Every `pip`/`uvx`
+install on every client gets the guided workflows. The server does not yet
+declare the `io.modelcontextprotocol/skills` extension (`skills/list`), which
+waits for FastMCP support. MCP prompts are deferred to 0.9.
+
+Verified on 2026-10-10/11 against a Brazil instance with Claude Code 2.1.296,
+Codex CLI 0.162.1 and pi 1.1.0 — see "Verified clients" in the README.
 
 ### Upgrade notes
-No tool changes. Three things differ from 0.7.x:
-- **Eleven new resources appear in `resources/list`** — per skill a
-  `skill://<name>/SKILL.md`, a `skill://<name>/_manifest` (JSON file list with
-  SHA-256 digests) and its `references/*.md`. Clients that enumerate resources
-  will show 15 instead of 4. Reads are audited like any resource read.
-- **The server now sends `instructions`** naming the skill URIs and the
-  encoded-query rules. Claude Code places them in the model's context (~150
-  tokens per session).
-- **The Claude Code plugin no longer ships `/servicenow:*` slash commands or
-  the `servicenow-admin` subagent.** Their workflows were folded into the
-  skills (CMDB audit → `servicenow-cmdb`, incident trend report →
-  `triaging-incidents`, batch update set review → `reviewing-update-sets`); the
-  agent's instance-health pattern is not ported and stays on the roadmap as a
-  health-check tool. The plugin still installs the four skills as filesystem
-  skills, now from `src/servicenow_mcp/skills/`.
+- **Breaking (Claude Code plugin):** the four `/servicenow:*` slash commands
+  are now the skills' own commands — `/servicenow:triage` →
+  `/servicenow:triaging-incidents`, `/servicenow:cmdb` →
+  `/servicenow:servicenow-cmdb`, `/servicenow:explore-table` →
+  `/servicenow:exploring-tables`, `/servicenow:review-update-set` →
+  `/servicenow:reviewing-update-sets`. The `servicenow-admin` subagent is
+  removed (its audit, trend-report and batch-review patterns live in the
+  skills). The skills no longer carry `allowed-tools`, so Claude Code may now
+  ask before the MCP tools a skill uses.
+- **`get_current_user` returns one shape for every auth type:** `user_name`,
+  `user_display_name`, `user_email`, `user_sys_id`, `roles`, plus any extra
+  `fields` you ask for. Basic-auth callers previously got the raw UI-endpoint
+  payload.
+- **Eleven new resources** appear in `resources/list` (per skill: `SKILL.md`,
+  `_manifest` with SHA-256 digests, `references/*.md`): 15 instead of 4.
+- **The server sends `instructions`** naming the skill URIs (~200 tokens).
+- **Audit:** an unknown resource URI is classified `unknown_resource` (was
+  `unknown_tool`).
+- **FastMCP floor is 4.1.0**; Python 3.14 is supported.
 
 ### Added
-- **Skills served over MCP** — `src/servicenow_mcp/skills/<name>/` (package
-  data, in the wheel) registered through FastMCP's `SkillsDirectoryProvider`
-  with `supporting_files="resources"`, so `skill://<name>/SKILL.md`,
-  `skill://<name>/_manifest` and every reference file are individually
-  readable. Path traversal is rejected by the provider.
-- **Server `instructions`** (`SERVER_INSTRUCTIONS` in `server.py`) — the
-  spec-native way to tell the *model* which skill fits which request; verified
-  that a fresh Claude Code session reads `skill://triaging-incidents/SKILL.md`
-  before querying when asked "what's on fire".
-- **`tests/test_skills.py`** — pins the SEP-2640 URI shape, manifest digests,
-  frontmatter descriptions on the wire, and a guard that no skill carries a
-  client-specific `allowed-tools` line. `tests/test_registry.py` now asserts
-  the exact resource and template sets, `tests/test_audit.py` the skill audit
-  line, `tests/test_cli.py` the instructions on the wire.
-- **`scripts/stdio_smoke.py` section D** — skills and the query-syntax help
-  resource over a real stdio subprocess in both protocol eras, plus the audit
-  line for a skill read (35 checks total).
+- Skills served over MCP via FastMCP's `SkillsDirectoryProvider`
+  (`src/servicenow_mcp/skills/`, package data).
+- Server `instructions`, and `render_instructions(namespace)` for servers that
+  mount this one: FastMCP does not forward a mounted server's instructions and
+  rewrites its URIs (`skill://snow/…`), so a parent can pass
+  `render_instructions("snow")` on. `tests/test_mount.py` pins that policy and
+  audit still apply through a parent.
+- CI: Python 3.14, and a check that the wheel carries the 4 skills.
+
+### Fixed
+- `set_current_update_set` and `servicenow://update-set/current` touch only the
+  caller's own `sys_user_preference` row. Before, an admin could overwrite
+  another user's current update set, and the fallback created a blank-user row
+  — which ServiceNow treats as the system-wide default for every user.
+- An OAuth token response without `access_token` raised nothing and sent
+  `Authorization: Bearer None`; it now fails with a clear error, and a refresh
+  grant that does so falls back to the password grant (#12).
+- The token-verification cache could grow past `max_cache_size`.
+- Clearer refusals: a `sys_dictionary` 403 names the `personalize_dictionary`
+  role that schemas need; an API-key 401 points at REST API access policies
+  instead of "check your username/password".
 
 ### Changed
-- **Skill frontmatter is now client-neutral** per the Agent Skills spec:
-  `allowed-tools` (experimental, and hardcoded to plugin-only tool names)
-  removed, descriptions rewritten without escaped quotes, `license: MIT` added,
-  `metadata.version` 2.0.0.
-- **`.claude-plugin/plugin.json`** points `skills` at the package directory;
-  version and description updated in `plugin.json`, `marketplace.json`,
-  `server.json`, `pyproject.toml`.
-- **Audit**: an unknown resource URI is now classified `unknown_resource`
-  (was `unknown_tool`).
-- README: machine header gains `skills: 4`, new "Skills (served over MCP)"
-  section, plugin section trimmed; `RELEASING.md` real-client check updated.
+- Dependencies refreshed (mcp 2.3.0, PyJWT 2.15.1, urllib3 2.8.0, anyio
+  4.15.1, httpx2 2.13.1), clearing the open Dependabot alerts except PyJWT #38,
+  which has no fixed release yet.
+- Live tests (`scripts/stdio_smoke.py`, `tests/integration/`) take credentials
+  from the environment only; the smoke has a `readonly` profile that changes
+  nothing and a `write` profile for writable instances.
 
 ### Removed
-- `commands/` (four `$ARGUMENTS` routers duplicating the skills) and
-  `agents/servicenow-admin.md`; the matching sdist excludes.
+- `commands/` and `agents/servicenow-admin.md`.
 
 ## [0.7.0] - 2026-09-05
 

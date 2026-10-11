@@ -41,7 +41,18 @@ the release (see Failure modes).
    uv run pytest tests/integration/ -v                 # live E2E (below)
    ```
 
-   The integration suite needs `.env.test` (gitignored) and an awake PDI.
+   The live checks read credentials from the environment only — start them
+   under a secret-store launcher, never from a file:
+
+   ```sh
+   with-secrets SERVICENOW_API_KEY=svc/homelab/servicenow-<pdi>-apikey -- env \
+     SERVICENOW_INSTANCE_URL=https://<pdi>.service-now.com \
+     SERVICENOW_AUTH_TYPE=api_key SERVICENOW_API_KEY_HEADER=x-sn-apikey \
+     sh -c 'uv run pytest tests/integration/ -v -rs && uv run python scripts/stdio_smoke.py --profile readonly'
+   ```
+
+   Tools the identity is refused are skipped with the missing grant named.
+   The integration suite needs an awake PDI.
    If it fails with `Got HTML instead of JSON`, the instance is
    **hibernating**: open
    `https://developer.servicenow.com/dev.do#!/home?wu=true` in a logged-in
@@ -61,8 +72,19 @@ the release (see Failure modes).
    - Plugin: `claude --plugin-dir .` with only `SERVICENOW_INSTANCE_URL/USERNAME/PASSWORD`
      set must start (the `${VAR:-default}` passthrough check).
    - the four `skill://…/SKILL.md` resources list and read (Claude Code `/mcp` → resources).
+   - Run Claude Code as `command claude …` if your shell aliases `claude`
+     (e.g. to `--dangerously-skip-permissions`), or the permission checks
+     are skipped.
+   - Codex: `codex mcp add … -- uv run --directory . mcp-server-servicenow --read-only`,
+     then `codex exec` a read question — read-only tools run without approval,
+     a skill is readable via `read_mcp_resource`, a write tool is refused by
+     `codex exec`; in the TUI a `--write-confirm` write shows the form.
+   - pi (1.0+): `pi mcp add … --exposure direct -- uv run --directory . mcp-server-servicenow`,
+     `pi mcp list` must report 12/19 tools and 15 resources; with
+     `--write-confirm` a write returns `confirmation_required` and the
+     `confirm=true` retry reaches the instance.
 
-4. Push to main and wait for CI green — the test matrix (3.11/3.12/3.13)
+4. Push to main and wait for CI green — the test matrix (3.11–3.14)
    plus the `package` job (version consistency, `uv lock --check`,
    build + twine).
 

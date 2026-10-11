@@ -21,12 +21,14 @@ PDIs hibernate after inactivity. Wake it at [developer.servicenow.com](https://d
 - **Basic auth:** Verify username/password are correct; check that the user has the `rest_api_explorer` or `admin` role
 - **OAuth:** Ensure the OAuth Application Registry entry is active and the redirect URI matches. Try regenerating the client secret
 - **Expired token:** OAuth tokens expire; the server retries once automatically, but if both attempts fail, check your credentials
+- **API key (`--auth-type api_key`):** a key authenticates only where a REST API access policy maps its auth profile for that API, method and resource — the global policy cannot carry token auth. A policy for Table API GET does not cover `aggregate_records` (Aggregate API, `/now/stats`), writes (PATCH/POST/DELETE), or a resource it does not list (e.g. `/now/table/{tableName}/{sys_id}`). The 401 names the method; add a policy per API you need. ServiceNow's default API-key header is `x-sn-apikey` (`--api-key-header x-sn-apikey`)
 
 ## 403 Access Denied
 The error message includes the ServiceNow response body, which typically names the specific policy or ACL that blocked access. Common causes:
 - **`WebServicePolicyValidator`** — The table's `ws_access` property is not set to `true`. Fix: go to System Definition > Tables, find the table, check "Allow access to this table via web services"
 - **Missing role** — The integration user needs the appropriate role (e.g., `itil` for incident, `cmdb_read` for CMDB). Check the error body for the specific role required
 - **Cross-scope restriction** — If accessing a scoped app's table, ensure cross-scope privileges are configured
+- **Least-privilege identities** — what each tool needs in the base system: `get_table_schema` and `servicenow://schema/*` need `personalize_dictionary` (the 403 says so); update-set tools and the update set picker need `admin` by default; deleting incidents needs `itil_admin` (`itil` can create and update them); `snc_read_only` refuses every write
 
 ## `Unknown tool: 'update_record'` (or any write tool)
 The server is running with `--read-only` / `SERVICENOW_READ_ONLY=true`: the 7 write tools are hidden from `tools/list`, and a cached client that still calls one gets this error. Restart without the flag to write.
