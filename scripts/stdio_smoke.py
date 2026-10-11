@@ -348,6 +348,16 @@ async def section_e(results, profile):
                 me.get("user_name") or "",
             )
         )
+        if isinstance(me.get("roles"), list):
+            results.append(
+                ok(
+                    "get_current_user: roles from sys_user_has_role",
+                    all(isinstance(r, str) and r for r in me["roles"]),
+                    ",".join(me["roles"]),
+                )
+            )
+        else:
+            info("get_current_user: this identity cannot read its own role rows")
         if profile == "readonly":
             return
         uid = me["user_sys_id"]

@@ -55,7 +55,7 @@ def get_current_user(
         ),
     ] = None,
 ) -> Dict[str, Any]:
-    """Get the currently authenticated user's information"""
+    """Get the authenticated user's identity and directly assigned, active roles"""
     config = get_config()
     return fetch_current_user(config.api_url, config.timeout, fields)
 

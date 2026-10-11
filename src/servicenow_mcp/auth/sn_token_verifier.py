@@ -20,6 +20,8 @@ import httpx2
 
 from fastmcp.server.auth import AccessToken, TokenVerifier
 
+from servicenow_mcp.utils.user import DIRECT_ROLES_QUERY, MAX_DIRECT_ROLES
+
 logger = logging.getLogger(__name__)
 
 
@@ -100,16 +102,17 @@ class ServiceNowTokenVerifier(TokenVerifier):
                 else httpx2.AsyncClient(timeout=self.timeout_seconds)
             )
             async with cm as client:
+                headers = {
+                    "Authorization": f"Bearer {token}",
+                    "Accept": "application/json",
+                }
                 response = await client.get(
                     f"{self.instance_url}/api/now/table/sys_user",
-                    headers={
-                        "Authorization": f"Bearer {token}",
-                        "Accept": "application/json",
-                    },
+                    headers=headers,
                     params={
                         "sysparm_query": "user_name=javascript:gs.getUserName()",
                         "sysparm_limit": 1,
-                        "sysparm_fields": "user_name,name,email,sys_id,roles",
+                        "sysparm_fields": "user_name,name,email,sys_id",
                     },
                 )
 
@@ -127,6 +130,7 @@ class ServiceNowTokenVerifier(TokenVerifier):
                     return None
 
                 user = results[0]
+                roles = await self._direct_roles(client, headers)
 
                 return AccessToken(
                     token=token,
@@ -138,7 +142,7 @@ class ServiceNowTokenVerifier(TokenVerifier):
                         "user_name": user.get("user_name"),
                         "name": user.get("name"),
                         "email": user.get("email"),
-                        "roles": user.get("roles"),
+                        "roles": roles,
                         "sn_user_data": user,
                     },
                 )
@@ -149,6 +153,32 @@ class ServiceNowTokenVerifier(TokenVerifier):
         except Exception as e:
             logger.debug("SN token verification error: %s", e)
             return None
+
+    async def _direct_roles(
+        self, client: httpx2.AsyncClient, headers: dict[str, str]
+    ) -> list[str] | None:
+        """The token owner's direct, active roles (``None`` if unreadable).
+
+        ``sys_user.roles`` is empty for most users, so it cannot be used.
+        """
+        try:
+            response = await client.get(
+                f"{self.instance_url}/api/now/table/sys_user_has_role",
+                headers=headers,
+                params={
+                    "sysparm_query": DIRECT_ROLES_QUERY,
+                    "sysparm_fields": "role.name",
+                    "sysparm_limit": MAX_DIRECT_ROLES,
+                },
+            )
+            if response.status_code != 200:
+                return None
+            rows = response.json().get("result", [])
+        except Exception as e:
+            logger.debug("SN role lookup failed: %s", e)
+            return None
+        names = {row.get("role.name") for row in rows if isinstance(row, dict)}
+        return sorted(name for name in names if isinstance(name, str) and name)
 
     def _evict_expired(self) -> None:
         """Remove expired entries from the cache."""

@@ -96,6 +96,7 @@ def instance_info() -> str:
                 "user_name": user["user_name"],
                 "name": user["user_display_name"],
                 "email": user["user_email"],
+                "roles": user["roles"],
             }
     except Exception:
         logger.debug("Failed to fetch current user for instance resource")

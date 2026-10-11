@@ -187,6 +187,11 @@ class TestQueryPolicy:
         init_test_services()
 
         def fake(method, url, timeout, params=None, json_data=None):
+            if url.endswith("/sys_user_has_role"):
+                assert params["sysparm_query"].startswith(
+                    "user=javascript:gs.getUserID()"
+                )
+                return sn_response({"result": [{"role.name": "itil"}]})
             assert params["sysparm_query"] == "user_name=javascript:gs.getUserName()"
             return sn_response({"result": [{"user_name": "admin", "name": "Admin"}]})
 
@@ -195,3 +200,4 @@ class TestQueryPolicy:
         async with Client(mcp) as client:
             result = await client.call_tool("get_current_user", {})
         assert result.data["user_name"] == "admin"
+        assert result.data["roles"] == ["itil"]
