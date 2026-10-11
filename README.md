@@ -15,7 +15,7 @@
 </p>
 
 <p align="center">
-  Connect Claude Code, GitHub Copilot, Codex, Antigravity or any MCP client to ServiceNow:<br>
+  Connect Claude Code, GitHub Copilot, Codex, opencode, Antigravity or any MCP client to ServiceNow:<br>
   query any table, read schema and CMDB, review update sets. Free, MIT, works on a free developer instance.
 </p>
 
@@ -124,7 +124,7 @@ Edit `claude_desktop_config.json` (macOS: `~/Library/Application Support/Claude/
 ```
 </details>
 
-Codex, Antigravity, Gemini CLI, Cursor, pi, the Claude Code plugin and keeping the password out of config files: [client setup](https://github.com/jschuller/mcp-server-servicenow/blob/main/docs/clients.md).
+Codex, opencode, Antigravity, Cursor, pi, the Claude Code plugin and keeping the password out of config files: [client setup](https://github.com/jschuller/mcp-server-servicenow/blob/main/docs/clients.md).
 
 ### 4. Check it works
 
@@ -176,13 +176,13 @@ Per-tool detail: [roles per tool](https://github.com/jschuller/mcp-server-servic
 - **Read-only mode** — `--read-only` hides the 7 write tools and refuses any non-GET request.
 - **Table allow/deny lists** — `--table-allowlist incident,cmdb_ci*`, `--table-denylist sys_user*`.
 - **Audit log** — one JSON line per tool call or resource read: who, which table, outcome; field names only, never values.
-- **Your client approves writes** — every tool is annotated read-only or destructive, so Claude Code, Copilot and Codex ask before a write.
+- **Your client approves writes** — every tool is annotated read-only or destructive, so Claude Code, Copilot and Codex ask before a write. Clients that don't ask (opencode by default, pi) belong on `--read-only`.
 
 Flags and environment variables: [configuration](https://github.com/jschuller/mcp-server-servicenow/blob/main/docs/configuration.md#safety-rails).
 
 ## Works with
 
-Verified on 2026-10-11 against ServiceNow Brazil: Claude Code 2.1.296, Codex CLI 0.162.1, Antigravity CLI 1.1.20 and pi 1.1.0, with skills read over MCP unprompted. Claude Desktop, VS Code, Cursor and any client that speaks MCP over stdio or Streamable HTTP work too; behaviour per client: [client setup](https://github.com/jschuller/mcp-server-servicenow/blob/main/docs/clients.md#verified-clients).
+Verified on 2026-10-11 against ServiceNow Brazil: Claude Code 2.1.296, VS Code 1.140 with GitHub Copilot, Codex CLI 0.162.1, opencode 1.19.0, Antigravity CLI 1.1.20 and pi 1.1.0. Claude Desktop, Cursor and any other client that speaks MCP over stdio or Streamable HTTP should work too; behaviour per client: [client setup](https://github.com/jschuller/mcp-server-servicenow/blob/main/docs/clients.md#verified-clients).
 
 ## More
 
