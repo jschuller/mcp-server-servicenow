@@ -11,8 +11,9 @@ declare the `io.modelcontextprotocol/skills` extension (`skills/list`), which
 waits for FastMCP support. MCP prompts are deferred to 0.9.
 
 Verified on 2026-10-10/11 against a Brazil instance with Claude Code 2.1.296,
-Codex CLI 0.162.1 and pi 1.1.0, and the write paths as an admin's own OAuth
-token over Streamable HTTP — see "Verified clients" in the README.
+Codex CLI 0.162.1, Antigravity CLI 1.1.20 and pi 1.1.0, and the write paths as
+an admin's own OAuth token over Streamable HTTP — see "Verified clients" in
+`docs/clients.md`.
 
 ### Upgrade notes
 - **Breaking: `--write-confirm` / `SERVICENOW_WRITE_CONFIRM` are removed.** The
@@ -62,6 +63,11 @@ token over Streamable HTTP — see "Verified clients" in the README.
 - Clearer refusals: a `sys_dictionary` 403 names the `personalize_dictionary`
   role that schemas need; an API-key 401 points at REST API access policies
   instead of "check your username/password".
+- Error messages name the fix: a basic-auth 401 names the "Web service access
+  only" / `snc_basic_auth_api_access` restriction; TLS failures (corporate
+  proxies) and DNS failures (typos, reclaimed PDIs) no longer read as "instance
+  asleep"; HTML and empty responses give the PDI wake URL; a 403 links the
+  roles-per-tool table. Links are absolute so the model can pass them on.
 
 ### Changed
 - Server instructions ask the model to treat record text as data, not
@@ -69,8 +75,23 @@ token over Streamable HTTP — see "Verified clients" in the README.
   at it, even if it ignores them.
 - Getting started now creates a least-privilege integration user (Web Service
   Access Only, `itil` + `snc_read_only`, `--read-only`) instead of connecting as
-  `admin`, which new instances refuse for REST basic auth. New README section
-  "What each tool needs" maps tools to roles; examples use `mcp.integration`.
+  `admin`, which new instances refuse for REST basic auth. A roles table maps
+  tools to roles; examples use `mcp.integration`.
+- README cut from 486 to about 200 lines: what you can ask, a four-step quick
+  start (Windows, VS Code with a password prompt, Claude Desktop), an "if it
+  doesn't work" table, tools, roles and safety in brief. Reference material
+  moved to `docs/tools.md`, `docs/clients.md` (every client, the plugin,
+  verified clients), `docs/native-mcp.md` (updated for ServiceNow's pre-built
+  MCP servers) and `docs/architecture.md`; "From source" to
+  `docs/deployment.md`; development to `CONTRIBUTING.md`. Links are absolute,
+  so they work on PyPI. All client snippets use `mcp.integration` and
+  `--read-only` and no password on a command line.
+- TROUBLESHOOTING starts with a symptom table and covers DNS failures,
+  corporate TLS inspection, `spawn uvx ENOENT` and readers arriving from
+  `michaelbuckner/servicenow-mcp`.
+- Package metadata: a plain summary, keywords, classifiers and project URLs.
+- Support routes: `SUPPORT.md`, GitHub Discussions forms (Q&A, Show and tell),
+  and the issue chooser points questions to Discussions.
 - Dependencies refreshed (mcp 2.3.0, PyJWT 2.15.1, urllib3 2.8.0, anyio
   4.15.1, httpx2 2.13.1), clearing the open Dependabot alerts except PyJWT #38,
   which has no fixed release yet.
