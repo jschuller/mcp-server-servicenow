@@ -3,7 +3,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        Before posting, check [TROUBLESHOOTING](https://github.com/jschuller/mcp-server-servicenow/blob/main/TROUBLESHOOTING.md): HTML instead of JSON, 401 and 403 have known fixes.
+        Before posting, run `uvx mcp-server-servicenow --check` with your client's environment and check [TROUBLESHOOTING](https://github.com/jschuller/mcp-server-servicenow/blob/main/TROUBLESHOOTING.md): HTML instead of JSON, 401 and 403 have known fixes.
         **Never paste passwords, API keys, tokens or record data.**
   - type: textarea
     id: question
@@ -12,6 +12,12 @@ body:
       description: Include the exact error text the server or your client showed.
     validations:
       required: true
+  - type: textarea
+    id: check
+    attributes:
+      label: Output of --check
+      description: "`uvx mcp-server-servicenow --check` with the same environment variables and flags as your client (0.8.0+). It prints no secrets."
+      render: text
   - type: input
     id: client
     attributes:

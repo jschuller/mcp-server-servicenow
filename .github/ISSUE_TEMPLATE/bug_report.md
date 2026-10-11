@@ -23,6 +23,10 @@ What you expected to happen.
 
 What actually happened. Include error messages if applicable.
 
+## Output of `--check`
+
+Run `uvx mcp-server-servicenow --check` with the same environment variables and flags as your client (0.8.0+) and paste the output; it prints no secrets.
+
 ## Environment
 
 - Python version:

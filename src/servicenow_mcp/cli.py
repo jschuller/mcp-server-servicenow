@@ -97,6 +97,14 @@ def parse_args() -> argparse.Namespace:
         default=_env_str("SERVICENOW_API_KEY_HEADER", DEFAULT_API_KEY_HEADER),
     )
     parser.add_argument(
+        "--check",
+        action="store_true",
+        help=(
+            "Check the connection and identity with read-only requests, print one "
+            "line per check and exit (0 when auth and a read work)"
+        ),
+    )
+    parser.add_argument(
         "--transport",
         choices=["stdio", "streamable-http"],
         default=_env_str("MCP_TRANSPORT", "stdio"),
@@ -304,6 +312,23 @@ def _has_mcp_oauth(args: argparse.Namespace) -> bool:
     )
 
 
+def run_check(args: argparse.Namespace) -> int:
+    """``--check``: diagnose the configured service account, then exit."""
+    from servicenow_mcp.doctor import report_config_error, run_doctor
+
+    # stdout carries the report; keep stderr to warnings unless --debug.
+    logging.getLogger().setLevel(logging.DEBUG if args.debug else logging.WARNING)
+    try:
+        config = create_config(args)
+    except ValueError as exc:
+        return report_config_error(str(exc))
+
+    from servicenow_mcp.server import init_services
+
+    init_services(config)
+    return run_doctor(config)
+
+
 def main() -> None:
     """Main entry point."""
     load_dotenv()
@@ -313,6 +338,9 @@ def main() -> None:
 
         if args.debug:
             logging.getLogger().setLevel(logging.DEBUG)
+
+        if getattr(args, "check", False):
+            sys.exit(run_check(args))
 
         use_mcp_oauth = _has_mcp_oauth(args) and args.transport != "stdio"
         static_tokens = _parse_static_tokens(args)

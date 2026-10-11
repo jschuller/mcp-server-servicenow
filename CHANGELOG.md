@@ -58,6 +58,15 @@ OAuth token over Streamable HTTP — see "Verified clients" in
 - **FastMCP floor is 4.1.0**; Python 3.14 is supported.
 
 ### Added
+- **`mcp-server-servicenow --check`**: a read-only connection diagnostic with
+  the same flags and environment as the server. One line per check — the
+  configuration it understood, whether the instance answered (DNS, TLS, a
+  hibernating PDI), the identity and its direct roles, whether write tools
+  are hidden, a Table API read, schema access (a 403 names
+  `personalize_dictionary`) and the Aggregate API (an API key without an
+  access policy for it is reported as a policy limit). Exit code 0 when
+  authentication and a read work. It never prints a secret, so the output
+  can go straight into a Q&A post.
 - **OAuth client credentials grant** for headless use (CI, scheduled jobs,
   SSO-only instances): with `SERVICENOW_AUTH_TYPE=oauth` and no username or
   password, the server requests a client-credentials token (client id and
