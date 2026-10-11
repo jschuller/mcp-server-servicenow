@@ -22,13 +22,23 @@ class BasicAuthConfig(BaseModel):
 
 
 class OAuthConfig(BaseModel):
-    """Configuration for OAuth authentication."""
+    """Configuration for OAuth authentication.
+
+    With a username and password the server uses the password grant (legacy:
+    it skips MFA); without them, the client credentials grant, which acts as
+    the OAuth client's application user.
+    """
 
     client_id: str
     client_secret: str
-    username: str
-    password: str
+    username: Optional[str] = None
+    password: Optional[str] = None
     token_url: Optional[str] = None
+
+    @property
+    def grant_type(self) -> str:
+        """``password`` with user credentials, else ``client_credentials``."""
+        return "password" if self.username and self.password else "client_credentials"
 
 
 class ApiKeyConfig(BaseModel):

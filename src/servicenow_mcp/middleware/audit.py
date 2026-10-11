@@ -112,6 +112,8 @@ def _identity() -> Tuple[str, Optional[str]]:
     if auth.basic is not None and auth.basic.username:
         return "service-account", auth.basic.username
     if auth.oauth is not None:
+        if auth.oauth.grant_type == "client_credentials":
+            return "service-account", f"oauth-client:{auth.oauth.client_id}"
         return "service-account", auth.oauth.username
     if auth.api_key is not None:
         return "service-account", "api-key"

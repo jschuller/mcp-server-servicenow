@@ -53,8 +53,13 @@ class AuthManager:
 
         return headers
 
-    def _token_endpoint(self) -> Tuple[str, Dict[str, str]]:
-        """Return the token URL and client-auth headers for OAuth grants."""
+    def _token_endpoint(self) -> Tuple[str, Dict[str, str], Dict[str, str]]:
+        """Return the token URL, headers and client-auth form fields for a grant.
+
+        The client credentials grant sends the client id and secret in the form
+        body (``client_secret_post``, the style proven against ServiceNow); the
+        password and refresh grants keep HTTP Basic client authentication.
+        """
         if not self.config.oauth:
             raise ValueError("OAuth configuration is required")
         oauth_config = self.config.oauth
@@ -65,13 +70,18 @@ class AuthManager:
                 raise ValueError("Instance URL is required for OAuth authentication")
             token_url = f"{self.instance_url}/oauth_token.do"
 
+        headers = {"Content-Type": "application/x-www-form-urlencoded"}
+        if oauth_config.grant_type == "client_credentials":
+            client_fields = {
+                "client_id": oauth_config.client_id,
+                "client_secret": oauth_config.client_secret,
+            }
+            return token_url, headers, client_fields
+
         auth_str = f"{oauth_config.client_id}:{oauth_config.client_secret}"
         auth_header = base64.b64encode(auth_str.encode()).decode()
-        headers = {
-            "Authorization": f"Basic {auth_header}",
-            "Content-Type": "application/x-www-form-urlencoded",
-        }
-        return token_url, headers
+        headers["Authorization"] = f"Basic {auth_header}"
+        return token_url, headers, {}
 
     def _store_token_response(self, response: requests.Response) -> None:
         """Store tokens from a successful (HTTP 200) token-endpoint response.
@@ -96,17 +106,17 @@ class AuthManager:
         self._refresh_token = token_data.get("refresh_token") or self._refresh_token
 
     def _get_oauth_token(self) -> None:
-        """Get an OAuth token from ServiceNow via the password grant."""
+        """Get an OAuth token: the password grant with user credentials, else
+        the client credentials grant."""
         if not self.config.oauth:
             raise ValueError("OAuth configuration is required")
         oauth_config = self.config.oauth
-        token_url, headers = self._token_endpoint()
+        token_url, headers, client_fields = self._token_endpoint()
 
-        data = {
-            "grant_type": "password",
-            "username": oauth_config.username,
-            "password": oauth_config.password,
-        }
+        data: Dict[str, str] = {"grant_type": oauth_config.grant_type, **client_fields}
+        if oauth_config.grant_type == "password":
+            data["username"] = oauth_config.username or ""
+            data["password"] = oauth_config.password or ""
         response = requests.post(
             token_url, headers=headers, data=data, timeout=self.timeout
         )
@@ -115,25 +125,35 @@ class AuthManager:
             self._store_token_response(response)
             return
 
+        hint = ""
+        if oauth_config.grant_type == "client_credentials":
+            hint = (
+                " (client credentials need the instance property "
+                "glide.oauth.inbound.client.credential.grant_type.enabled=true and an "
+                "OAuth Application User on the client record)"
+            )
         raise ValueError(
-            f"Failed to get OAuth token: {response.status_code} {response.text}"
+            f"Failed to get OAuth token: {response.status_code} {response.text}{hint}"
         )
 
     def refresh_token(self) -> None:
         """Refresh the OAuth token if using OAuth authentication.
 
         Uses the refresh-token grant when a refresh token is held; falls back
-        to a full password grant when the refresh grant fails (e.g. an expired
-        or revoked refresh token).
+        to a new grant of the configured type (password or client credentials)
+        when the refresh grant fails (e.g. an expired or revoked refresh token)
+        or none is held — client credentials tokens usually come without one.
         """
-        if self.config.type != AuthType.OAUTH:
+        if self.config.type != AuthType.OAUTH or not self.config.oauth:
             return
+        grant = self.config.oauth.grant_type
 
         if self._refresh_token:
-            token_url, headers = self._token_endpoint()
+            token_url, headers, client_fields = self._token_endpoint()
             data = {
                 "grant_type": "refresh_token",
                 "refresh_token": self._refresh_token,
+                **client_fields,
             }
             try:
                 response = requests.post(
@@ -143,15 +163,17 @@ class AuthManager:
                     self._store_token_response(response)
                     return
                 logger.warning(
-                    "OAuth refresh grant failed (%s); falling back to password grant",
+                    "OAuth refresh grant failed (%s); requesting a new %s grant",
                     response.status_code,
+                    grant,
                 )
             except (requests.RequestException, ValueError) as e:
                 logger.warning(
-                    "OAuth refresh grant errored (%s); falling back to password grant",
+                    "OAuth refresh grant errored (%s); requesting a new %s grant",
                     e,
+                    grant,
                 )
-            # The held refresh token is dead; the password grant stores a new one.
+            # The held refresh token is dead; a new grant may store a new one.
             self._refresh_token = None
 
         self._get_oauth_token()

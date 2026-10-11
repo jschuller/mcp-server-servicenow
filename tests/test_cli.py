@@ -340,6 +340,55 @@ class TestSafetyFlags:
         assert audit.is_enabled() is False
 
 
+_OAUTH_ARGV = [
+    "mcp-server-servicenow",
+    "--instance-url",
+    "https://test.service-now.com",
+    "--auth-type",
+    "oauth",
+    "--client-id",
+    "cid",
+    "--client-secret",
+    "csecret",
+]
+
+
+class TestOAuthGrantSelection:
+    def test_no_user_credentials_selects_client_credentials(self, monkeypatch):
+        monkeypatch.setattr("sys.argv", list(_OAUTH_ARGV))
+        config = cli.create_config(cli.parse_args())
+        assert config.auth.oauth.grant_type == "client_credentials"
+        assert config.auth.oauth.token_url == (
+            "https://test.service-now.com/oauth_token.do"
+        )
+
+    def test_user_credentials_select_the_password_grant(self, monkeypatch):
+        monkeypatch.setattr(
+            "sys.argv", [*_OAUTH_ARGV, "--username", "svc", "--password", "pw"]
+        )
+        config = cli.create_config(cli.parse_args())
+        assert config.auth.oauth.grant_type == "password"
+
+    @pytest.mark.parametrize("half", [["--username", "svc"], ["--password", "pw"]])
+    def test_half_set_user_credentials_are_an_error(self, monkeypatch, half):
+        monkeypatch.setattr("sys.argv", [*_OAUTH_ARGV, *half])
+        with pytest.raises(
+            ValueError, match="SERVICENOW_USERNAME and SERVICENOW_PASSWORD"
+        ):
+            cli.create_config(cli.parse_args())
+
+    def test_client_secret_still_required(self, monkeypatch):
+        monkeypatch.setattr("sys.argv", _OAUTH_ARGV[:-2])
+        with pytest.raises(ValueError, match="client-id and client-secret"):
+            cli.create_config(cli.parse_args())
+
+    def test_startup_log_names_the_grant(self, monkeypatch, caplog):
+        monkeypatch.setattr("sys.argv", list(_OAUTH_ARGV))
+        with patch("servicenow_mcp.server.mcp.run"), caplog.at_level("INFO"):
+            cli.main()
+        assert "OAuth client_credentials grant" in caplog.text
+
+
 class TestStaticTokensNeedServiceAccount:
     _HTTP_STATIC = [
         "mcp-server-servicenow",

@@ -15,8 +15,10 @@ with values in a file:
 
 Profiles:
   readonly  the identity has snc_read_only (the default): without any flag the
-            write tools are hidden (12 tools), and a write call is refused
-            before it reaches ServiceNow. Changes nothing.
+            write tools are hidden (12 tools) and a write call is refused
+            before it reaches ServiceNow. An identity that cannot read its own
+            sys_user_has_role rows sees all 19 (the check fails open) and the
+            write comes back as ServiceNow's refusal. Changes nothing.
   write     the identity can create, update and delete incidents and update
             sets (admin by default). Creates and deletes scratch incidents and
             one empty update set; the caller's current update set is restored.
@@ -113,7 +115,10 @@ async def section_b(results, profile, audit):
     """Default mode: identifier and javascript: policy, schema, paging, then writes."""
     async with Client(transport("--audit-log", audit)) as c:
         tools = await c.list_tools()
-        want = 12 if profile == "readonly" else 19
+        roles = (await c.call_tool("get_current_user", {})).data.get("roles")
+        if profile == "readonly" and roles is None:
+            info("identity cannot read its own role rows: hiding fails open")
+        want = 12 if profile == "readonly" and roles is not None else 19
         results.append(
             ok(
                 f"no flag: {want} tools for this identity",
@@ -178,12 +183,16 @@ async def section_b(results, profile, audit):
                     "personalize_dictionary" in str(e),
                 )
             )
-        rel = await c.call_tool(
-            "get_ci_relationships", {"sys_id": "0" * 32, "limit": 5}
-        )
-        results.append(
-            ok("get_ci_relationships paging arg accepted", rel.data["count"] == 0)
-        )
+        try:
+            rel = await c.call_tool(
+                "get_ci_relationships", {"sys_id": "0" * 32, "limit": 5}
+            )
+            results.append(
+                ok("get_ci_relationships paging arg accepted", rel.data["count"] == 0)
+            )
+        except ToolError as e:
+            # cmdb_rel_ci needs itil or a CMDB read role.
+            info("get_ci_relationships refused", str(e).splitlines()[0][:140])
         try:
             agg = await c.call_tool(
                 "aggregate_records", {"table_name": "incident", "group_by": "priority"}
@@ -353,7 +362,8 @@ async def section_e(results, profile):
     """Caller identity; in the write profile, the caller-scoped update-set pick."""
     async with Client(transport("--audit-log", "off")) as c:
         me = (await c.call_tool("get_current_user", {})).data
-        expected = os.environ.get("SERVICENOW_USERNAME")
+        # Blank under client credentials, where the OAuth application user answers.
+        expected = os.environ.get("SERVICENOW_USERNAME") or None
         results.append(
             ok(
                 "get_current_user: standard keys",

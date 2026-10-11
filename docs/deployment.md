@@ -20,6 +20,14 @@ uv run mcp-server-servicenow --transport streamable-http --port 8080 \
   --mcp-static-tokens "$(openssl rand -hex 32)"
 ```
 
+## Headless and CI
+
+Use OAuth client credentials ([configuration.md](configuration.md#oauth-client-credentials-headless)): no user password and no browser sign-in, and the secret comes from your CI secret store as `SERVICENOW_CLIENT_SECRET`. Give the OAuth application user `itil` + `snc_read_only` so the write tools are hidden, and keep `--read-only` on when the identity could write.
+
+- **Claude Code:** `claude -p "…" --mcp-config servicenow.json --allowedTools "mcp__servicenow__list_records,mcp__servicenow__get_record"`. Name every tool the job may use; anything else is refused without a prompt.
+- **Codex:** `codex exec` runs tools annotated read-only without asking and refuses write tools.
+- **GitHub Copilot's cloud agent** uses MCP tools only and ignores resources, so it won't read the skills; put the steps in the task instead.
+
 ## Docker / Cloud Run
 
 ```bash
@@ -125,4 +133,4 @@ MCP_TRANSPORT=streamable-http
 
 ### Guardrails in HTTP deployments
 
-All safety flags work over HTTP. The audit log records the OAuth user (`claims.user_name`) or the static token's `client_id`; send it to a file or let the platform collect stderr (Cloud Run → Cloud Logging).
+All safety flags work over HTTP. The audit log records the OAuth user (`claims.user_name`), the static token's `client_id`, or `oauth-client:<client_id>` for a client-credentials service account; send it to a file or let the platform collect stderr (Cloud Run → Cloud Logging).

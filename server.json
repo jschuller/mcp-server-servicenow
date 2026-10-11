@@ -32,20 +32,20 @@
         {
           "name": "SERVICENOW_USERNAME",
           "isRequired": false,
-          "description": "Username for basic or OAuth auth",
+          "description": "Username for basic auth or the OAuth password grant (omit for OAuth client credentials)",
           "format": "string"
         },
         {
           "name": "SERVICENOW_PASSWORD",
           "isRequired": false,
-          "description": "Password for basic or OAuth auth",
+          "description": "Password for basic auth or the OAuth password grant (omit for OAuth client credentials)",
           "format": "string",
           "isSecret": true
         },
         {
           "name": "SERVICENOW_CLIENT_ID",
           "isRequired": false,
-          "description": "OAuth client ID",
+          "description": "OAuth client ID (client credentials grant unless a username and password are set)",
           "format": "string"
         },
         {

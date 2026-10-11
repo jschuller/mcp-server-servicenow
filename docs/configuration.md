@@ -23,7 +23,40 @@ Copy `.mcp.json.example` to `.mcp.json` and fill in your credentials. The JSON f
 }
 ```
 
-### OAuth Password Grant (stdio)
+### OAuth client credentials (headless)
+
+No username or password: the server uses the client credentials grant, and every call runs as the OAuth client's application user. This suits CI, scheduled jobs and instances that sign people in through SSO only.
+
+```json
+{
+  "mcpServers": {
+    "servicenow": {
+      "command": "uvx",
+      "args": ["mcp-server-servicenow"],
+      "env": {
+        "SERVICENOW_INSTANCE_URL": "https://your-instance.service-now.com",
+        "SERVICENOW_AUTH_TYPE": "oauth",
+        "SERVICENOW_CLIENT_ID": "your-client-id",
+        "SERVICENOW_CLIENT_SECRET": "your-client-secret"
+      }
+    }
+  }
+}
+```
+
+An admin sets up the instance once:
+
+1. Create the system property `glide.oauth.inbound.client.credential.grant_type.enabled` with the value `true`; it is off by default ([Client credentials](https://www.servicenow.com/docs/r/brazil/platform-security/authentication/client-credentials.html)).
+2. Create the OAuth client (Machine Identity Console > Inbound integrations > New integration > [Client credentials grant](https://www.servicenow.com/docs/r/brazil/platform-security/authentication/client-credential-grant.html), or the Application Registry) and set its **OAuth Application User** ([how](https://www.servicenow.com/docs/r/brazil/platform-security/authentication/add-oauth-application-user.html)) to a dedicated integration user: Web service access only and least privilege, such as `itil` + `snc_read_only` for read-only use. Never System Administrator: the token acts with that user's full rights.
+3. Let the token reach the APIs: a broadly scoped client, or an auth scope or REST API access policy covering the Table API (and the Aggregate API for `aggregate_records`).
+
+Tokens last 30 minutes and come without a refresh token; the server requests a new one when a call returns 401. Audit lines name the identity as `oauth-client:<client_id>`. If both `SERVICENOW_USERNAME` and `SERVICENOW_PASSWORD` are set the server uses the password grant instead; setting only one is a startup error.
+
+Write tools are hidden for an `snc_read_only` identity only when it can read its own role rows: `itil` can, an identity with `snc_read_only` alone cannot (403 on `sys_user_has_role`), so give that one `--read-only` as well.
+
+### OAuth password grant (legacy, stdio)
+
+The password grant sends a user's password to the token endpoint and skips MFA. Prefer client credentials above, or the per-user OAuth 2.1 + PKCE proxy for shared servers ([deployment.md](deployment.md#oauth-21--pkce-recommended-for-production)).
 
 ```json
 {
@@ -121,8 +154,8 @@ All settings can be passed as CLI args or environment variables. See `.env.examp
 |----------|---------|-------------|
 | `SERVICENOW_INSTANCE_URL` | `--instance-url` | ServiceNow instance URL |
 | `SERVICENOW_AUTH_TYPE` | `--auth-type` | `basic`, `oauth`, or `api_key` |
-| `SERVICENOW_USERNAME` | `--username` | Username for basic/OAuth auth |
-| `SERVICENOW_PASSWORD` | `--password` | Password for basic/OAuth auth |
+| `SERVICENOW_USERNAME` | `--username` | Username for basic auth or the OAuth password grant (omit for OAuth client credentials) |
+| `SERVICENOW_PASSWORD` | `--password` | Password for basic auth or the OAuth password grant (omit for OAuth client credentials) |
 | `SERVICENOW_CLIENT_ID` | `--client-id` | OAuth client ID |
 | `SERVICENOW_CLIENT_SECRET` | `--client-secret` | OAuth client secret |
 | `SERVICENOW_API_KEY` | `--api-key` | API key for api_key auth |

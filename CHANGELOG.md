@@ -54,6 +54,14 @@ OAuth token over Streamable HTTP — see "Verified clients" in
 - **FastMCP floor is 4.1.0**; Python 3.14 is supported.
 
 ### Added
+- **OAuth client credentials grant** for headless use (CI, scheduled jobs,
+  SSO-only instances): with `SERVICENOW_AUTH_TYPE=oauth` and no username or
+  password, the server requests a client-credentials token (client id and
+  secret in the form body) and acts as the OAuth client's application user.
+  A username and password together keep the password grant; setting only one
+  is a startup error. The startup log names the grant, a refresh falls back to
+  a new grant of the same type, and audit lines read
+  `oauth-client:<client_id>`. Instance setup: configuration.md.
 - **Write tools are hidden when the identity holds `snc_read_only`**, without
   any flag: ServiceNow would refuse those writes anyway, admin included. One
   lookup of the caller's own `sys_user_has_role` rows (5-second limit) for the
