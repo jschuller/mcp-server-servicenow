@@ -237,7 +237,9 @@ class TestApiRequest:
         self, mock_request: MagicMock, basic_auth_manager: AuthManager
     ) -> None:
         """SSLError subclasses ConnectionError; it must not read as 'asleep'."""
-        mock_request.side_effect = requests.exceptions.SSLError("certificate verify failed")
+        mock_request.side_effect = requests.exceptions.SSLError(
+            "certificate verify failed"
+        )
         with pytest.raises(ServiceNowAPIError, match="REQUESTS_CA_BUNDLE"):
             api_request("GET", URL, basic_auth_manager)
 
