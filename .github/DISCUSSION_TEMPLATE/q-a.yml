@@ -1,0 +1,53 @@
+title: "[Q&A] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Before posting, check [TROUBLESHOOTING](https://github.com/jschuller/mcp-server-servicenow/blob/main/TROUBLESHOOTING.md): HTML instead of JSON, 401 and 403 have known fixes.
+        **Never paste passwords, API keys, tokens or record data.**
+  - type: textarea
+    id: question
+    attributes:
+      label: What are you trying to do, and what happened?
+      description: Include the exact error text the server or your client showed.
+    validations:
+      required: true
+  - type: input
+    id: client
+    attributes:
+      label: MCP client and version
+      placeholder: Claude Code 2.1.296 / VS Code 1.140 + Copilot / Codex CLI 0.162.1 / …
+    validations:
+      required: true
+  - type: input
+    id: server-version
+    attributes:
+      label: mcp-server-servicenow version
+      description: "`pip show mcp-server-servicenow`, or \"latest via uvx\""
+    validations:
+      required: true
+  - type: input
+    id: instance
+    attributes:
+      label: ServiceNow release and instance type
+      placeholder: Zurich PDI / Australia company instance / …
+    validations:
+      required: true
+  - type: dropdown
+    id: auth
+    attributes:
+      label: Auth type
+      options:
+        - basic
+        - oauth
+        - api_key
+        - OAuth 2.1 proxy over HTTP
+    validations:
+      required: true
+  - type: dropdown
+    id: read-only
+    attributes:
+      label: Running with --read-only?
+      options:
+        - "yes"
+        - "no"

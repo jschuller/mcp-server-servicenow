@@ -27,5 +27,8 @@ What actually happened. Include error messages if applicable.
 
 - Python version:
 - FastMCP version:
-- MCP client (Claude Desktop / Claude Code / other):
-- ServiceNow instance version:
+- MCP client and version (Claude Code / Claude Desktop / VS Code + Copilot / Codex / Antigravity / Cursor / pi / other):
+- ServiceNow release and instance type (PDI / company):
+- Auth type (basic / oauth / api_key) and `--read-only` yes/no:
+
+Never include passwords, API keys, tokens or record data.
