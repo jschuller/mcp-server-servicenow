@@ -145,9 +145,9 @@ def set_current_update_set(
             json_data={"value": sys_id},
         )
     else:
-        user_sys_id = fetch_current_user(config.api_url, config.timeout).get(
-            "user_sys_id"
-        )
+        user_sys_id = fetch_current_user(
+            config.api_url, config.timeout, with_roles=False
+        ).get("user_sys_id")
         if not user_sys_id:
             raise ServiceNowAPIError(
                 "Cannot set the current update set: the caller's sys_user record is not readable"

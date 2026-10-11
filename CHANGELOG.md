@@ -45,7 +45,7 @@ OAuth token over Streamable HTTP — see "Verified clients" in
 - **`get_current_user` returns one shape for every auth type:** `user_name`,
   `user_display_name`, `user_email`, `user_sys_id`, `roles`, plus any extra
   `fields` you ask for. Basic-auth callers previously got the raw UI-endpoint
-  payload.
+  payload. `roles` is now a list of role names, not a comma-separated string.
 - **Eleven new resources** appear in `resources/list` (per skill: `SKILL.md`,
   `_manifest` with SHA-256 digests, `references/*.md`): 15 instead of 4.
 - **The server sends `instructions`** naming the skill URIs (~200 tokens).
@@ -64,6 +64,11 @@ OAuth token over Streamable HTTP — see "Verified clients" in
 - CI: Python 3.14, and a check that the wheel carries the 4 skills.
 
 ### Fixed
+- `get_current_user`, `servicenow://instance` and the OAuth proxy's `roles`
+  claim read the caller's direct, active roles from `sys_user_has_role`. They
+  read `sys_user.roles`, which is empty for most users, so `roles` was `null`
+  for every caller (seen live for an `itil` + `snc_read_only` API-key user).
+  Inherited roles are left out; every lookup is filtered to the caller.
 - `set_current_update_set` and `servicenow://update-set/current` touch only the
   caller's own `sys_user_preference` row. Before, an admin could overwrite
   another user's current update set, and the fallback created a blank-user row
