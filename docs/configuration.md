@@ -15,7 +15,7 @@ Copy `.mcp.json.example` to `.mcp.json` and fill in your credentials. The JSON f
       "env": {
         "SERVICENOW_INSTANCE_URL": "https://your-instance.service-now.com",
         "SERVICENOW_AUTH_TYPE": "basic",
-        "SERVICENOW_USERNAME": "admin",
+        "SERVICENOW_USERNAME": "mcp.integration",
         "SERVICENOW_PASSWORD": "your-password"
       }
     }
@@ -36,7 +36,7 @@ Copy `.mcp.json.example` to `.mcp.json` and fill in your credentials. The JSON f
         "SERVICENOW_AUTH_TYPE": "oauth",
         "SERVICENOW_CLIENT_ID": "your-client-id",
         "SERVICENOW_CLIENT_SECRET": "your-client-secret",
-        "SERVICENOW_USERNAME": "admin",
+        "SERVICENOW_USERNAME": "mcp.integration",
         "SERVICENOW_PASSWORD": "your-password"
       }
     }
@@ -76,7 +76,7 @@ Copy `.mcp.json.example` to `.mcp.json` and fill in your credentials. The JSON f
       "env": {
         "SERVICENOW_INSTANCE_URL": "https://dev12345.service-now.com",
         "SERVICENOW_AUTH_TYPE": "basic",
-        "SERVICENOW_USERNAME": "admin",
+        "SERVICENOW_USERNAME": "mcp.integration",
         "SERVICENOW_PASSWORD": "dev-password"
       }
     },

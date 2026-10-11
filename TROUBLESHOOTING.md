@@ -28,7 +28,7 @@ The error message includes the ServiceNow response body, which typically names t
 - **`WebServicePolicyValidator`** — The table's `ws_access` property is not set to `true`. Fix: go to System Definition > Tables, find the table, check "Allow access to this table via web services"
 - **Missing role** — The integration user needs the appropriate role (e.g., `itil` for incident, `cmdb_read` for CMDB). Check the error body for the specific role required
 - **Cross-scope restriction** — If accessing a scoped app's table, ensure cross-scope privileges are configured
-- **Least-privilege identities** — what each tool needs in the base system: `get_table_schema` and `servicenow://schema/*` need `personalize_dictionary` (the 403 says so); update-set tools and the update set picker need `admin` by default; deleting incidents needs `itil_admin` (`itil` can create and update them); `snc_read_only` refuses every write
+- **Least-privilege identities** — see [what each tool needs](README.md#what-each-tool-needs): `get_table_schema` and `servicenow://schema/*` need `personalize_dictionary` (the 403 says so); update-set tools need `admin`; deleting incidents needs `itil_admin`; `snc_read_only` refuses every write. `get_system_properties` without `admin` returns an empty list rather than a 403
 
 ## `Unknown tool: 'update_record'` (or any write tool)
 The server is running with `--read-only` / `SERVICENOW_READ_ONLY=true`: the 7 write tools are hidden from `tools/list`, and a cached client that still calls one gets this error. Restart without the flag to write.

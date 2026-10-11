@@ -6,7 +6,7 @@
       "env": {
         "SERVICENOW_INSTANCE_URL": "https://your-instance.service-now.com",
         "SERVICENOW_AUTH_TYPE": "basic",
-        "SERVICENOW_USERNAME": "admin",
+        "SERVICENOW_USERNAME": "mcp.integration",
         "SERVICENOW_PASSWORD": "your-password"
       }
     },
@@ -18,7 +18,7 @@
         "SERVICENOW_AUTH_TYPE": "oauth",
         "SERVICENOW_CLIENT_ID": "your-client-id",
         "SERVICENOW_CLIENT_SECRET": "your-client-secret",
-        "SERVICENOW_USERNAME": "admin",
+        "SERVICENOW_USERNAME": "mcp.integration",
         "SERVICENOW_PASSWORD": "your-password"
       }
     }
