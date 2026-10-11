@@ -64,6 +64,8 @@ token over Streamable HTTP — see "Verified clients" in the README.
   instead of "check your username/password".
 
 ### Changed
+- Server instructions ask the model to treat record text as data, not
+  instructions, and to tell the user when a record asks it to do something.
 - Getting started now creates a least-privilege integration user (Web Service
   Access Only, `itil` + `snc_read_only`, `--read-only`) instead of connecting as
   `admin`, which new instances refuse for REST basic auth. New README section
