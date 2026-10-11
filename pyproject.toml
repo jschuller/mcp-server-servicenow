@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "mcp-server-servicenow"
 version = "0.8.0"
-description = "MCP server for ServiceNow - 19 tools, 5 resources, and 4 Agent Skills served over MCP for table, CMDB, system, and update set operations"
+description = "ServiceNow MCP server: Table API, CMDB, schema, aggregates and update sets for Claude Code, GitHub Copilot, Codex and any MCP client. Read-only mode, table allowlists, audit log."
 readme = "README.md"
 requires-python = ">=3.11"
 license = {text = "MIT"}
@@ -14,22 +14,37 @@ authors = [
 ]
 classifiers = [
     "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Intended Audience :: System Administrators",
     "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
     "Programming Language :: Python :: 3.14",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: System :: Systems Administration",
+    "Typing :: Typed",
 ]
 keywords = [
     "servicenow",
+    "servicenow-mcp",
     "mcp",
+    "mcp-server",
     "model-context-protocol",
-    "claude",
+    "servicenow-api",
+    "table-api",
     "cmdb",
+    "update-sets",
     "itsm",
+    "claude",
+    "claude-code",
+    "github-copilot",
+    "codex",
+    "agent-skills",
     "fastmcp",
-    "oauth",
 ]
 dependencies = [
     # 4.1.0 is the floor because that is what CI and the stdio smoke exercise
@@ -46,8 +61,10 @@ dependencies = [
 
 [project.urls]
 Homepage = "https://github.com/jschuller/mcp-server-servicenow"
-Repository = "https://github.com/jschuller/mcp-server-servicenow"
+Source = "https://github.com/jschuller/mcp-server-servicenow"
+Changelog = "https://github.com/jschuller/mcp-server-servicenow/blob/main/CHANGELOG.md"
 Issues = "https://github.com/jschuller/mcp-server-servicenow/issues"
+Security = "https://github.com/jschuller/mcp-server-servicenow/security/policy"
 
 [project.scripts]
 mcp-server-servicenow = "servicenow_mcp.cli:main"
