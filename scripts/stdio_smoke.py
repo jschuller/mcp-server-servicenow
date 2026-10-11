@@ -17,8 +17,9 @@ Profiles:
   readonly  the identity cannot write (the default). Write tools are called
             anyway and must come back as a clean ServiceNow refusal; write
             confirmation is exercised up to the refused write. Changes nothing.
-  write     the identity can create, update and delete incidents. Creates and
-            deletes scratch incidents.
+  write     the identity can create, update and delete incidents and update
+            sets (admin by default). Creates and deletes scratch incidents and
+            one empty update set; the caller's current update set is restored.
 """
 
 import argparse
@@ -181,7 +182,7 @@ async def section_b(results, profile, audit):
             agg = await c.call_tool(
                 "aggregate_records", {"table_name": "incident", "group_by": "priority"}
             )
-            info("aggregate_records", f"ok, {len(agg.data.get('result') or [])} groups")
+            info("aggregate_records", f"ok, {agg.data.get('count')} groups")
         except ToolError as e:
             # API keys need a REST API access policy for the Aggregate API too.
             info("aggregate_records refused", str(e).splitlines()[0][:140])
@@ -470,6 +471,111 @@ async def section_d(results, skills_audit):
     )
 
 
+def pref_rows(data):
+    return {r["sys_id"]: r.get("value") for r in data.get("records", [])}
+
+
+async def section_e(results, profile):
+    """Caller identity; in the write profile, the caller-scoped update-set pick."""
+    async with Client(transport("--audit-log", "off")) as c:
+        me = (await c.call_tool("get_current_user", {})).data
+        expected = os.environ.get("SERVICENOW_USERNAME")
+        results.append(
+            ok(
+                "get_current_user: standard keys",
+                {"user_name", "user_sys_id", "user_display_name", "roles"} <= set(me)
+                and (expected is None or me["user_name"] == expected),
+                me.get("user_name") or "",
+            )
+        )
+        if profile == "readonly":
+            return
+        uid = me["user_sys_id"]
+        mine_q = f"name=sys_update_set^user={uid}"
+        default_q = "name=sys_update_set^userISEMPTY"
+
+        async def prefs(query):
+            return pref_rows(
+                (
+                    await c.call_tool(
+                        "list_records",
+                        {
+                            "table_name": "sys_user_preference",
+                            "query": query,
+                            "fields": "sys_id,value",
+                            "limit": 50,
+                        },
+                    )
+                ).data
+            )
+
+        before_mine, before_default = await prefs(mine_q), await prefs(default_q)
+        created = (
+            await c.call_tool(
+                "create_update_set",
+                {"name": "mcp smoke (safe to delete)", "description": "stdio smoke"},
+            )
+        ).data
+        us = created["sys_id"]
+        results.append(ok("create_update_set", bool(us)))
+        try:
+            await c.call_tool("set_current_update_set", {"sys_id": us})
+            after_mine, after_default = await prefs(mine_q), await prefs(default_q)
+            results.append(
+                ok(
+                    "set_current_update_set: caller's own row only",
+                    list(after_mine.values()) == [us]
+                    and after_default == before_default,
+                    f"mine={len(after_mine)} defaults={len(after_default)}",
+                )
+            )
+            cur = json.loads(
+                (await c.read_resource("servicenow://update-set/current"))[0].text
+            )
+            results.append(
+                ok("update-set/current resource follows", cur.get("sys_id") == us)
+            )
+            got = (await c.call_tool("get_update_set", {"sys_id": us})).data
+            changes = (
+                await c.call_tool("list_update_set_changes", {"update_set_sys_id": us})
+            ).data
+            results.append(
+                ok(
+                    "get_update_set + list_update_set_changes",
+                    got.get("name") == "mcp smoke (safe to delete)"
+                    and changes.get("count") == 0,
+                )
+            )
+        finally:
+            # Put the caller's preference back the way it was, then drop the set.
+            row = next(iter((await prefs(mine_q))), None)
+            if before_mine:
+                sid, value = next(iter(before_mine.items()))
+                await c.call_tool(
+                    "update_record",
+                    {
+                        "table_name": "sys_user_preference",
+                        "sys_id": sid,
+                        "data": {"value": value},
+                    },
+                )
+            elif row:
+                await c.call_tool(
+                    "delete_record",
+                    {"table_name": "sys_user_preference", "sys_id": row},
+                )
+            await c.call_tool(
+                "delete_record", {"table_name": "sys_update_set", "sys_id": us}
+            )
+        results.append(
+            ok(
+                "update-set preference restored, scratch set deleted",
+                await prefs(mine_q) == before_mine
+                and await prefs(default_q) == before_default,
+            )
+        )
+
+
 async def main(profile):
     if not os.environ.get("SERVICENOW_INSTANCE_URL"):
         sys.exit("SERVICENOW_INSTANCE_URL is not set (see the module docstring)")
@@ -485,6 +591,7 @@ async def main(profile):
         check_audit(results, profile, audit)
         await section_c(results, profile, existing)
         await section_d(results, f"{tmp}/skills-audit.jsonl")
+        await section_e(results, profile)
     print(f"\n{sum(results)}/{len(results)} passed")
     return all(results)
 

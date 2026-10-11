@@ -268,6 +268,8 @@ Checked on 2026-10-10/11 against a ServiceNow Brazil instance (stdio, read-only 
 | Skills from disk | ✓ plugin: `/servicenow:<skill>` | not tested | listed with `--skill <dir>` |
 | `--write-confirm` | ✓ dialog; Decline stops the write | ✓ form after Codex's own approval; *False* stops the write | ✓ `confirmation_required` → `confirm=true` |
 
+The clients ran with a read-only identity. The write paths (create/update/delete, write confirmation in both protocol eras, update sets, schema) were checked separately over Streamable HTTP with an admin's own ServiceNow OAuth token forwarded per user: `scripts/stdio_smoke.py --profile write`, 41/41, audit lines carry the caller (`"user":"admin","auth_mode":"oauth"`).
+
 ## Configuration
 
 Add to your MCP client config — copy the snippet for your tool:

@@ -11,7 +11,8 @@ declare the `io.modelcontextprotocol/skills` extension (`skills/list`), which
 waits for FastMCP support. MCP prompts are deferred to 0.9.
 
 Verified on 2026-10-10/11 against a Brazil instance with Claude Code 2.1.296,
-Codex CLI 0.162.1 and pi 1.1.0 — see "Verified clients" in the README.
+Codex CLI 0.162.1 and pi 1.1.0, and the write paths as an admin's own OAuth
+token over Streamable HTTP — see "Verified clients" in the README.
 
 ### Upgrade notes
 - **Breaking (Claude Code plugin):** the four `/servicenow:*` slash commands
