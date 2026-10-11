@@ -148,14 +148,22 @@ class TestServiceNowTokenVerifier:
                 {"role.name": ""},
             ]
         }
+        held = MagicMock(status_code=200)
+        held.json.return_value = {"result": [{"sys_id": "r-1"}]}
         mock_client = AsyncMock()
-        mock_client.get.side_effect = [_valid_sn_response(), roles]
+        mock_client.get.side_effect = [_valid_sn_response(), roles, held]
         verifier._http_client = mock_client
 
         result = await verifier.verify_token("t")
 
         assert result is not None
         assert result.claims["roles"] == ["itil", "snc_read_only"]
+        assert result.claims["sn_read_only"] is True
+        check = mock_client.get.call_args_list[2].kwargs["params"]
+        assert check["sysparm_query"] == (
+            "user=javascript:gs.getUserID()^state=active^role.name=snc_read_only"
+        )
+        assert check["sysparm_limit"] == 1
         url = mock_client.get.call_args_list[1].args[0]
         params = mock_client.get.call_args_list[1].kwargs["params"]
         assert url.endswith("/api/now/table/sys_user_has_role")
@@ -169,13 +177,14 @@ class TestServiceNowTokenVerifier:
     ) -> None:
         forbidden = MagicMock(status_code=403)
         mock_client = AsyncMock()
-        mock_client.get.side_effect = [_valid_sn_response(), forbidden]
+        mock_client.get.side_effect = [_valid_sn_response(), forbidden, forbidden]
         verifier._http_client = mock_client
 
         result = await verifier.verify_token("t")
 
         assert result is not None
         assert result.claims["roles"] is None
+        assert result.claims["sn_read_only"] is None  # unknown: tools stay listed
 
     def test_instance_url_trailing_slash_stripped(self) -> None:
         """Trailing slashes on instance URL should be stripped."""
@@ -325,8 +334,8 @@ class TestConnectionPooling:
 
         assert result is not None
         assert result.token == "pooled-token"
-        # The user lookup and the role lookup share the pooled client.
-        assert mock_client.get.await_count == 2
+        # The user lookup and both role lookups share the pooled client.
+        assert mock_client.get.await_count == 3
 
     @pytest.mark.asyncio
     async def test_no_http_client_creates_new_one(self) -> None:

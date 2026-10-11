@@ -14,9 +14,9 @@ with values in a file:
       uv run python scripts/stdio_smoke.py --profile readonly
 
 Profiles:
-  readonly  the identity cannot write (the default). A write tool is called
-            anyway and must come back as a clean ServiceNow refusal. Changes
-            nothing.
+  readonly  the identity has snc_read_only (the default): without any flag the
+            write tools are hidden (12 tools), and a write call is refused
+            before it reaches ServiceNow. Changes nothing.
   write     the identity can create, update and delete incidents and update
             sets (admin by default). Creates and deletes scratch incidents and
             one empty update set; the caller's current update set is restored.
@@ -42,7 +42,14 @@ SKILLS = (
     "servicenow-cmdb",
     "triaging-incidents",
 )
-REFUSED = ("401", "403", "ACL", "not authorized", "Insufficient")
+REFUSED = (
+    "401",
+    "403",
+    "ACL",
+    "not authorized",
+    "Insufficient",
+    "write tools are hidden",
+)
 
 
 def transport(*flags):
@@ -106,7 +113,14 @@ async def section_b(results, profile, audit):
     """Default mode: identifier and javascript: policy, schema, paging, then writes."""
     async with Client(transport("--audit-log", audit)) as c:
         tools = await c.list_tools()
-        results.append(ok("default: 19 tools", len(tools) == 19, str(len(tools))))
+        want = 12 if profile == "readonly" else 19
+        results.append(
+            ok(
+                f"no flag: {want} tools for this identity",
+                len(tools) == want,
+                str(len(tools)),
+            )
+        )
         try:
             await c.call_tool(
                 "list_records", {"table_name": "incident^ORx", "limit": 1}

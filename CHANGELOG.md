@@ -54,6 +54,14 @@ OAuth token over Streamable HTTP — see "Verified clients" in
 - **FastMCP floor is 4.1.0**; Python 3.14 is supported.
 
 ### Added
+- **Write tools are hidden when the identity holds `snc_read_only`**, without
+  any flag: ServiceNow would refuse those writes anyway, admin included. One
+  lookup of the caller's own `sys_user_has_role` rows (5-second limit) for the
+  configured account, or an `sn_read_only` claim per token behind the OAuth
+  proxy. A call to a hidden tool is refused with a clear message and audited
+  as `denied`. It fails open — if the lookup fails or times out the tools stay
+  listed and ServiceNow refuses the write — so it is a convenience, not a
+  security control; `--read-only` remains the server-side guarantee.
 - Skills served over MCP via FastMCP's `SkillsDirectoryProvider`
   (`src/servicenow_mcp/skills/`, package data).
 - Server `instructions`, and `render_instructions(namespace)` for servers that

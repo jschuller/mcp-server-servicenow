@@ -20,7 +20,11 @@ import httpx2
 
 from fastmcp.server.auth import AccessToken, TokenVerifier
 
-from servicenow_mcp.utils.user import DIRECT_ROLES_QUERY, MAX_DIRECT_ROLES
+from servicenow_mcp.utils.user import (
+    DIRECT_ROLES_QUERY,
+    MAX_DIRECT_ROLES,
+    caller_role_query,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -131,6 +135,7 @@ class ServiceNowTokenVerifier(TokenVerifier):
 
                 user = results[0]
                 roles = await self._direct_roles(client, headers)
+                read_only = await self._holds_role(client, headers, "snc_read_only")
 
                 return AccessToken(
                     token=token,
@@ -143,6 +148,9 @@ class ServiceNowTokenVerifier(TokenVerifier):
                         "name": user.get("name"),
                         "email": user.get("email"),
                         "roles": roles,
+                        # True only when the lookup said so: None (unknown)
+                        # leaves the write tools listed (fail open).
+                        "sn_read_only": read_only,
                         "sn_user_data": user,
                     },
                 )
@@ -179,6 +187,31 @@ class ServiceNowTokenVerifier(TokenVerifier):
             return None
         names = {row.get("role.name") for row in rows if isinstance(row, dict)}
         return sorted(name for name in names if isinstance(name, str) and name)
+
+    async def _holds_role(
+        self, client: httpx2.AsyncClient, headers: dict[str, str], role: str
+    ) -> bool | None:
+        """Whether the token owner holds ``role`` (inherited counts), or None."""
+        query = caller_role_query(role)
+        if query is None:
+            return None
+        try:
+            response = await client.get(
+                f"{self.instance_url}/api/now/table/sys_user_has_role",
+                headers=headers,
+                params={
+                    "sysparm_query": query,
+                    "sysparm_fields": "sys_id",
+                    "sysparm_limit": 1,
+                },
+            )
+            if response.status_code != 200:
+                return None
+            rows = response.json().get("result")
+        except Exception as e:
+            logger.debug("SN role check failed: %s", e)
+            return None
+        return bool(rows) if isinstance(rows, list) else None
 
     def _evict_expired(self) -> None:
         """Remove expired entries from the cache."""

@@ -37,6 +37,24 @@ def pristine_mcp():
     configure_audit_log("off")
 
 
+@pytest.fixture(autouse=True)
+def no_role_lookup(monkeypatch):
+    """Keep the snc_read_only lookup off the network: "not read-only" by default.
+
+    Tests of ReadOnlyIdentityMiddleware patch ``has_role`` themselves.
+    """
+    calls: list[tuple[Any, ...]] = []
+
+    def fake_has_role(*args: Any) -> bool:
+        calls.append(args)
+        return False
+
+    monkeypatch.setattr(
+        "servicenow_mcp.middleware.read_only_identity.has_role", fake_has_role
+    )
+    return calls
+
+
 def make_server_config(**overrides: Any) -> ServerConfig:
     """A basic-auth ServerConfig pointing at the test instance, with overrides."""
     base: dict[str, Any] = {

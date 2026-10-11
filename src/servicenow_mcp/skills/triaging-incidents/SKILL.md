@@ -129,6 +129,8 @@ Create a new incident with validated fields and appropriate defaults.
    ```
 5. Confirm creation: return the INC number, priority, and link.
 
+If `create_record` is not among your tools, the identity is read-only: give the user the field values to enter instead.
+
 ### 5. Bulk Analysis
 
 Analyze incident trends — top categories, repeat offenders, SLA status.
@@ -168,4 +170,4 @@ Analyze incident trends — top categories, repeat offenders, SLA status.
 
 ## Notes on writes
 
-`update_record` changes the incident immediately. Before a change the user did not ask for in so many words, show the record's current values and the change, and wait for their go. In a subagent or headless run, report the proposed change instead of making it.
+`update_record` changes the incident immediately. Before a change the user did not ask for in so many words, show the record's current values and the change, and wait for their go. In a subagent or headless run, report the proposed change instead of making it. If write tools are unavailable (a read-only identity or `--read-only`), propose the change instead.

@@ -94,7 +94,8 @@ Each skill also exposes `skill://<name>/_manifest` (a JSON file list with SHA-25
 
 All off by default except the audit log; flags and environment variables are in [configuration.md](configuration.md#safety-rails).
 
-- `--read-only` hides the write tools from `tools/list` **and** refuses any non-GET request at the HTTP layer.
+- `--read-only` hides the write tools from `tools/list` **and** refuses any non-GET request at the HTTP layer. It is the only guarantee the server itself gives.
+- When the identity holds `snc_read_only`, the write tools are hidden without any flag: ServiceNow would refuse them anyway, admin included. The server checks the caller's own `sys_user_has_role` rows once (5-second limit) for the configured account, or per token behind the OAuth proxy. This is a convenience, not a security control: if the check fails or times out, the write tools stay listed and ServiceNow refuses the write. One edge: `set_current_update_set` writes a `sys_user_preference` row, which `snc_read_only` may allow, but it is hidden with the other write tools.
 - Table names, sys_ids, field lists and `order_by` are always validated; `javascript:` in caller queries is limited to `gs.*` date helpers unless `--allow-js-queries`.
 - One JSON audit line per tool call or resource read (keys only, never values):
 
