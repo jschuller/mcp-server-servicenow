@@ -34,9 +34,6 @@ A corporate proxy that inspects TLS presents its own certificate, which Python d
 ## `spawn uvx ENOENT`
 Desktop apps (Claude Desktop, some IDEs) do not inherit your shell's `PATH`, so they cannot find `uvx`. Use the full path as the `command`: `which uvx` on macOS/Linux, `where uvx` on Windows.
 
-## Came from michaelbuckner/servicenow-mcp?
-That project's README says `pip install mcp-server-servicenow`, which installs this package, a different project. There is no `mcp_server_servicenow` module here: run `uvx mcp-server-servicenow` (or `python -m servicenow_mcp.cli`) and follow the [quick start](README.md#quick-start).
-
 ## 401 Unauthorized
 - **OAuth proxy: browser login succeeds but every MCP call returns `invalid_token`:** the SN OAuth app's Scope Restriction is "Securely scoped" (the Zurich+ default), which blocks Table API access. Set it to "Broadly scoped" in the Application Registry record, or add REST API Access Policies covering the Table/Stats APIs
 - **Basic auth rejected with `"Required to provide Auth information"` even though the password is correct:** the instance enforces ServiceNow's basic-auth restriction (`glide.authenticate.basic_auth.restriction.enforce`, default on new PDIs since mid-2026). The `admin` role is **not** exempt. Basic auth passes only for Web Service Access Only users (the simplest fix: a dedicated integration user with that box ticked), users holding `snc_basic_auth_api_access`, or a valid MFA one-time code. Upgraded instances get a tracking period first; on its end date the platform switches enforcement on by itself (`…restriction.enforcement_date`), so basic auth that worked yesterday can stop. Or use OAuth, which is unaffected

@@ -88,8 +88,7 @@ OAuth token over Streamable HTTP — see "Verified clients" in
   so they work on PyPI. All client snippets use `mcp.integration` and
   `--read-only` and no password on a command line.
 - TROUBLESHOOTING starts with a symptom table and covers DNS failures,
-  corporate TLS inspection, `spawn uvx ENOENT` and readers arriving from
-  `michaelbuckner/servicenow-mcp`.
+  corporate TLS inspection and `spawn uvx ENOENT`.
 - Package metadata: a plain summary, keywords, classifiers and project URLs.
 - Support routes: `SUPPORT.md`, GitHub Discussions forms (Q&A, Show and tell),
   and the issue chooser points questions to Discussions.
