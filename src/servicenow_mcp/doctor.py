@@ -110,6 +110,7 @@ class Doctor:
             return 1
         self.check_roles()
         read_ok = self.check_table_read()
+        self.check_record()
         self.check_schema()
         self.check_aggregate()
         return 0 if read_ok else 1
@@ -181,6 +182,24 @@ class Doctor:
             )
         return True
 
+    def check_record(self) -> None:
+        """A per-record GET: get_record, get_ci and the update-set reads use it."""
+        if not self.sample_sys_id:
+            return
+        url = build_url(self.config.api_url, "table", "incident", self.sample_sys_id)
+        try:
+            self.get(url, {"sysparm_fields": "sys_id"})
+        except Exception as exc:
+            self.add(
+                WARN,
+                "record",
+                self._limit_message(
+                    "Table API", "/now/table/{tableName}/{sys_id}", exc
+                ),
+            )
+            return
+        self.add(OK, "record", "single-record read works (get_record)")
+
     def check_schema(self) -> None:
         url = build_url(self.config.api_url, "table", "sys_dictionary")
         try:
@@ -203,7 +222,11 @@ class Doctor:
         try:
             self.get(url, {"sysparm_count": "true"})
         except Exception as exc:
-            self.add(WARN, "aggregate", self._limit_message("Aggregate API", exc))
+            self.add(
+                WARN,
+                "aggregate",
+                self._limit_message("Aggregate API", "/now/stats/{tableName}", exc),
+            )
             return
         self.add(
             OK,
@@ -211,12 +234,13 @@ class Doctor:
             "Aggregate API answers (aggregate_records; results still follow table ACLs)",
         )
 
-    def _limit_message(self, api: str, exc: BaseException) -> str:
+    def _limit_message(self, api: str, resource: str, exc: BaseException) -> str:
         message = str(exc)
         if self.config.auth.type == AuthType.API_KEY and "401" in message:
             return (
-                f"{api} refused the API key (401): a policy limit, not a fault. "
-                f"Add a REST API access policy for the {api} to use it"
+                f"{api} {resource} refused the API key (401): an access-policy "
+                f"limit, not a fault. To use it, add a REST API access policy for "
+                f"that API and resource with the key's auth profile"
             )
         if "403" in message:
             return f"{api} refused (403): the identity lacks a role or an ACL"

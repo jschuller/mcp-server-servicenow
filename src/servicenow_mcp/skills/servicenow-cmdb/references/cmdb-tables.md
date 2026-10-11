@@ -23,13 +23,17 @@
 
 ## Health Tables
 
+Installed with CMDB Health (`com.snc.cmdb`); see ServiceNow's [components installed with CMDB Health](https://www.servicenow.com/docs/r/brazil/servicenow-platform/configuration-management-database-cmdb/r_TablesInstalledCMDBHealth.html). Readable with `itil` + `snc_read_only`.
+
 | Table | Purpose |
 |-------|---------|
-| `cmdb_health_config` | Health dashboard configuration — defines which classes to monitor |
-| `cmdb_health_audit` | Audit results — individual health check outcomes |
-| `cmdb_health_result` | Aggregated health scores by class and KPI |
-| `cmdb_health_kpi` | KPI definitions — what metrics are tracked |
-| `cmdb_health_rule` | Health rules — specific checks (e.g., "server must have IP address") |
+| `cmdb_health_scorecard` | Health scores over time: the newest rows are current, older ones history |
+| `cmdb_health_result` | What the most recent processing cycle found |
+| `cmdb_health_metric` | Each KPI and metric: whether it is on, its failure threshold and other settings |
+| `cmdb_health_metric_status` | Processing state of each KPI and metric (completed, hit its failure limit, timed out) |
+| `cmdb_health_staleness_rule` | Per class: how long a CI may go without an update before it counts as stale |
+| `cmdb_health_orphan_rule` | Per class: when a CI counts as orphaned |
+| `cmdb_health_config` | Inclusion rules: which classes are scored |
 
 ## CSDM Core Classes
 

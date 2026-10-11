@@ -33,6 +33,7 @@ def router(**overrides: Any) -> Callable[..., Any]:
         "sys_user": ME,
         "sys_user_has_role": None,  # roles vs has_role, decided by fields
         "incident": ONE_INCIDENT,
+        "incident/i1": {"result": {"sys_id": "i1"}},
         "sys_dictionary": {"result": []},
         "stats/incident": {"result": {"stats": {"count": "3"}}},
     }
@@ -42,7 +43,12 @@ def router(**overrides: Any) -> Callable[..., Any]:
     def fake(method, url, timeout, params=None, json_data=None):
         seen.append((method, url))
         assert method == "GET"
-        key = "stats/incident" if "/stats/" in url else url.rsplit("/", 1)[-1]
+        if "/stats/" in url:
+            key = "stats/incident"
+        elif url.endswith("/incident/i1"):
+            key = "incident/i1"
+        else:
+            key = url.rsplit("/", 1)[-1]
         answer = answers[key]
         if key == "sys_user_has_role" and answer is None:
             answer = ROLES if params["sysparm_fields"] == "role.name" else HELD
@@ -104,7 +110,22 @@ def test_api_key_policy_limit_is_a_warning(monkeypatch, capsys) -> None:
     )
     code, out = _run(monkeypatch, capsys, fake, auth=API_KEY_AUTH)
     assert code == 0
-    assert "warn aggregate" in out and "policy limit" in out
+    assert "warn aggregate" in out and "access-policy limit" in out
+
+
+def test_record_read_policy_limit_names_the_resource(monkeypatch, capsys) -> None:
+    fake = router(
+        **{"incident/i1": ServiceNowAPIError("Authentication failed (401). x")}
+    )
+    code, out = _run(monkeypatch, capsys, fake, auth=API_KEY_AUTH)
+    assert code == 0
+    assert "warn record" in out
+    assert "/now/table/{tableName}/{sys_id}" in out and "access-policy" in out
+
+
+def test_record_read_ok(monkeypatch, capsys) -> None:
+    code, out = _run(monkeypatch, capsys, router())
+    assert "ok   record" in out
 
 
 def test_schema_403_names_the_role(monkeypatch, capsys) -> None:
