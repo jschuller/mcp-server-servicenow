@@ -33,6 +33,10 @@ OAuth token over Streamable HTTP — see "Verified clients" in
   ([Security Best Practices Guide](https://www.servicenow.com/content/dam/servicenow-assets/public/en-us/doc-type/resource-center/white-paper/instance-security-best-practice.pdf),
   Australia, pp. 17 and 37). Identifier, field-list and `javascript:`
   validation stay.
+- **The API-key header defaults to `x-sn-apikey`**, ServiceNow's default
+  auth parameter (was `X-ServiceNow-API-Key`, which worked only where an
+  admin had created a custom parameter by that name). If yours did, set
+  `SERVICENOW_API_KEY_HEADER=X-ServiceNow-API-Key`.
 - **Breaking (Claude Code plugin):** the four `/servicenow:*` slash commands
   are now the skills' own commands — `/servicenow:triage` →
   `/servicenow:triaging-incidents`, `/servicenow:cmdb` →
@@ -80,6 +84,15 @@ OAuth token over Streamable HTTP — see "Verified clients" in
 - CI: Python 3.14, and a check that the wheel carries the 4 skills.
 
 ### Fixed
+- The instance URL is normalised at startup: surrounding spaces, a trailing
+  slash, a missing `https://`, a bare instance name (`dev12345` →
+  `https://dev12345.service-now.com`) and a pasted UI path or query are all
+  accepted, and the startup log shows the URL used. A missing scheme used to
+  fail only at the first tool call (`MissingSchema`), and a URL copied from
+  the UI gave a misleading "hibernating PDI" error.
+- `SERVICENOW_AUTH_TYPE` is optional in `server.json` (the server already
+  defaulted to `basic`), and the registry description fits its 100-character
+  limit again.
 - `get_current_user`, `servicenow://instance` and the OAuth proxy's `roles`
   claim read the caller's direct, active roles from `sys_user_has_role`. They
   read `sys_user.roles`, which is empty for most users, so `roles` was `null`

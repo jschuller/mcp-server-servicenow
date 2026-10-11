@@ -287,7 +287,7 @@ class TestSafetyFlags:
         assert args.read_only is False
         assert args.audit_log == "stderr"
         assert args.token_url is None
-        assert args.api_key_header == "X-ServiceNow-API-Key"
+        assert args.api_key_header == "x-sn-apikey"
 
     def test_read_only_hides_write_tools(self, monkeypatch):
         import asyncio
@@ -338,6 +338,45 @@ class TestSafetyFlags:
         with patch("servicenow_mcp.server.mcp.run"):
             cli.main()
         assert audit.is_enabled() is False
+
+
+class TestInstanceUrl:
+    @pytest.mark.parametrize(
+        "raw",
+        [
+            "https://dev1.service-now.com",
+            "https://dev1.service-now.com/",
+            "  https://dev1.service-now.com  ",
+            "dev1.service-now.com",
+            "dev1",
+            "https://dev1.service-now.com/now/nav/ui/home?x=1#frag",
+            "HTTPS://Dev1.Service-Now.com/",
+        ],
+    )
+    def test_pasted_forms_normalise(self, raw):
+        assert cli.normalize_instance_url(raw) == "https://dev1.service-now.com"
+
+    def test_explicit_scheme_and_port_are_kept(self):
+        assert cli.normalize_instance_url("http://localhost:8080/x") == (
+            "http://localhost:8080"
+        )
+
+    def test_no_host_is_an_error(self):
+        with pytest.raises(ValueError, match="Invalid ServiceNow instance URL"):
+            cli.normalize_instance_url("https://")
+
+    def test_config_and_token_url_use_the_normalised_url(self, monkeypatch, caplog):
+        monkeypatch.setattr(
+            "sys.argv",
+            [*_OAUTH_ARGV[:2], "dev1/now/nav/ui/home", *_OAUTH_ARGV[3:]],
+        )
+        with caplog.at_level("INFO"):
+            config = cli.create_config(cli.parse_args())
+        assert config.instance_url == "https://dev1.service-now.com"
+        assert config.auth.oauth.token_url == (
+            "https://dev1.service-now.com/oauth_token.do"
+        )
+        assert "normalised to https://dev1.service-now.com" in caplog.text
 
 
 _OAUTH_ARGV = [

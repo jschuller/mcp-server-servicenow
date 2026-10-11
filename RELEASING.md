@@ -47,7 +47,7 @@ the release (see Failure modes).
    ```sh
    with-secrets SERVICENOW_API_KEY=svc/homelab/servicenow-<pdi>-apikey -- env \
      SERVICENOW_INSTANCE_URL=https://<pdi>.service-now.com \
-     SERVICENOW_AUTH_TYPE=api_key SERVICENOW_API_KEY_HEADER=x-sn-apikey \
+     SERVICENOW_AUTH_TYPE=api_key \
      sh -c 'uv run pytest tests/integration/ -v -rs && uv run python scripts/stdio_smoke.py --profile readonly'
    ```
 

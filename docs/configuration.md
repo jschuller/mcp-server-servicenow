@@ -159,7 +159,7 @@ All settings can be passed as CLI args or environment variables. See `.env.examp
 | `SERVICENOW_CLIENT_ID` | `--client-id` | OAuth client ID |
 | `SERVICENOW_CLIENT_SECRET` | `--client-secret` | OAuth client secret |
 | `SERVICENOW_API_KEY` | `--api-key` | API key for api_key auth |
-| `SERVICENOW_API_KEY_HEADER` | `--api-key-header` | API key header name (default: X-ServiceNow-API-Key) |
+| `SERVICENOW_API_KEY_HEADER` | `--api-key-header` | API key header name (default: `x-sn-apikey`, ServiceNow's default auth parameter) |
 | `SERVICENOW_TOKEN_URL` | `--token-url` | OAuth token URL (default: `<instance>/oauth_token.do`) |
 | `SERVICENOW_TIMEOUT` | `--timeout` | HTTP timeout in seconds (default: 30) |
 | `SERVICENOW_DEBUG` | `--debug` | Debug logging (`true`/`false`) |

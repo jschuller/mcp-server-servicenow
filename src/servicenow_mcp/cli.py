@@ -5,10 +5,12 @@ import logging
 import os
 import sys
 from typing import Any, Optional
+from urllib.parse import urlsplit
 
 from dotenv import load_dotenv
 
 from servicenow_mcp.utils.config import (
+    DEFAULT_API_KEY_HEADER,
     AuthConfig,
     AuthType,
     BasicAuthConfig,
@@ -92,7 +94,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--api-key", default=_env_str("SERVICENOW_API_KEY"))
     parser.add_argument(
         "--api-key-header",
-        default=_env_str("SERVICENOW_API_KEY_HEADER", "X-ServiceNow-API-Key"),
+        default=_env_str("SERVICENOW_API_KEY_HEADER", DEFAULT_API_KEY_HEADER),
     )
     parser.add_argument(
         "--transport",
@@ -171,6 +173,28 @@ def _safety_kwargs(args: argparse.Namespace) -> dict[str, Any]:
     }
 
 
+def normalize_instance_url(raw: str) -> str:
+    """Reduce what people paste to ``scheme://host[:port]``.
+
+    Trims, adds ``https://`` when there is no scheme, expands a bare instance
+    name (``dev12345``) to ``dev12345.service-now.com`` and drops any path,
+    query or fragment — a URL copied from the UI (``/now/nav/ui/home``) would
+    otherwise send every API call to a login page.
+    """
+    value = raw.strip()
+    bare = "://" not in value
+    if bare:
+        value = f"https://{value}"
+    parts = urlsplit(value)
+    host = parts.hostname
+    if not host:
+        raise ValueError(f"Invalid ServiceNow instance URL: {raw!r}")
+    if bare and "." not in host and not parts.port:
+        host = f"{host}.service-now.com"
+    port = f":{parts.port}" if parts.port else ""
+    return f"{parts.scheme.lower()}://{host}{port}"
+
+
 def create_config(
     args: argparse.Namespace, *, require_sn_creds: bool = True
 ) -> ServerConfig:
@@ -180,11 +204,13 @@ def create_config(
     no ServiceNow service-account credentials are needed: every request
     carries the caller's own token.
     """
-    instance_url = args.instance_url
-    if not instance_url:
+    if not args.instance_url:
         raise ValueError(
             "ServiceNow instance URL is required (--instance-url or SERVICENOW_INSTANCE_URL)"
         )
+    instance_url = normalize_instance_url(args.instance_url)
+    if instance_url != args.instance_url.strip():
+        logger.info("Instance URL normalised to %s", instance_url)
 
     auth_config: AuthConfig
     if not require_sn_creds:

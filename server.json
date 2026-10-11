@@ -2,7 +2,7 @@
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.jschuller/mcp-server-servicenow",
   "title": "ServiceNow MCP Server",
-  "description": "ServiceNow MCP server: Table API, CMDB, schema, update sets. Read-only mode, query validation, audit log.",
+  "description": "ServiceNow MCP server: Table API, CMDB, schema, update sets. Read-only mode, OAuth, audit log.",
   "version": "0.8.0",
   "repository": {
     "url": "https://github.com/jschuller/mcp-server-servicenow",
@@ -25,8 +25,8 @@
         },
         {
           "name": "SERVICENOW_AUTH_TYPE",
-          "isRequired": true,
-          "description": "Auth type: basic, oauth, or api_key",
+          "isRequired": false,
+          "description": "Auth type: basic (default), oauth, or api_key",
           "format": "string"
         },
         {
@@ -65,7 +65,7 @@
         {
           "name": "SERVICENOW_API_KEY_HEADER",
           "isRequired": false,
-          "description": "Header name for api_key auth (default X-ServiceNow-API-Key)",
+          "description": "Header name for api_key auth (default x-sn-apikey, ServiceNow's default auth parameter)",
           "format": "string"
         },
         {
