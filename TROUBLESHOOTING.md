@@ -52,9 +52,6 @@ The error message includes the ServiceNow response body, which typically names t
 ## `Unknown tool: 'update_record'` (or any write tool)
 The server is running with `--read-only` / `SERVICENOW_READ_ONLY=true`: the 7 write tools are hidden from `tools/list`, and a cached client that still calls one gets this error. Restart without the flag to write.
 
-## `Table 'x' is blocked by SERVICENOW_TABLE_DENYLIST` / `not in SERVICENOW_TABLE_ALLOWLIST`
-The operator restricted which tables this server may touch. The check applies to `table_name`, `class_name` (default `cmdb_ci`), the fixed-table tools (`get_current_user` → `sys_user`, `get_system_properties` → `sys_properties`, update-set tools → `sys_update_set`/`sys_update_xml`, `get_ci_relationships` → `cmdb_rel_ci`) and the `servicenow://schema/{table}` resource. Patterns are globs (`sys_user*`), case-insensitive; deny wins over allow.
-
 ## `Query rejected: unsafe javascript: expression`
 Caller-supplied `query` / `having` values may only use GlideSystem date helpers (`javascript:gs.daysAgo(7)`, `gs.daysAgoStart(1)`, `gs.beginningOfToday()`, `gs.beginningOfLastWeek()`, `gs.monthsAgoStart(1)`, `gs.nowDateTime()` …). Anything else — `gs.getUserName()`, `gs.getUserID()`, `GlideRecord`, `;`, `new` — is refused, including when it follows a safe helper in the same query. Use the `RELATIVE*`, `MORETHAN`/`LESSTHAN`, `DATEPART` operators (see `servicenow://help/query-syntax`), or start the server with `--allow-js-queries` / `SERVICENOW_ALLOW_JS_QUERIES=true`. The server's own internal queries (for example the `gs.getUserName()` lookup behind `get_current_user`) are not affected.
 

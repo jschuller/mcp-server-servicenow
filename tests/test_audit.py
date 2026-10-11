@@ -78,13 +78,13 @@ async def test_ok_line_has_keys_not_values(
 async def test_error_denied_and_unknown_outcomes(
     captured: _Capture, sn_mock: Mock
 ) -> None:
-    init_test_services(table_denylist=["sys_user"])
+    init_test_services()
     sn_mock.side_effect = RuntimeError("boom")
     async with Client(mcp) as client:
         with pytest.raises(ToolError):
             await client.call_tool("list_records", {"table_name": "incident"})
         with pytest.raises(ToolError):
-            await client.call_tool("list_records", {"table_name": "sys_user"})
+            await client.call_tool("list_records", {"table_name": "incident^ORx"})
         with pytest.raises(ToolError):
             await client.call_tool("no_such_tool", {})
     outcomes = [line["outcome"] for line in captured.lines]
@@ -93,7 +93,7 @@ async def test_error_denied_and_unknown_outcomes(
         captured.lines[0]["error"].startswith("ToolError")
         or "boom" in captured.lines[0]["error"]
     )
-    assert "DENYLIST" in captured.lines[1]["error"]
+    assert "Invalid table name" in captured.lines[1]["error"]
 
 
 @pytest.mark.asyncio

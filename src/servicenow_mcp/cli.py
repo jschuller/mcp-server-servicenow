@@ -4,7 +4,7 @@ import argparse
 import logging
 import os
 import sys
-from typing import Any, List, Optional
+from typing import Any, Optional
 
 from dotenv import load_dotenv
 
@@ -58,13 +58,6 @@ def _env_int(name: str, default: int) -> int:
     except ValueError:
         logger.warning("Ignoring non-integer %s=%r; using %d", name, value, default)
         return default
-
-
-def _parse_csv(value: Optional[str]) -> List[str]:
-    """Split a comma-separated list, dropping blanks."""
-    if not value:
-        return []
-    return [item.strip() for item in value.split(",") if item.strip()]
 
 
 def parse_args() -> argparse.Namespace:
@@ -156,16 +149,6 @@ def parse_args() -> argparse.Namespace:
         help="Hide write tools and refuse non-GET requests (SERVICENOW_READ_ONLY)",
     )
     safety.add_argument(
-        "--table-allowlist",
-        default=_env_str("SERVICENOW_TABLE_ALLOWLIST"),
-        help="Comma-separated tables/globs that may be accessed (SERVICENOW_TABLE_ALLOWLIST)",
-    )
-    safety.add_argument(
-        "--table-denylist",
-        default=_env_str("SERVICENOW_TABLE_DENYLIST"),
-        help="Comma-separated tables/globs that may never be accessed (SERVICENOW_TABLE_DENYLIST)",
-    )
-    safety.add_argument(
         "--allow-js-queries",
         action="store_true",
         default=_env_bool("SERVICENOW_ALLOW_JS_QUERIES", False),
@@ -183,8 +166,6 @@ def parse_args() -> argparse.Namespace:
 def _safety_kwargs(args: argparse.Namespace) -> dict[str, Any]:
     return {
         "read_only": bool(getattr(args, "read_only", False)),
-        "table_allowlist": _parse_csv(getattr(args, "table_allowlist", None)),
-        "table_denylist": _parse_csv(getattr(args, "table_denylist", None)),
         "allow_js_queries": bool(getattr(args, "allow_js_queries", False)),
         "audit_log": getattr(args, "audit_log", None) or "stderr",
     }
@@ -378,12 +359,6 @@ def main() -> None:
         if config.read_only:
             mcp.disable(tags={"write"}, components={"tool"})
             logger.info("Read-only mode: write tools hidden, non-GET requests refused")
-        if config.table_denylist or config.table_allowlist:
-            logger.info(
-                "Table policy: denylist=%s allowlist=%s",
-                config.table_denylist or "-",
-                config.table_allowlist or "-",
-            )
 
         from servicenow_mcp.middleware.audit import configure_audit_log
 

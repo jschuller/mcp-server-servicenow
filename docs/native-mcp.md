@@ -12,7 +12,7 @@ This project is the other half: the developer loop. It reads and writes any tabl
 | **Entitlement** | Now Assist / AI-native SKU; metered in assists | MIT, $0, your own compute |
 | **Developer instances (PDIs)** | Not available as of July 2026 | Works |
 | **Auth** | OAuth 2.0 auth-code via Machine Identity Console | Basic, OAuth (password grant), API key; over HTTP an OAuth 2.1 + PKCE proxy (DCR + CIMD) |
-| **Governance** | AI Control Tower / AI Gateway | Self-managed: `--read-only`, table allow/deny lists, JSON audit log, tool annotations |
+| **Governance** | AI Control Tower / AI Gateway | Self-managed: `--read-only`, query validation, JSON audit log, tool annotations; table scope from ServiceNow ACLs |
 | **Transport** | Streamable HTTP | stdio + Streamable HTTP |
 | **Resources / skills / prompts** | Roadmap | 5 resources; 4 Agent Skills as `skill://` resources (SEP-2640); prompts planned |
 

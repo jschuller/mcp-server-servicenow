@@ -1,7 +1,7 @@
 """Configuration module for the ServiceNow MCP server."""
 
 from enum import Enum
-from typing import List, Optional
+from typing import Optional
 
 from pydantic import BaseModel, Field
 
@@ -59,14 +59,6 @@ class ServerConfig(BaseModel):
     read_only: bool = Field(
         default=False,
         description="Hide write tools and refuse non-GET ServiceNow requests.",
-    )
-    table_allowlist: List[str] = Field(
-        default_factory=list,
-        description="If non-empty, only these tables (exact or glob) may be accessed.",
-    )
-    table_denylist: List[str] = Field(
-        default_factory=list,
-        description="Tables (exact or glob) that may never be accessed; wins over allowlist.",
     )
     allow_js_queries: bool = Field(
         default=False,

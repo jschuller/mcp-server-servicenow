@@ -95,7 +95,6 @@ Each skill also exposes `skill://<name>/_manifest` (a JSON file list with SHA-25
 All off by default except the audit log; flags and environment variables are in [configuration.md](configuration.md#safety-rails).
 
 - `--read-only` hides the write tools from `tools/list` **and** refuses any non-GET request at the HTTP layer.
-- `--table-allowlist` / `--table-denylist` (globs, deny wins) apply to `table_name`, `class_name`, the fixed-table tools and the schema resource.
 - Table names, sys_ids, field lists and `order_by` are always validated; `javascript:` in caller queries is limited to `gs.*` date helpers unless `--allow-js-queries`.
 - One JSON audit line per tool call or resource read (keys only, never values):
 

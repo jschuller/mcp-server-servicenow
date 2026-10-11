@@ -22,6 +22,17 @@ OAuth token over Streamable HTTP — see "Verified clients" in
   `update_record`, `update_ci` and `delete_record` lose their `confirm`
   argument. Approval of writes is the MCP client's job (tool annotations),
   with ServiceNow's ACLs and `snc_read_only` as the boundary.
+- **Breaking: the table allow/deny lists are removed.** `--table-allowlist`
+  and `--table-denylist` no longer exist (the server won't start with them),
+  and `SERVICENOW_TABLE_ALLOWLIST` / `SERVICENOW_TABLE_DENYLIST` are ignored.
+  They were a targeting guard, not a data boundary: with `sys_user*` denied, a
+  live `incident` read with `fields=caller_id.email` still returned user data
+  through the dot-walk. Scope tables and APIs on the instance instead, where
+  ServiceNow enforces it for every client: ACLs and roles on the integration
+  user, Machine Identity access controls and REST API access policies
+  ([Security Best Practices Guide](https://www.servicenow.com/content/dam/servicenow-assets/public/en-us/doc-type/resource-center/white-paper/instance-security-best-practice.pdf),
+  Australia, pp. 17 and 37). Identifier, field-list and `javascript:`
+  validation stay.
 - **Breaking (Claude Code plugin):** the four `/servicenow:*` slash commands
   are now the skills' own commands — `/servicenow:triage` →
   `/servicenow:triaging-incidents`, `/servicenow:cmdb` →

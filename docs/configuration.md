@@ -44,7 +44,7 @@ Copy `.mcp.json.example` to `.mcp.json` and fill in your credentials. The JSON f
 }
 ```
 
-### Read-only with a table denylist (stdio)
+### Read-only (stdio)
 
 ```json
 {
@@ -57,7 +57,6 @@ Copy `.mcp.json.example` to `.mcp.json` and fill in your credentials. The JSON f
         "SERVICENOW_AUTH_TYPE": "basic",
         "SERVICENOW_USERNAME": "svc-readonly",
         "SERVICENOW_PASSWORD": "prod-password",
-        "SERVICENOW_TABLE_DENYLIST": "sys_user*,sys_user_has_role,oauth_*",
         "SERVICENOW_AUDIT_LOG": "/var/log/servicenow-mcp/audit.jsonl"
       }
     }
@@ -144,8 +143,6 @@ All settings can be passed as CLI args or environment variables. See `.env.examp
 | Variable | CLI Arg | Description |
 |----------|---------|-------------|
 | `SERVICENOW_READ_ONLY` | `--read-only` | Hide the 7 write tools and refuse non-GET requests (default: off) |
-| `SERVICENOW_TABLE_ALLOWLIST` | `--table-allowlist` | Comma-separated tables/globs that may be accessed (empty = all) |
-| `SERVICENOW_TABLE_DENYLIST` | `--table-denylist` | Comma-separated tables/globs that may never be accessed; wins over the allowlist |
 | `SERVICENOW_ALLOW_JS_QUERIES` | `--allow-js-queries` | Permit arbitrary `javascript:` in caller queries (default: only `gs.*` date helpers) |
 | `SERVICENOW_AUDIT_LOG` | `--audit-log` | `stderr` (default), `off`, or a file path for the JSON audit log |
 

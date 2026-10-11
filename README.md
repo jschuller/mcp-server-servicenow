@@ -174,7 +174,7 @@ Per-tool detail: [roles per tool](https://github.com/jschuller/mcp-server-servic
 ## Safety and governance
 
 - **Read-only mode** — `--read-only` hides the 7 write tools and refuses any non-GET request.
-- **Table allow/deny lists** — `--table-allowlist incident,cmdb_ci*`, `--table-denylist sys_user*`.
+- **Table scope lives in ServiceNow** — ACLs and REST API access policies on the integration user decide which tables and fields it can read, dot-walks included.
 - **Audit log** — one JSON line per tool call or resource read: who, which table, outcome; field names only, never values.
 - **Your client approves writes** — every tool is annotated read-only or destructive, so Claude Code, Copilot and Codex ask before a write. Clients that don't ask (opencode by default, pi) belong on `--read-only`.
 

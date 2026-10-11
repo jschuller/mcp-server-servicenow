@@ -29,8 +29,6 @@ _CLI_ENV_VARS = [
     "MCP_BASE_URL",
     "MCP_STATIC_TOKENS",
     "SERVICENOW_READ_ONLY",
-    "SERVICENOW_TABLE_ALLOWLIST",
-    "SERVICENOW_TABLE_DENYLIST",
     "SERVICENOW_ALLOW_JS_QUERIES",
     "SERVICENOW_AUDIT_LOG",
 ]
@@ -243,10 +241,6 @@ class TestSafetyFlags:
             [
                 *_BASIC_ARGV,
                 "--read-only",
-                "--table-denylist",
-                "sys_user*, sys_properties",
-                "--table-allowlist",
-                "incident,cmdb_ci*",
                 "--allow-js-queries",
                 "--audit-log",
                 "off",
@@ -254,8 +248,6 @@ class TestSafetyFlags:
         )
         config = cli.create_config(cli.parse_args())
         assert config.read_only is True
-        assert config.table_denylist == ["sys_user*", "sys_properties"]
-        assert config.table_allowlist == ["incident", "cmdb_ci*"]
         assert config.allow_js_queries is True
         assert config.audit_log == "off"
 
@@ -263,33 +255,38 @@ class TestSafetyFlags:
         monkeypatch.setattr("sys.argv", list(_BASIC_ARGV))
         config = cli.create_config(cli.parse_args())
         assert config.read_only is False
-        assert config.table_denylist == [] and config.table_allowlist == []
         assert config.allow_js_queries is False
         assert config.audit_log == "stderr"
 
     def test_env_vars(self, monkeypatch):
         monkeypatch.setenv("SERVICENOW_READ_ONLY", "true")
-        monkeypatch.setenv("SERVICENOW_TABLE_DENYLIST", "sys_*")
         monkeypatch.setenv("SERVICENOW_AUDIT_LOG", "/tmp/audit.jsonl")
         monkeypatch.setattr("sys.argv", list(_BASIC_ARGV))
         config = cli.create_config(cli.parse_args())
         assert config.read_only is True
-        assert config.table_denylist == ["sys_*"]
         assert config.audit_log == "/tmp/audit.jsonl"
+
+    @pytest.mark.parametrize("flag", ["--table-allowlist", "--table-denylist"])
+    def test_removed_table_list_flags_fail(self, monkeypatch, flag):
+        """0.8.0 removed the table lists; argparse refuses the old flags."""
+        monkeypatch.setattr("sys.argv", [*_BASIC_ARGV, flag, "sys_user*"])
+        with pytest.raises(SystemExit) as exc_info:
+            cli.parse_args()
+        assert exc_info.value.code == 2
 
     def test_unexpanded_plugin_placeholders_are_ignored(self, monkeypatch):
         """Claude Code passes unset plugin env vars through as literal ${VAR}."""
         monkeypatch.setenv("SERVICENOW_TIMEOUT", "${SERVICENOW_TIMEOUT}")
         monkeypatch.setenv("SERVICENOW_READ_ONLY", "${SERVICENOW_READ_ONLY}")
         monkeypatch.setenv("SERVICENOW_AUDIT_LOG", "${SERVICENOW_AUDIT_LOG}")
-        monkeypatch.setenv("SERVICENOW_TABLE_DENYLIST", "")
+        monkeypatch.setenv("SERVICENOW_TOKEN_URL", "")
         monkeypatch.setenv("SERVICENOW_API_KEY_HEADER", "${SERVICENOW_API_KEY_HEADER}")
         monkeypatch.setattr("sys.argv", list(_BASIC_ARGV))
         args = cli.parse_args()
         assert args.timeout == 30
         assert args.read_only is False
         assert args.audit_log == "stderr"
-        assert args.table_denylist is None
+        assert args.token_url is None
         assert args.api_key_header == "X-ServiceNow-API-Key"
 
     def test_read_only_hides_write_tools(self, monkeypatch):

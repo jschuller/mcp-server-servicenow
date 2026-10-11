@@ -1,15 +1,18 @@
-"""Policy middleware — table allow/deny lists, identifier validation, query hardening.
+"""Policy middleware — identifier and query validation.
 
 Everything here inspects *caller-supplied* tool arguments and resource URIs
 before the tool body runs. Queries the server issues on its own behalf (for
 example the ``user_name=javascript:gs.getUserName()`` lookup used for the
 current user and for OAuth token verification) never pass through this
 middleware and are unaffected.
+
+Which tables and records a caller may read is ServiceNow's decision (ACLs, roles,
+REST API access policies), not this module's: these checks only stop a tool
+argument from rewriting a URL path or an encoded query.
 """
 
 from __future__ import annotations
 
-import fnmatch
 import re
 from typing import Any, Dict, Optional
 
@@ -99,25 +102,6 @@ def check_identifier(name: str, value: Any) -> None:
         )
 
 
-def check_table(table: str, config: ServerConfig) -> None:
-    """Validate a table name and apply the deny/allow lists."""
-    check_identifier("table name", table)
-    lowered = table.lower()
-    for pattern in config.table_denylist:
-        if fnmatch.fnmatchcase(lowered, pattern.lower()):
-            raise PolicyError(
-                f"Table '{table}' is blocked by SERVICENOW_TABLE_DENYLIST ({pattern})"
-            )
-    if config.table_allowlist and not any(
-        fnmatch.fnmatchcase(lowered, pattern.lower())
-        for pattern in config.table_allowlist
-    ):
-        raise PolicyError(
-            f"Table '{table}' is not in SERVICENOW_TABLE_ALLOWLIST "
-            f"({', '.join(config.table_allowlist)})"
-        )
-
-
 def find_unsafe_js(value: str) -> Optional[str]:
     """Return the first unsafe ``javascript:`` expression in *value*, or None.
 
@@ -153,7 +137,7 @@ def validate_tool_call(
     """Apply every policy check to one tool invocation."""
     table = resolve_table(tool_name, arguments)
     if table is not None:
-        check_table(table, config)
+        check_identifier("table name", table)
 
     for arg in IDENTIFIER_ARGS:
         if arg in arguments:
@@ -188,7 +172,7 @@ def validate_tool_call(
 
 
 class PolicyMiddleware(Middleware):
-    """Enforce table allow/deny lists and query hardening on every call."""
+    """Validate identifiers and harden caller queries on every call."""
 
     async def on_call_tool(
         self, context: MiddlewareContext, call_next: CallNext
@@ -203,9 +187,7 @@ class PolicyMiddleware(Middleware):
     async def on_read_resource(
         self, context: MiddlewareContext, call_next: CallNext
     ) -> Any:
-        config = _current_config()
-        if config is not None:
-            match = SCHEMA_URI_RE.match(str(context.message.uri))
-            if match:
-                check_table(match.group("table"), config)
+        match = SCHEMA_URI_RE.match(str(context.message.uri))
+        if match:
+            check_identifier("table name", match.group("table"))
         return await call_next(context)

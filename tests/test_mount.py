@@ -25,13 +25,13 @@ def parent() -> FastMCP:
 
 
 async def test_policy_and_audit_survive_mount(parent: FastMCP, tmp_path) -> None:
-    init_test_services(table_denylist=["incident"])
+    init_test_services()
     log = tmp_path / "audit.jsonl"
     configure_audit_log(str(log))
 
     async with Client(parent) as client:
-        with pytest.raises(ToolError, match="blocked by SERVICENOW_TABLE_DENYLIST"):
-            await client.call_tool("snow_list_records", {"table_name": "incident"})
+        with pytest.raises(ToolError, match="Invalid table name"):
+            await client.call_tool("snow_list_records", {"table_name": "incident^ORx"})
 
     records = [json.loads(line) for line in log.read_text().splitlines()]
     assert any(
