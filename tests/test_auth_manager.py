@@ -75,6 +75,76 @@ class TestPasswordGrant:
             oauth_auth_manager.get_headers()
 
 
+class TestClientCredentialsGrant:
+    """OAuth without username/password uses the client credentials grant."""
+
+    @patch("servicenow_mcp.auth.auth_manager.requests.post")
+    def test_client_secret_post_body(
+        self, mock_post: MagicMock, cc_auth_manager: AuthManager
+    ) -> None:
+        mock_post.return_value = _token_response(refresh_token=None)
+        headers = cc_auth_manager.get_headers()
+
+        assert headers["Authorization"] == "Bearer access-1"
+        args, kwargs = mock_post.call_args
+        assert args[0] == TOKEN_URL
+        assert kwargs["data"] == {
+            "grant_type": "client_credentials",
+            "client_id": "test-client-id",
+            "client_secret": "test-client-secret",
+        }
+        assert "Authorization" not in kwargs["headers"]
+        assert kwargs["timeout"] == 30
+
+    @patch("servicenow_mcp.auth.auth_manager.requests.post")
+    def test_password_grant_keeps_basic_client_auth(
+        self, mock_post: MagicMock, oauth_auth_manager: AuthManager
+    ) -> None:
+        mock_post.return_value = _token_response()
+        oauth_auth_manager.get_headers()
+        kwargs = mock_post.call_args.kwargs
+        assert kwargs["headers"]["Authorization"].startswith("Basic ")
+        assert "client_secret" not in kwargs["data"]
+
+    @patch("servicenow_mcp.auth.auth_manager.requests.post")
+    def test_refresh_without_refresh_token_requests_a_new_grant(
+        self, mock_post: MagicMock, cc_auth_manager: AuthManager
+    ) -> None:
+        cc_auth_manager.token = "access-old"
+        mock_post.return_value = _token_response(
+            access_token="access-2", refresh_token=None
+        )
+        cc_auth_manager.refresh_token()
+        mock_post.assert_called_once()
+        assert mock_post.call_args.kwargs["data"]["grant_type"] == "client_credentials"
+        assert cc_auth_manager.token == "access-2"
+
+    @patch("servicenow_mcp.auth.auth_manager.requests.post")
+    def test_failed_refresh_falls_back_to_client_credentials(
+        self, mock_post: MagicMock, cc_auth_manager: AuthManager
+    ) -> None:
+        cc_auth_manager._refresh_token = "refresh-old"
+        rejected = MagicMock(spec=requests.Response)
+        rejected.status_code = 401
+        rejected.text = "invalid_grant"
+        mock_post.side_effect = [rejected, _token_response(access_token="access-3")]
+        cc_auth_manager.refresh_token()
+        grants = [c.kwargs["data"]["grant_type"] for c in mock_post.call_args_list]
+        assert grants == ["refresh_token", "client_credentials"]
+        assert cc_auth_manager.token == "access-3"
+
+    @patch("servicenow_mcp.auth.auth_manager.requests.post")
+    def test_refused_grant_names_the_instance_prerequisites(
+        self, mock_post: MagicMock, cc_auth_manager: AuthManager
+    ) -> None:
+        resp = MagicMock(spec=requests.Response)
+        resp.status_code = 401
+        resp.text = "access_denied"
+        mock_post.return_value = resp
+        with pytest.raises(ValueError, match="OAuth Application User"):
+            cc_auth_manager.get_headers()
+
+
 class TestRefreshToken:
     """Tests for refresh_token() grant selection and fallback."""
 

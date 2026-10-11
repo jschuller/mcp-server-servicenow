@@ -60,6 +60,15 @@ class TestOAuthConfig:
         )
         assert config.token_url == "https://test.service-now.com/oauth_token.do"
 
+    def test_grant_follows_user_credentials(self) -> None:
+        with_user = OAuthConfig(
+            client_id="cid", client_secret="cs", username="u", password="p"
+        )
+        without = OAuthConfig(client_id="cid", client_secret="cs")
+        assert with_user.grant_type == "password"
+        assert without.grant_type == "client_credentials"
+        assert without.username is None and without.password is None
+
     def test_missing_client_id(self) -> None:
         with pytest.raises(ValidationError):
             OAuthConfig(

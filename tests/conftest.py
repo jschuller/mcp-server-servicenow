@@ -119,6 +119,22 @@ def oauth_auth_config() -> AuthConfig:
 
 
 @pytest.fixture
+def cc_auth_config() -> AuthConfig:
+    """OAuth without user credentials: the client credentials grant."""
+    return AuthConfig(
+        type=AuthType.OAUTH,
+        oauth=OAuthConfig(
+            client_id="test-client-id", client_secret="test-client-secret"
+        ),
+    )
+
+
+@pytest.fixture
+def cc_auth_manager(cc_auth_config: AuthConfig) -> AuthManager:
+    return AuthManager(cc_auth_config, "https://test.service-now.com")
+
+
+@pytest.fixture
 def server_config(basic_auth_config: AuthConfig) -> ServerConfig:
     return ServerConfig(
         instance_url="https://test.service-now.com",

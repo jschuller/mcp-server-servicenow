@@ -210,14 +210,12 @@ def create_config(
         )
 
     elif auth_type == AuthType.OAUTH:
-        if (
-            not args.client_id
-            or not args.client_secret
-            or not args.username
-            or not args.password
-        ):
+        if not args.client_id or not args.client_secret:
+            raise ValueError("client-id and client-secret required for OAuth")
+        if bool(args.username) != bool(args.password):
             raise ValueError(
-                "client-id, client-secret, username, and password required for OAuth"
+                "OAuth: set both SERVICENOW_USERNAME and SERVICENOW_PASSWORD for the "
+                "password grant, or neither for the client credentials grant"
             )
         token_url = args.token_url or f"{instance_url}/oauth_token.do"
         auth_config = AuthConfig(
@@ -309,6 +307,8 @@ def main() -> None:
             raise
 
         logger.info(f"Starting ServiceNow MCP server for {config.instance_url}")
+        if require_sn_creds and config.auth.oauth is not None:
+            logger.info("ServiceNow auth: OAuth %s grant", config.auth.oauth.grant_type)
 
         # Initialize services before importing tool modules
         from servicenow_mcp.server import mcp, init_services

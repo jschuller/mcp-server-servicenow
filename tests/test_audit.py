@@ -173,6 +173,15 @@ def test_redact_query_masks_sensitive_values() -> None:
     assert len(audit.redact_query("a=" + "b" * 500)) <= audit.QUERY_MAX_CHARS + 1
 
 
+def test_identity_for_client_credentials(monkeypatch, cc_auth_config) -> None:
+    from tests.conftest import make_server_config
+
+    monkeypatch.setattr(
+        audit, "_current_config", lambda: make_server_config(auth=cc_auth_config)
+    )
+    assert audit._identity() == ("service-account", "oauth-client:test-client-id")
+
+
 def test_identity_for_static_and_oauth_tokens(monkeypatch) -> None:
     from fastmcp.server.auth.auth import AccessToken
 
