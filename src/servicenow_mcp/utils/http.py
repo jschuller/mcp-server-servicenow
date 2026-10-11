@@ -56,8 +56,12 @@ def _is_name_resolution_error(error: BaseException) -> bool:
         if isinstance(current, socket.gaierror):
             return True
         # requests wraps urllib3's MaxRetryError, whose ``reason`` chains to gaierror
-        nested = (*current.args, getattr(current, "reason", None), current.__cause__,
-                  current.__context__)
+        nested = (
+            *current.args,
+            getattr(current, "reason", None),
+            current.__cause__,
+            current.__context__,
+        )
         pending.extend(x for x in nested if isinstance(x, BaseException))
     return False
 
