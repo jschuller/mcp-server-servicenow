@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Question or setup help
+    url: https://github.com/jschuller/mcp-server-servicenow/discussions/categories/q-a
+    about: Ask in Discussions › Q&A. Most first-run problems are covered in TROUBLESHOOTING.md.
+  - name: It works for me
+    url: https://github.com/jschuller/mcp-server-servicenow/discussions/categories/show-and-tell
+    about: Tell us which client and ServiceNow release you run it with.
+  - name: Security vulnerability
+    url: https://github.com/jschuller/mcp-server-servicenow/security/advisories/new
+    about: Report privately; please don't open a public issue.

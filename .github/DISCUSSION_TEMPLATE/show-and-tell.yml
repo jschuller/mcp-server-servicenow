@@ -1,0 +1,25 @@
+title: "[Works for me] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for telling us it works. A few words are plenty. **Don't paste credentials or record data.**
+  - type: input
+    id: client
+    attributes:
+      label: MCP client and version
+      placeholder: Claude Code / VS Code + Copilot / Codex / Antigravity / Cursor / …
+    validations:
+      required: true
+  - type: input
+    id: instance
+    attributes:
+      label: ServiceNow release and instance type
+      placeholder: Zurich PDI / Australia company instance / …
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What did you use it for?
+      description: Optional — the first thing you asked, or what you built on it.
