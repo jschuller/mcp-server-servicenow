@@ -105,12 +105,6 @@
           "format": "boolean"
         },
         {
-          "name": "SERVICENOW_WRITE_CONFIRM",
-          "isRequired": false,
-          "description": "Confirm update/delete via MCP elicitation (opt-in)",
-          "format": "boolean"
-        },
-        {
           "name": "SERVICENOW_AUDIT_LOG",
           "isRequired": false,
           "description": "Audit log target: stderr (default), off, or a file path",

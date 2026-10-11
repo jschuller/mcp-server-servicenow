@@ -70,7 +70,6 @@ async def test_ok_line_has_keys_not_values(
     assert "read" in first["tags"]
     assert second["data_keys"] == ["short_description"]
     assert "SECRET-VALUE" not in json.dumps(second)
-    assert "confirm" not in second  # None values are dropped from the line
     assert captured.lines[0]["run_id"] == audit.RUN_ID
     assert capsys.readouterr().out == ""
 

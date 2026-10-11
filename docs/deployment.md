@@ -105,14 +105,4 @@ MCP_TRANSPORT=streamable-http
 
 ### Guardrails in HTTP deployments
 
-All safety flags work over HTTP. Two notes specific to multi-user deployments:
-
-- The audit log records the OAuth user (`claims.user_name`) or the static token's `client_id`; send it to a file or let the platform collect stderr (Cloud Run → Cloud Logging).
-- `--write-confirm` on a 2026-07-28 client uses the multi round-trip pattern, whose `request_state` is sealed with a per-process key. Behind a load balancer with **more than one replica**, configure shared keys so the retry can land on any instance:
-
-  ```python
-  from mcp.server.request_state import RequestStateSecurity
-  mcp = FastMCP(..., request_state_security=RequestStateSecurity(keys=[os.environ["REQUEST_STATE_KEY"].encode()]))
-  ```
-
-  A single Cloud Run instance (`--max-instances 1`) needs nothing. Handshake-era clients and the default (confirmation off) are unaffected.
+All safety flags work over HTTP. The audit log records the OAuth user (`claims.user_name`) or the static token's `client_id`; send it to a file or let the platform collect stderr (Cloud Run → Cloud Logging).

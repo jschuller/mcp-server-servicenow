@@ -168,4 +168,4 @@ Analyze incident trends — top categories, repeat offenders, SLA status.
 
 ## Notes on writes
 
-`update_record` mutates the incident immediately. If the server was started with `--write-confirm`, the call may instead return a `confirmation_required` error containing the record's current values (clients that cannot show a dialog, such as Claude Desktop) — show that preview to the user and re-run with `confirm=true` only once they agree. `Declined by user` means stop. A subagent or headless run cannot answer an elicitation dialog, so surface the preview in your report instead of retrying.
+`update_record` changes the incident immediately. Before a change the user did not ask for in so many words, show the record's current values and the change, and wait for their go. In a subagent or headless run, report the proposed change instead of making it.

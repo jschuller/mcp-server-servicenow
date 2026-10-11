@@ -32,7 +32,6 @@ _CLI_ENV_VARS = [
     "SERVICENOW_TABLE_ALLOWLIST",
     "SERVICENOW_TABLE_DENYLIST",
     "SERVICENOW_ALLOW_JS_QUERIES",
-    "SERVICENOW_WRITE_CONFIRM",
     "SERVICENOW_AUDIT_LOG",
 ]
 
@@ -249,7 +248,6 @@ class TestSafetyFlags:
                 "--table-allowlist",
                 "incident,cmdb_ci*",
                 "--allow-js-queries",
-                "--write-confirm",
                 "--audit-log",
                 "off",
             ],
@@ -259,7 +257,6 @@ class TestSafetyFlags:
         assert config.table_denylist == ["sys_user*", "sys_properties"]
         assert config.table_allowlist == ["incident", "cmdb_ci*"]
         assert config.allow_js_queries is True
-        assert config.write_confirm is True
         assert config.audit_log == "off"
 
     def test_defaults(self, monkeypatch):
@@ -268,19 +265,16 @@ class TestSafetyFlags:
         assert config.read_only is False
         assert config.table_denylist == [] and config.table_allowlist == []
         assert config.allow_js_queries is False
-        assert config.write_confirm is False
         assert config.audit_log == "stderr"
 
     def test_env_vars(self, monkeypatch):
         monkeypatch.setenv("SERVICENOW_READ_ONLY", "true")
         monkeypatch.setenv("SERVICENOW_TABLE_DENYLIST", "sys_*")
-        monkeypatch.setenv("SERVICENOW_WRITE_CONFIRM", "1")
         monkeypatch.setenv("SERVICENOW_AUDIT_LOG", "/tmp/audit.jsonl")
         monkeypatch.setattr("sys.argv", list(_BASIC_ARGV))
         config = cli.create_config(cli.parse_args())
         assert config.read_only is True
         assert config.table_denylist == ["sys_*"]
-        assert config.write_confirm is True
         assert config.audit_log == "/tmp/audit.jsonl"
 
     def test_unexpanded_plugin_placeholders_are_ignored(self, monkeypatch):

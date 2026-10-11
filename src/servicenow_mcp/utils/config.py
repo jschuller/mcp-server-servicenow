@@ -72,10 +72,6 @@ class ServerConfig(BaseModel):
         default=False,
         description="Permit arbitrary javascript: expressions in caller-supplied queries.",
     )
-    write_confirm: bool = Field(
-        default=False,
-        description="Ask the user to confirm update/delete calls via MCP elicitation.",
-    )
     audit_log: str = Field(
         default="stderr",
         description="Audit log target: 'stderr', 'off', or a file path.",

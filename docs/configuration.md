@@ -147,7 +147,6 @@ All settings can be passed as CLI args or environment variables. See `.env.examp
 | `SERVICENOW_TABLE_ALLOWLIST` | `--table-allowlist` | Comma-separated tables/globs that may be accessed (empty = all) |
 | `SERVICENOW_TABLE_DENYLIST` | `--table-denylist` | Comma-separated tables/globs that may never be accessed; wins over the allowlist |
 | `SERVICENOW_ALLOW_JS_QUERIES` | `--allow-js-queries` | Permit arbitrary `javascript:` in caller queries (default: only `gs.*` date helpers) |
-| `SERVICENOW_WRITE_CONFIRM` | `--write-confirm` | Ask the user to confirm `update_record` / `update_ci` / `delete_record` via MCP elicitation (default: off) |
 | `SERVICENOW_AUDIT_LOG` | `--audit-log` | `stderr` (default), `off`, or a file path for the JSON audit log |
 
 Boolean env vars accept `1`, `true`, `yes`, `on` (case-insensitive). Empty values and unexpanded `${VAR}` placeholders (as Claude Code passes for unset plugin env vars) are treated as unset.

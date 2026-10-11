@@ -19,10 +19,8 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from fastmcp.exceptions import NotFoundError
 from fastmcp.server.middleware import CallNext, Middleware, MiddlewareContext
-from fastmcp.tools.base import InputRequiredToolResult
 from mcp.types import TextContent
 
-from servicenow_mcp.confirm import CONFIRM_OUTCOME, ConfirmationRequired, DeclinedByUser
 from servicenow_mcp.middleware.policy import SCHEMA_URI_RE, PolicyError, resolve_table
 
 AUDIT_LOGGER_NAME = "servicenow_mcp.audit"
@@ -137,10 +135,6 @@ def _classify_exception(exc: BaseException) -> Tuple[str, str]:
         return "denied", message
     if isinstance(exc, NotFoundError):
         return "unknown_tool", message
-    if isinstance(exc, DeclinedByUser):
-        return "cancelled", message
-    if isinstance(exc, ConfirmationRequired):
-        return "confirmation_required", "ConfirmationRequired"
     return "error", message
 
 
@@ -191,33 +185,21 @@ class AuditMiddleware(Middleware):
         record["data_keys"] = sorted(data) if isinstance(data, dict) else None
         record["limit"] = arguments.get("limit")
         record["tags"] = await _tool_tags(name)
-        if getattr(context.message, "input_responses", None):
-            record["round"] = 2
-
-        token = CONFIRM_OUTCOME.set(None)
         start = time.perf_counter()
         try:
             result = await call_next(context)
         except BaseException as exc:
             record["outcome"], record["error"] = _classify_exception(exc)
-            record["confirm"] = CONFIRM_OUTCOME.get()
             record["duration_ms"] = round((time.perf_counter() - start) * 1000, 1)
             _emit(record)
             raise
         else:
-            record["outcome"] = (
-                "input_required"
-                if isinstance(result, InputRequiredToolResult)
-                else "ok"
-            )
+            record["outcome"] = "ok"
             if _is_truncated(result):
                 record["truncated"] = True
-            record["confirm"] = CONFIRM_OUTCOME.get()
             record["duration_ms"] = round((time.perf_counter() - start) * 1000, 1)
             _emit(record)
             return result
-        finally:
-            CONFIRM_OUTCOME.reset(token)
 
     async def on_read_resource(
         self, context: MiddlewareContext, call_next: CallNext

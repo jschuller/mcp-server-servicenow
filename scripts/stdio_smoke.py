@@ -14,9 +14,9 @@ with values in a file:
       uv run python scripts/stdio_smoke.py --profile readonly
 
 Profiles:
-  readonly  the identity cannot write (the default). Write tools are called
-            anyway and must come back as a clean ServiceNow refusal; write
-            confirmation is exercised up to the refused write. Changes nothing.
+  readonly  the identity cannot write (the default). A write tool is called
+            anyway and must come back as a clean ServiceNow refusal. Changes
+            nothing.
   write     the identity can create, update and delete incidents and update
             sets (admin by default). Creates and deletes scratch incidents and
             one empty update set; the caller's current update set is restored.
@@ -32,7 +32,6 @@ import tempfile
 from pathlib import Path
 
 from fastmcp import Client
-from fastmcp.client.elicitation import ElicitResult
 from fastmcp.client.transports import StdioTransport
 from fastmcp.exceptions import ToolError
 
@@ -66,18 +65,6 @@ def info(label, extra=""):
 
 def refused(exc):
     return any(marker in str(exc) for marker in REFUSED)
-
-
-def accept_handler(seen):
-    async def accept(message, response_type, params, context):
-        seen.append(message)
-        return True
-
-    return accept
-
-
-async def decline(message, response_type, params, context):
-    return ElicitResult(action="decline")
 
 
 async def section_a(results):
@@ -206,7 +193,7 @@ async def section_b(results, profile, audit):
                         str(e).splitlines()[0][:120],
                     )
                 )
-            return existing
+            return
 
         created = (
             await c.call_tool(
@@ -248,7 +235,7 @@ async def section_b(results, profile, audit):
                 dele == {"deleted": True, "table": "incident", "sys_id": sid},
             )
         )
-        return None
+        return
 
 
 def check_audit(results, profile, audit):
@@ -268,138 +255,6 @@ def check_audit(results, profile, audit):
             and "safe to delete" not in text,
         )
     )
-
-
-async def section_c(results, profile, existing):
-    """--write-confirm over stdio, both protocol eras."""
-    for mode in ("legacy", "auto"):
-        seen = []
-        if profile == "readonly":
-            target = existing or "0" * 32
-            async with Client(
-                transport("--write-confirm", "--audit-log", "off"),
-                mode=mode,
-                elicitation_handler=accept_handler(seen),
-            ) as c:
-                try:
-                    await c.call_tool(
-                        "update_record",
-                        {
-                            "table_name": "incident",
-                            "sys_id": target,
-                            "data": {"urgency": "1"},
-                        },
-                    )
-                    results.append(
-                        ok(f"write-confirm[{mode}]: accepted -> refused", False)
-                    )
-                except ToolError as e:
-                    results.append(
-                        ok(
-                            f"write-confirm[{mode}]: prompt shown, accepted write refused by instance",
-                            any("Update incident/" in m for m in seen) and refused(e),
-                            seen[0].splitlines()[0] if seen else str(e)[:80],
-                        )
-                    )
-        else:
-            async with Client(
-                transport("--write-confirm", "--audit-log", "off"),
-                mode=mode,
-                elicitation_handler=accept_handler(seen),
-            ) as c:
-                created = (
-                    await c.call_tool(
-                        "create_record",
-                        {
-                            "table_name": "incident",
-                            "data": {
-                                "short_description": "mcp confirm smoke (safe to delete)"
-                            },
-                        },
-                    )
-                ).data
-                target = created["sys_id"]
-                upd = (
-                    await c.call_tool(
-                        "update_record",
-                        {
-                            "table_name": "incident",
-                            "sys_id": target,
-                            "data": {"urgency": "1"},
-                        },
-                    )
-                ).data
-                results.append(
-                    ok(
-                        f"write-confirm[{mode}]: prompt accepted -> updated",
-                        upd["record"].get("urgency") == "1"
-                        and any("Update incident/" in m for m in seen),
-                        seen[0].splitlines()[0] if seen else "",
-                    )
-                )
-        async with Client(
-            transport("--write-confirm", "--audit-log", "off"),
-            mode=mode,
-            elicitation_handler=decline,
-        ) as c:
-            try:
-                await c.call_tool(
-                    "update_record",
-                    {
-                        "table_name": "incident",
-                        "sys_id": target,
-                        "data": {"urgency": "3"},
-                    },
-                )
-                results.append(ok(f"write-confirm[{mode}]: decline blocks", False))
-            except ToolError as e:
-                results.append(
-                    ok(
-                        f"write-confirm[{mode}]: decline blocks",
-                        "Declined by user" in str(e),
-                    )
-                )
-        async with Client(
-            transport("--write-confirm", "--audit-log", "off"), mode=mode
-        ) as c:
-            try:
-                await c.call_tool(
-                    "delete_record", {"table_name": "incident", "sys_id": target}
-                )
-                results.append(
-                    ok(
-                        f"write-confirm[{mode}]: no handler -> confirmation_required",
-                        False,
-                    )
-                )
-            except ToolError as e:
-                results.append(
-                    ok(
-                        f"write-confirm[{mode}]: no handler -> confirmation_required",
-                        "confirmation_required" in str(e),
-                    )
-                )
-            try:
-                dele = (
-                    await c.call_tool(
-                        "delete_record",
-                        {"table_name": "incident", "sys_id": target, "confirm": True},
-                    )
-                ).data
-                results.append(
-                    ok(
-                        f"write-confirm[{mode}]: confirm=true deletes",
-                        profile == "write" and dele.get("deleted") is True,
-                    )
-                )
-            except ToolError as e:
-                results.append(
-                    ok(
-                        f"write-confirm[{mode}]: confirm=true reaches the instance (refused)",
-                        profile == "readonly" and refused(e),
-                        str(e).splitlines()[0][:120],
-                    )
-                )
 
 
 async def section_d(results, skills_audit):
@@ -587,9 +442,8 @@ async def main(profile):
     with tempfile.TemporaryDirectory() as tmp:
         audit = f"{tmp}/audit.jsonl"
         await section_a(results)
-        existing = await section_b(results, profile, audit)
+        await section_b(results, profile, audit)
         check_audit(results, profile, audit)
-        await section_c(results, profile, existing)
         await section_d(results, f"{tmp}/skills-audit.jsonl")
         await section_e(results, profile)
     print(f"\n{sum(results)}/{len(results)} passed")

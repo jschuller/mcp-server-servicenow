@@ -6,21 +6,9 @@ Provides operations on CMDB configuration items via the Table API.
 import logging
 from typing import Annotated, Any, Dict, Optional
 
-from fastmcp import Context
-from mcp.types import InputRequiredResult
 from pydantic import Field
 
-from servicenow_mcp.confirm import (
-    CONFIRM_ARG_DESCRIPTION,
-    confirm_destructive,
-    fetch_preview,
-)
-from servicenow_mcp.server import (
-    get_config,
-    make_sn_request,
-    make_sn_request_async,
-    mcp,
-)
+from servicenow_mcp.server import get_config, make_sn_request, mcp
 from servicenow_mcp.tools import annotations
 from servicenow_mcp.utils.http import build_url, parse_json_response
 
@@ -99,31 +87,16 @@ def create_ci(
 
 
 @mcp.tool(tags={"write", "cmdb"}, annotations=annotations.UPDATE)
-async def update_ci(
-    ctx: Context,
+def update_ci(
     sys_id: Annotated[str, Field(description="The sys_id of the CI to update")],
     data: Annotated[Dict[str, Any], Field(description="CI attributes to update")],
     class_name: Annotated[str, Field(description="CMDB class name")] = "cmdb_ci",
-    confirm: Annotated[bool, Field(description=CONFIRM_ARG_DESCRIPTION)] = False,
-) -> Dict[str, Any] | InputRequiredResult:
+) -> Dict[str, Any]:
     """Update a CMDB configuration item"""
     config = get_config()
 
     url = build_url(config.api_url, "table", class_name, sys_id)
-    if config.write_confirm:
-        preview = await fetch_preview(url, config.timeout, list(data))
-        ask = await confirm_destructive(
-            ctx,
-            action="Update",
-            table=class_name,
-            sys_id=sys_id,
-            preview=preview,
-            confirm_arg=confirm,
-        )
-        if ask is not None:
-            return ask
-
-    response = await make_sn_request_async("PATCH", url, config.timeout, json_data=data)
+    response = make_sn_request("PATCH", url, config.timeout, json_data=data)
     resp_data = parse_json_response(response, url)
     result = resp_data.get("result", {})
     return {"sys_id": result.get("sys_id"), "record": result}
