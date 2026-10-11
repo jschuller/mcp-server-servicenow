@@ -1,5 +1,6 @@
 """Tests for HTTP request helper with mocked requests."""
 
+import socket
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -58,6 +59,19 @@ class TestApiRequest:
         mock_request.return_value = _mock_response(401)
         with pytest.raises(ServiceNowAPIError, match="Authentication failed.*401"):
             api_request("GET", URL, basic_auth_manager)
+
+    @patch("servicenow_mcp.utils.http.requests.request")
+    def test_401_basic_auth_names_the_restriction(
+        self, mock_request: MagicMock, basic_auth_manager: AuthManager
+    ) -> None:
+        """New instances refuse basic auth unless the user is web-service-only."""
+        mock_request.return_value = _mock_response(401)
+        with pytest.raises(ServiceNowAPIError) as exc:
+            api_request("GET", URL, basic_auth_manager)
+        message = str(exc.value)
+        assert "Web service access only" in message
+        assert "snc_basic_auth_api_access" in message
+        assert "TROUBLESHOOTING.md#401-unauthorized" in message
 
     @patch("servicenow_mcp.utils.http.requests.request")
     def test_401_api_key_points_at_access_policies(
@@ -132,6 +146,14 @@ class TestApiRequest:
             api_request("GET", URL, basic_auth_manager)
 
     @patch("servicenow_mcp.utils.http.requests.request")
+    def test_403_links_the_roles_table(
+        self, mock_request: MagicMock, basic_auth_manager: AuthManager
+    ) -> None:
+        mock_request.return_value = _mock_response(403)
+        with pytest.raises(ServiceNowAPIError, match="docs/tools.md#roles"):
+            api_request("GET", URL, basic_auth_manager)
+
+    @patch("servicenow_mcp.utils.http.requests.request")
     def test_403_includes_response_body(
         self, mock_request: MagicMock, basic_auth_manager: AuthManager
     ) -> None:
@@ -196,6 +218,30 @@ class TestApiRequest:
             api_request("GET", URL, basic_auth_manager)
 
     @patch("servicenow_mcp.utils.http.requests.request")
+    def test_dns_failure_points_at_the_url(
+        self, mock_request: MagicMock, basic_auth_manager: AuthManager
+    ) -> None:
+        """A typo'd or reclaimed instance fails DNS; say so instead of 'asleep'."""
+        try:
+            try:
+                raise socket.gaierror(8, "nodename nor servname provided")
+            except socket.gaierror as dns:
+                raise OSError("Failed to resolve 'dev0.service-now.com'") from dns
+        except OSError as reason:
+            mock_request.side_effect = requests.ConnectionError(reason)
+        with pytest.raises(ServiceNowAPIError, match="Cannot resolve the host"):
+            api_request("GET", URL, basic_auth_manager)
+
+    @patch("servicenow_mcp.utils.http.requests.request")
+    def test_ssl_error_names_the_ca_bundle(
+        self, mock_request: MagicMock, basic_auth_manager: AuthManager
+    ) -> None:
+        """SSLError subclasses ConnectionError; it must not read as 'asleep'."""
+        mock_request.side_effect = requests.exceptions.SSLError("certificate verify failed")
+        with pytest.raises(ServiceNowAPIError, match="REQUESTS_CA_BUNDLE"):
+            api_request("GET", URL, basic_auth_manager)
+
+    @patch("servicenow_mcp.utils.http.requests.request")
     def test_timeout_error(
         self, mock_request: MagicMock, basic_auth_manager: AuthManager
     ) -> None:
@@ -231,6 +277,11 @@ class TestParseJsonResponse:
             content_type="text/html",
         )
         with pytest.raises(ServiceNowAPIError, match="Got HTML instead of JSON"):
+            parse_json_response(resp, URL)
+
+    def test_html_body_gives_the_wake_url(self) -> None:
+        resp = _mock_response(200, text="<html></html>", content_type="text/html")
+        with pytest.raises(ServiceNowAPIError, match=r"dev\.do#!/home\?wu=true"):
             parse_json_response(resp, URL)
 
     def test_invalid_json(self) -> None:

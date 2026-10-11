@@ -1,6 +1,7 @@
 """HTTP request helper with proper error handling for ServiceNow API responses."""
 
 import logging
+import socket
 from urllib.parse import quote
 from typing import Any, Dict, Optional
 
@@ -12,6 +13,11 @@ logger = logging.getLogger(__name__)
 
 # ServiceNow response headers that aid debugging
 _DIAGNOSTIC_HEADERS = ("X-Is-Logged-In", "X-Transaction-ID")
+
+# Absolute links, so a model can pass them on to the user from any client.
+_DOCS = "https://github.com/jschuller/mcp-server-servicenow/blob/main"
+_TROUBLESHOOTING = f"{_DOCS}/TROUBLESHOOTING.md"
+_PDI_WAKE_URL = "https://developer.servicenow.com/dev.do#!/home?wu=true"
 
 
 class ServiceNowAPIError(Exception):
@@ -36,6 +42,24 @@ def _error_context(response: "requests.Response") -> str:
         parts.append(f"Headers: {diag}")
 
     return " | ".join(parts) if parts else ""
+
+
+def _is_name_resolution_error(error: BaseException) -> bool:
+    """True when a connection error comes from DNS (a typo or a reclaimed PDI)."""
+    seen: set[int] = set()
+    pending: list[BaseException] = [error]
+    while pending:
+        current = pending.pop()
+        if id(current) in seen:
+            continue
+        seen.add(id(current))
+        if isinstance(current, socket.gaierror):
+            return True
+        # requests wraps urllib3's MaxRetryError, whose ``reason`` chains to gaierror
+        nested = (*current.args, getattr(current, "reason", None), current.__cause__,
+                  current.__context__)
+        pending.extend(x for x in nested if isinstance(x, BaseException))
+    return False
 
 
 def build_url(base: str, *segments: str) -> str:
@@ -88,7 +112,19 @@ def api_request(
             json=json_data,
             timeout=timeout,
         )
+    except requests.exceptions.SSLError as e:
+        raise ServiceNowAPIError(
+            f"TLS certificate check failed for {url}. Behind a proxy that inspects "
+            f"TLS, set REQUESTS_CA_BUNDLE to your company's CA bundle. "
+            f"See {_TROUBLESHOOTING}#certificate-verify-failed. Detail: {e}"
+        ) from e
     except requests.ConnectionError as e:
+        if _is_name_resolution_error(e):
+            raise ServiceNowAPIError(
+                f"Cannot resolve the host in {url}. Check the instance URL for a typo; "
+                f"a reclaimed PDI no longer resolves. "
+                f"See {_TROUBLESHOOTING}#instance-not-found. Detail: {e}"
+            ) from e
         raise ServiceNowAPIError(
             f"Cannot connect to ServiceNow at {url}. "
             f"Check that the instance URL is correct and the instance is awake. "
@@ -153,7 +189,12 @@ def api_request(
                     f"for this API and method ({method.upper()})."
                 )
             else:
-                hint = "Check your username/password."
+                hint = (
+                    "New instances accept basic auth only for users with 'Web service "
+                    "access only' or the snc_basic_auth_api_access role, admin included; "
+                    "otherwise check the username and password. "
+                    f"See {_TROUBLESHOOTING}#401-unauthorized."
+                )
             raise ServiceNowAPIError(
                 f"Authentication failed (401). {hint} "
                 f"URL: {url}" + (f" | {ctx}" if ctx else "")
@@ -162,7 +203,8 @@ def api_request(
     if response.status_code == 403:
         ctx = _error_context(response)
         raise ServiceNowAPIError(
-            f"Access denied (403). The user may lack permissions for this API. "
+            f"Access denied (403). The user may lack permissions for this API; "
+            f"roles per tool: {_DOCS}/docs/tools.md#roles. "
             f"URL: {url}" + (f" | {ctx}" if ctx else "")
         )
     if response.status_code == 404:
@@ -187,15 +229,15 @@ def parse_json_response(response: requests.Response, url: str) -> Dict[str, Any]
     if not response.text or not response.text.strip():
         raise ServiceNowAPIError(
             f"Empty response body from {url} (HTTP {response.status_code}). "
-            f"The instance may be hibernating — wake it at developer.servicenow.com"
+            f"The instance may be hibernating: wake it at {_PDI_WAKE_URL}"
         )
 
     content_type = response.headers.get("Content-Type", "")
     if "text/html" in content_type:
         raise ServiceNowAPIError(
-            f"Got HTML instead of JSON from {url}. "
-            f"This usually means the instance is showing a login page. "
-            f"Check credentials or wake the instance at developer.servicenow.com"
+            f"Got HTML instead of JSON from {url}. That is a hibernating PDI or a "
+            f"login page: wake the instance at {_PDI_WAKE_URL}, or check the "
+            f"credentials. See {_TROUBLESHOOTING}#instance-is-hibernating"
         )
 
     try:
