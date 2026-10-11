@@ -106,7 +106,7 @@ Every client below accepts a launcher command, so the password or key can come f
 [mcp_servers.servicenow]
 command = "uvx"
 args = ["mcp-server-servicenow", "--read-only"]
-env = { SERVICENOW_INSTANCE_URL = "https://your-instance.service-now.com", SERVICENOW_AUTH_TYPE = "basic", SERVICENOW_USERNAME = "svc.mcp" }
+env = { SERVICENOW_INSTANCE_URL = "https://your-instance.service-now.com", SERVICENOW_AUTH_TYPE = "basic", SERVICENOW_USERNAME = "mcp.integration" }
 env_vars = ["SERVICENOW_PASSWORD"]   # forwarded from the shell that starts codex
 ```
 

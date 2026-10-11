@@ -17,8 +17,9 @@ pip install -e ".[dev]"
 3. Run tests and lint:
 
 ```bash
-python -m pytest tests/ -v
+python -m pytest tests/ -v --ignore=tests/integration
 ruff check src/ tests/
+mypy src/
 ```
 
 4. Open a pull request
@@ -47,14 +48,15 @@ def my_tool(
 
 ## Running Integration Tests
 
-Integration tests require a ServiceNow PDI:
+Live tests read credentials from the environment only (use a secret-store launcher rather than a file); refused tools are skipped with the missing grant. Use a least-privilege user, not `admin` (new instances refuse basic auth for it anyway):
 
 ```bash
-export SERVICENOW_INSTANCE_URL=https://your-pdi.service-now.com
-export SERVICENOW_USERNAME=admin
-export SERVICENOW_PASSWORD=your-password
-
+SERVICENOW_INSTANCE_URL=https://your-pdi.service-now.com \
+SERVICENOW_USERNAME=mcp.integration SERVICENOW_PASSWORD=... \
 python -m pytest tests/integration/ -v
+
+# End-to-end over stdio, both protocol eras (the readonly profile changes nothing)
+python scripts/stdio_smoke.py --profile readonly
 ```
 
 ## Code Style

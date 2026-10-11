@@ -1,5 +1,15 @@
 # Troubleshooting
 
+| You see | Likely cause | Fix |
+|---|---|---|
+| `Got HTML instead of JSON`, or an empty response | The PDI is hibernating, or a login page answered | [Wake the instance](#instance-is-hibernating) |
+| `401` with `Required to provide Auth information` | The basic-auth restriction: the user is not *Web service access only* | [401 Unauthorized](#401-unauthorized) |
+| `403 Access denied` | The user lacks a role or an ACL | [403](#403-access-denied), [roles per tool](docs/tools.md#roles) |
+| `Cannot resolve the host` | A typo in the URL, or a reclaimed PDI | [Instance not found](#instance-not-found) |
+| `TLS certificate check failed` / `certificate verify failed` | A corporate proxy inspects TLS | [Certificates](#certificate-verify-failed) |
+| `spawn uvx ENOENT` | The client cannot find `uvx` | [spawn uvx ENOENT](#spawn-uvx-enoent) |
+| `Unknown tool: 'update_record'` | The server runs with `--read-only` | [Read-only](#unknown-tool-update_record-or-any-write-tool) |
+
 ## Reading Error Messages
 
 Error messages from this MCP server include diagnostic context from ServiceNow's response — the response body and key headers (`X-Is-Logged-In`, `X-Transaction-ID`). This context often pinpoints the exact cause:
@@ -13,7 +23,19 @@ Error messages from this MCP server include diagnostic context from ServiceNow's
 The `X-Transaction-ID` header can be given to a ServiceNow admin to look up the exact server-side log entry.
 
 ## Instance is hibernating
-PDIs hibernate after inactivity. Wake it at [developer.servicenow.com](https://developer.servicenow.com) — click your instance and select "Wake Up". You'll get HTML login pages instead of JSON until it's awake.
+PDIs hibernate after inactivity. Wake it at [developer.servicenow.com](https://developer.servicenow.com/dev.do#!/home?wu=true) — sign in and the instance wakes, or click your instance and select "Wake Up". You'll get HTML login pages instead of JSON until it's awake.
+
+## Instance not found
+`Cannot resolve the host` means DNS has no answer for the instance name. Check the URL (`https://devNNNNNN.service-now.com`, no path after the host). A PDI left unused for about ten days is reclaimed and its name stops resolving: request a new one from the developer portal.
+
+## `certificate verify failed`
+A corporate proxy that inspects TLS presents its own certificate, which Python does not trust by default. Point `REQUESTS_CA_BUNDLE` at your company's CA bundle in the server's environment (the `env` block of your client config). If `uvx` itself fails to download the package for the same reason, set `UV_SYSTEM_CERTS=true` (or `SSL_CERT_FILE`) so uv uses the system store. Where uv is blocked by policy, `pipx run mcp-server-servicenow` or `pip install mcp-server-servicenow` work too.
+
+## `spawn uvx ENOENT`
+Desktop apps (Claude Desktop, some IDEs) do not inherit your shell's `PATH`, so they cannot find `uvx`. Use the full path as the `command`: `which uvx` on macOS/Linux, `where uvx` on Windows.
+
+## Came from michaelbuckner/servicenow-mcp?
+That project's README says `pip install mcp-server-servicenow`, which installs this package, a different project. There is no `mcp_server_servicenow` module here: run `uvx mcp-server-servicenow` (or `python -m servicenow_mcp.cli`) and follow the [quick start](README.md#quick-start).
 
 ## 401 Unauthorized
 - **OAuth proxy: browser login succeeds but every MCP call returns `invalid_token`:** the SN OAuth app's Scope Restriction is "Securely scoped" (the Zurich+ default), which blocks Table API access. Set it to "Broadly scoped" in the Application Registry record, or add REST API Access Policies covering the Table/Stats APIs
@@ -28,7 +50,7 @@ The error message includes the ServiceNow response body, which typically names t
 - **`WebServicePolicyValidator`** — The table's `ws_access` property is not set to `true`. Fix: go to System Definition > Tables, find the table, check "Allow access to this table via web services"
 - **Missing role** — The integration user needs the appropriate role (e.g., `itil` for incident, `cmdb_read` for CMDB). Check the error body for the specific role required
 - **Cross-scope restriction** — If accessing a scoped app's table, ensure cross-scope privileges are configured
-- **Least-privilege identities** — see [what each tool needs](README.md#what-each-tool-needs): `get_table_schema` and `servicenow://schema/*` need `personalize_dictionary` (the 403 says so); update-set tools need `admin`; deleting incidents needs `itil_admin`; `snc_read_only` refuses every write. `get_system_properties` without `admin` returns an empty list rather than a 403
+- **Least-privilege identities** — see [roles per tool](docs/tools.md#roles): `get_table_schema` and `servicenow://schema/*` need `personalize_dictionary` (the 403 says so); update-set tools need `admin`; deleting incidents needs `itil_admin`; `snc_read_only` refuses every write. `get_system_properties` without `admin` returns an empty list rather than a 403
 
 ## `Unknown tool: 'update_record'` (or any write tool)
 The server is running with `--read-only` / `SERVICENOW_READ_ONLY=true`: the 7 write tools are hidden from `tools/list`, and a cached client that still calls one gets this error. Restart without the flag to write.

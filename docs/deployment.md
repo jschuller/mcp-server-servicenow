@@ -1,5 +1,25 @@
 # Deployment Guide
 
+## From source
+
+```bash
+git clone https://github.com/jschuller/mcp-server-servicenow.git
+cd mcp-server-servicenow
+uv sync
+
+export SERVICENOW_INSTANCE_URL=https://devNNNNNN.service-now.com
+export SERVICENOW_USERNAME=mcp.integration
+read -rs SERVICENOW_PASSWORD && export SERVICENOW_PASSWORD
+
+uv run mcp-server-servicenow --read-only          # stdio, for local clients
+
+# Streamable HTTP (remote access / Cloud Run) fails closed: it needs MCP
+# endpoint auth on top of the ServiceNow credentials. Static bearer tokens
+# here; OAuth 2.1 + PKCE below.
+uv run mcp-server-servicenow --transport streamable-http --port 8080 \
+  --mcp-static-tokens "$(openssl rand -hex 32)"
+```
+
 ## Docker / Cloud Run
 
 ```bash
@@ -99,7 +119,7 @@ MCP_BASE_URL=https://your-mcp-server.run.app
 MCP_TRANSPORT=streamable-http
 ```
 
-4. In Claude.ai, add the server URL as an MCP connector — the OAuth flow handles the rest
+5. In Claude.ai, add the server URL as an MCP connector — the OAuth flow handles the rest
 
 **Requires:** ServiceNow San Diego+ (2022) for PKCE support.
 
