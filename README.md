@@ -130,6 +130,13 @@ Codex, opencode, Antigravity, Cursor, pi, the Claude Code plugin and keeping the
 
 Ask: *"List the 5 most recent incidents."* `--read-only` hides the write tools; drop it once the user has write roles.
 
+No answer? Run the same configuration with `--check`. It makes read-only requests, prints one line per check (instance reachable, identity, roles, table read, schema, aggregates) and never prints a secret:
+
+```bash
+SERVICENOW_INSTANCE_URL=https://devNNNNNN.service-now.com SERVICENOW_USERNAME=mcp.integration \
+  SERVICENOW_PASSWORD="$SERVICENOW_PASSWORD" uvx mcp-server-servicenow --check
+```
+
 Got an answer back? Say which client and ServiceNow release in [Show and tell](https://github.com/jschuller/mcp-server-servicenow/discussions/categories/show-and-tell) — it tells us what works. Questions go to [Q&A](https://github.com/jschuller/mcp-server-servicenow/discussions/categories/q-a).
 
 ## If it doesn't work
@@ -140,7 +147,7 @@ Got an answer back? Say which client and ServiceNow release in [Show and tell](h
 | `401` | The user isn't *Web service access only*, or the password is wrong ([401](https://github.com/jschuller/mcp-server-servicenow/blob/main/TROUBLESHOOTING.md#401-unauthorized)) |
 | `403` | The user lacks a role for that table or tool ([roles](#roles)) |
 
-Everything else: [TROUBLESHOOTING](https://github.com/jschuller/mcp-server-servicenow/blob/main/TROUBLESHOOTING.md).
+Everything else: run `--check` ([above](#4-check-it-works)), then [TROUBLESHOOTING](https://github.com/jschuller/mcp-server-servicenow/blob/main/TROUBLESHOOTING.md).
 
 ## Tools
 

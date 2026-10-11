@@ -1,5 +1,7 @@
 # Troubleshooting
 
+Start with `mcp-server-servicenow --check` (or `uvx mcp-server-servicenow --check`) using the same environment variables and flags as your client config. It makes read-only requests and prints one line per check: the configuration it understood (instance URL after normalisation, auth type and grant, flags), whether the instance answered, the identity and its roles, whether write tools are hidden, a Table API read, schema access and the Aggregate API. It exits 0 when authentication and a read work. It never prints a password, key or token, so you can paste the output into a question.
+
 | You see | Likely cause | Fix |
 |---|---|---|
 | `Got HTML instead of JSON`, or an empty response | The PDI is hibernating, or a login page answered | [Wake the instance](#instance-is-hibernating) |
