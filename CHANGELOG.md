@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased] — 0.8.0
+## [0.8.0] - 2026-10-11
 
 "One server, spec-native surface." The four ServiceNow skills stop being a
 Claude-Code-plugin-only artifact and become part of the MCP contract: they ship
