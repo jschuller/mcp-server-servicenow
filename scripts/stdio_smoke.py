@@ -10,7 +10,7 @@ with values in a file:
 
     with-secrets SERVICENOW_API_KEY=svc/homelab/servicenow-<instance>-apikey -- \\
       env SERVICENOW_INSTANCE_URL=https://<instance>.service-now.com \\
-          SERVICENOW_AUTH_TYPE=api_key SERVICENOW_API_KEY_HEADER=x-sn-apikey \\
+          SERVICENOW_AUTH_TYPE=api_key \\
       uv run python scripts/stdio_smoke.py --profile readonly
 
 Profiles:

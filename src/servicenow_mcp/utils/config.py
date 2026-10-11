@@ -6,6 +6,10 @@ from typing import Optional
 from pydantic import BaseModel, Field
 
 
+# ServiceNow's default API-key auth parameter (a header or query parameter).
+DEFAULT_API_KEY_HEADER = "x-sn-apikey"
+
+
 class AuthType(str, Enum):
     """Authentication types supported by the ServiceNow MCP server."""
 
@@ -45,7 +49,7 @@ class ApiKeyConfig(BaseModel):
     """Configuration for API key authentication."""
 
     api_key: str
-    header_name: str = "X-ServiceNow-API-Key"
+    header_name: str = DEFAULT_API_KEY_HEADER
 
 
 class AuthConfig(BaseModel):

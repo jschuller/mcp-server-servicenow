@@ -82,7 +82,7 @@ class TestApiKeyConfig:
     def test_valid(self) -> None:
         config = ApiKeyConfig(api_key="my-key")
         assert config.api_key == "my-key"
-        assert config.header_name == "X-ServiceNow-API-Key"
+        assert config.header_name == "x-sn-apikey"
 
     def test_custom_header(self) -> None:
         config = ApiKeyConfig(api_key="my-key", header_name="X-Custom")

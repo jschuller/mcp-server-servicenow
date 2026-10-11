@@ -5,7 +5,6 @@ launch under a secret-store wrapper rather than keeping values in a file:
 
     with-secrets SERVICENOW_API_KEY=svc/homelab/servicenow-<instance>-apikey -- \\
       env SERVICENOW_INSTANCE_URL=https://<instance>.service-now.com \\
-          SERVICENOW_API_KEY_HEADER=x-sn-apikey \\
       uv run pytest tests/integration/ -v
 
 With SERVICENOW_API_KEY set the tests use API-key auth; otherwise basic auth
@@ -21,6 +20,7 @@ from fastmcp.exceptions import ToolError
 
 from servicenow_mcp.server import mcp, init_services
 from servicenow_mcp.utils.config import (
+    DEFAULT_API_KEY_HEADER,
     ApiKeyConfig,
     AuthConfig,
     AuthType,
@@ -46,9 +46,8 @@ def _init_pdi():
             type=AuthType.API_KEY,
             api_key=ApiKeyConfig(
                 api_key=api_key,
-                header_name=os.environ.get(
-                    "SERVICENOW_API_KEY_HEADER", "X-ServiceNow-API-Key"
-                ),
+                header_name=os.environ.get("SERVICENOW_API_KEY_HEADER")
+                or DEFAULT_API_KEY_HEADER,
             ),
         )
     else:
