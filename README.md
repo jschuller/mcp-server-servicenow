@@ -55,62 +55,60 @@ ServiceNow's **MCP Server Console** (Action Fabric) exposes Now Assist skills, K
 
 ## Getting Started
 
-### 1. Get a ServiceNow Instance
+About ten minutes on a free developer instance. On a company instance, ask your ServiceNow admin for the user in step 2.
 
-Sign up for a free [Personal Developer Instance (PDI)](https://developer.servicenow.com/) — it comes pre-loaded with demo data. Wake it from the developer portal if it's hibernating.
+### 1. Get a ServiceNow instance
 
-> **Note:** Instances with ServiceNow's basic-auth restriction enforced (the default on new PDIs since mid-2026) reject REST basic auth with `401 "Required to provide Auth information"` unless the integration user is **Web Service Access Only** or has the **`snc_basic_auth_api_access`** role — `admin` alone is not enough. See [TROUBLESHOOTING](TROUBLESHOOTING.md#401-unauthorized).
+Sign up for a free [Personal Developer Instance (PDI)](https://developer.servicenow.com/) — it comes with demo incidents, changes and CIs. PDIs hibernate after a few hours idle: wake yours from the developer portal before you start.
 
-### 2. Install
+### 2. Create an integration user
+
+Don't connect as `admin`: new instances refuse REST basic auth for it ([why](TROUBLESHOOTING.md#401-unauthorized)), and the server needs far less.
+
+1. Sign in as admin and go to **All › User Administration › Users › New**.
+2. **User ID** `mcp.integration`, **Identity type** *Machine* (this ticks **Web service access only**), and tick **Internal Integration User**. If your form has no Identity type, tick Web service access only yourself. **Submit**, then open the user again.
+3. **Set Password**, and keep the password for step 3.
+4. **Roles › Edit**: add `itil` and `snc_read_only`, save.
+
+That user can read incidents, changes, problems, CMDB and aggregates, and can't change anything. Schema, update sets and writes need more: see [what each tool needs](#what-each-tool-needs).
+
+### 3. Add the server to your client
+
+You need [uv](https://docs.astral.sh/uv/getting-started/installation/) (`uvx` runs the server without installing it). In Claude Code:
 
 ```bash
-# From PyPI (recommended)
-pip install mcp-server-servicenow
-
-# Or run directly with uvx (no install needed)
-uvx mcp-server-servicenow --help
+read -rs SERVICENOW_PASSWORD     # paste the password; it is not shown or kept in your history
+claude mcp add servicenow \
+  -e SERVICENOW_INSTANCE_URL=https://devNNNNNN.service-now.com \
+  -e SERVICENOW_USERNAME=mcp.integration \
+  -e SERVICENOW_PASSWORD="$SERVICENOW_PASSWORD" \
+  -- uvx mcp-server-servicenow --read-only
 ```
 
-### 3. Configure Your MCP Client
+On Windows (PowerShell 7) read the password with `$p = Read-Host -MaskInput 'Password'` and pass `-e SERVICENOW_PASSWORD=$p`. Claude Code keeps the value in its own config; for a company instance, use one of the patterns in [keeping secrets out of config files](docs/configuration.md#keeping-secrets-out-of-config-files). Codex, pi, Claude Desktop, VS Code and Cursor: see [Configuration](#configuration).
 
-Copy `.mcp.json.example` to `.mcp.json` and fill in your credentials, or use the Claude Code CLI:
+### 4. Check it works
 
-```bash
-claude mcp add servicenow -- uvx mcp-server-servicenow \
-  --instance-url https://your-instance.service-now.com \
-  --auth-type basic --username admin --password your-password
-```
+Ask: *"List the 5 most recent incidents."* An error about HTML instead of JSON means the PDI is asleep ([wake it](TROUBLESHOOTING.md#instance-is-hibernating)); a 401 means the password is wrong or the user isn't *Web service access only* ([401](TROUBLESHOOTING.md#401-unauthorized)). `--read-only` hides the write tools; drop it once the user has write roles.
 
-### 4. Verify
-
-Ask Claude: "List the 5 most recent incidents" — if it returns data, you're connected.
-
-### From Source
+### From source
 
 ```bash
 git clone https://github.com/jschuller/mcp-server-servicenow.git
 cd mcp-server-servicenow
-pip install -e .
+uv sync
 
-# Run with stdio (Claude Desktop / Claude Code)
-mcp-server-servicenow \
-  --instance-url https://your-instance.service-now.com \
-  --auth-type basic \
-  --username admin \
-  --password your-password
+export SERVICENOW_INSTANCE_URL=https://devNNNNNN.service-now.com
+export SERVICENOW_USERNAME=mcp.integration
+read -rs SERVICENOW_PASSWORD && export SERVICENOW_PASSWORD
 
-# Or run with HTTP (remote access / Cloud Run).
-# An HTTP listener fails closed: it needs MCP endpoint auth on top of the
-# ServiceNow credentials, otherwise the server refuses to start. Static
-# bearer tokens below; see docs/deployment.md for OAuth 2.1 + PKCE.
-mcp-server-servicenow \
-  --transport streamable-http \
-  --port 8080 \
-  --mcp-static-tokens "$(openssl rand -hex 32)" \
-  --instance-url https://your-instance.service-now.com \
-  --auth-type basic \
-  --username admin \
-  --password your-password
+uv run mcp-server-servicenow --read-only          # stdio, for local clients
+
+# Streamable HTTP (remote access / Cloud Run) fails closed: it needs MCP
+# endpoint auth on top of the ServiceNow credentials. Static bearer tokens
+# here; docs/deployment.md covers OAuth 2.1 + PKCE.
+uv run mcp-server-servicenow --transport streamable-http --port 8080 \
+  --mcp-static-tokens "$(openssl rand -hex 32)"
 ```
 
 ## Available Tools
@@ -149,6 +147,32 @@ mcp-server-servicenow \
 | `create_update_set` | Create a new update set |
 | `set_current_update_set` | Set the active update set |
 | `list_update_set_changes` | List changes within an update set |
+
+### What each tool needs
+
+ServiceNow's ACLs decide what the user can do; the server adds nothing on top. Base-system roles, from least to most:
+
+| You want | Roles | Run with |
+|---|---|---|
+| Read ITSM and CMDB data (the [start-here](#2-create-an-integration-user) user) | `itil` + `snc_read_only` | `--read-only` |
+| …and create or update incidents and CIs | `itil` (no `snc_read_only`) | `--write-confirm` if you want a prompt |
+| …and delete incidents, problems, changes | add `itil_admin` | |
+| Table schemas (`get_table_schema`, `servicenow://schema/*`) | add `personalize_dictionary` | |
+| Update sets, system properties | `admin` — on a PDI only | |
+
+| Tool or resource | Needs | Without it |
+|---|---|---|
+| `list_records`, `get_record`, `aggregate_records` | read access to that table (`itil` for task tables) | 403, or rows filtered out |
+| `create_record`, `update_record` | write access to that table (`itil` for incidents) | 403 |
+| `delete_record` | delete access (`itil_admin` for incidents) | 403 |
+| `list_ci`, `get_ci`, `get_ci_relationships`, `servicenow://cmdb/classes` | `itil` or `cmdb_read` | 403, or rows filtered out |
+| `create_ci`, `update_ci` | write access to the CI class | 403 |
+| `get_table_schema`, `servicenow://schema/{table}` | `personalize_dictionary` | 403 naming the role |
+| `get_system_properties` | `admin` | **an empty list, no error** |
+| `get_current_user`, `servicenow://instance`, `servicenow://update-set/current` | any user | `instance` omits the platform version without `admin` |
+| update-set tools | `admin` | 403 |
+
+The reads, the empty `get_system_properties` and the 403s were checked live on a Brazil PDI on 2026-10-11 as `itil` + `snc_read_only`, and the record writes, schema and update-set tools as `admin`; the `itil` write, `itil_admin` delete and CI write rows follow ServiceNow's base-system role documentation. An instance with custom ACLs can differ — the error text names the API and method. API-key users also need a REST API access policy for each API they call (Table, Aggregate): see [TROUBLESHOOTING](TROUBLESHOOTING.md#401-unauthorized).
 
 ## Resources
 
@@ -280,7 +304,7 @@ Add to your MCP client config — copy the snippet for your tool:
 ```bash
 claude mcp add servicenow -- uvx mcp-server-servicenow \
   --instance-url https://your-instance.service-now.com \
-  --auth-type basic --username admin --password your-password
+  --auth-type basic --username mcp.integration --password your-password
 ```
 </details>
 
@@ -297,7 +321,7 @@ Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
       "env": {
         "SERVICENOW_INSTANCE_URL": "https://your-instance.service-now.com",
         "SERVICENOW_AUTH_TYPE": "basic",
-        "SERVICENOW_USERNAME": "admin",
+        "SERVICENOW_USERNAME": "mcp.integration",
         "SERVICENOW_PASSWORD": "your-password"
       }
     }
@@ -346,7 +370,7 @@ Add to `.vscode/mcp.json`:
       "env": {
         "SERVICENOW_INSTANCE_URL": "https://your-instance.service-now.com",
         "SERVICENOW_AUTH_TYPE": "basic",
-        "SERVICENOW_USERNAME": "admin",
+        "SERVICENOW_USERNAME": "mcp.integration",
         "SERVICENOW_PASSWORD": "your-password"
       }
     }
@@ -368,7 +392,7 @@ Add to `.cursor/mcp.json`:
       "env": {
         "SERVICENOW_INSTANCE_URL": "https://your-instance.service-now.com",
         "SERVICENOW_AUTH_TYPE": "basic",
-        "SERVICENOW_USERNAME": "admin",
+        "SERVICENOW_USERNAME": "mcp.integration",
         "SERVICENOW_PASSWORD": "your-password"
       }
     }
@@ -420,7 +444,7 @@ Set these environment variables (or add them to your shell profile):
 ```bash
 export SERVICENOW_INSTANCE_URL="https://your-instance.service-now.com"
 export SERVICENOW_AUTH_TYPE="basic"  # or "oauth"
-export SERVICENOW_USERNAME="admin"
+export SERVICENOW_USERNAME="mcp.integration"
 export SERVICENOW_PASSWORD="your-password"
 # For OAuth only:
 export SERVICENOW_CLIENT_ID="your-client-id"

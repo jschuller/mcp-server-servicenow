@@ -59,6 +59,10 @@ token over Streamable HTTP — see "Verified clients" in the README.
   instead of "check your username/password".
 
 ### Changed
+- Getting started now creates a least-privilege integration user (Web Service
+  Access Only, `itil` + `snc_read_only`, `--read-only`) instead of connecting as
+  `admin`, which new instances refuse for REST basic auth. New README section
+  "What each tool needs" maps tools to roles; examples use `mcp.integration`.
 - Dependencies refreshed (mcp 2.3.0, PyJWT 2.15.1, urllib3 2.8.0, anyio
   4.15.1, httpx2 2.13.1), clearing the open Dependabot alerts except PyJWT #38,
   which has no fixed release yet.

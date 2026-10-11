@@ -12,7 +12,7 @@ docker build -t mcp-server-servicenow .
 docker run -p 8080:8080 \
   -e SERVICENOW_INSTANCE_URL=https://your-instance.service-now.com \
   -e SERVICENOW_AUTH_TYPE=basic \
-  -e SERVICENOW_USERNAME=admin \
+  -e SERVICENOW_USERNAME=mcp.integration \
   -e SERVICENOW_PASSWORD=your-password \
   -e MCP_STATIC_TOKENS=a-long-random-token \
   mcp-server-servicenow
