@@ -97,6 +97,17 @@ def fetch_direct_roles(api_url: str, timeout: int) -> Optional[List[str]]:
     return sorted(name for name in names if isinstance(name, str) and name)
 
 
+def caller_role_query(role: str) -> Optional[str]:
+    """The encoded query for the caller's active grant of ``role``.
+
+    ``None`` when ``role`` is not a plain role name, so it can never extend
+    the query.
+    """
+    if not ROLE_NAME_RE.match(role):
+        return None
+    return f"{CALLER_ROLE_QUERY}^role.name={role}"
+
+
 def has_role(api_url: str, timeout: int, role: str) -> Optional[bool]:
     """Whether the caller holds ``role`` (directly or inherited), or ``None``.
 
@@ -106,11 +117,12 @@ def has_role(api_url: str, timeout: int, role: str) -> Optional[bool]:
     """
     from servicenow_mcp.server import make_sn_request
 
-    if not ROLE_NAME_RE.match(role):
+    query = caller_role_query(role)
+    if query is None:
         return None
     url = build_url(api_url, "table", "sys_user_has_role")
     params: Dict[str, Any] = {
-        "sysparm_query": f"{CALLER_ROLE_QUERY}^role.name={role}",
+        "sysparm_query": query,
         "sysparm_fields": "sys_id",
         "sysparm_limit": 1,
     }

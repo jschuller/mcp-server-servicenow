@@ -8,7 +8,7 @@
 | `Cannot resolve the host` | A typo in the URL, or a reclaimed PDI | [Instance not found](#instance-not-found) |
 | `TLS certificate check failed` / `certificate verify failed` | A corporate proxy inspects TLS | [Certificates](#certificate-verify-failed) |
 | `spawn uvx ENOENT` | The client cannot find `uvx` | [spawn uvx ENOENT](#spawn-uvx-enoent) |
-| `Unknown tool: 'update_record'` | The server runs with `--read-only` | [Read-only](#unknown-tool-update_record-or-any-write-tool) |
+| `Unknown tool: 'update_record'`, or `identity has snc_read_only; write tools are hidden` | The server runs with `--read-only`, or the identity is read-only | [Read-only](#unknown-tool-update_record-or-any-write-tool) |
 
 ## Reading Error Messages
 
@@ -51,6 +51,8 @@ The error message includes the ServiceNow response body, which typically names t
 
 ## `Unknown tool: 'update_record'` (or any write tool)
 The server is running with `--read-only` / `SERVICENOW_READ_ONLY=true`: the 7 write tools are hidden from `tools/list`, and a cached client that still calls one gets this error. Restart without the flag to write.
+
+`identity has snc_read_only; write tools are hidden` means the ServiceNow user holds `snc_read_only`, which blocks every write regardless of its other roles, so the server hides the write tools too. To write, use an identity without `snc_read_only` (see [roles](docs/tools.md#roles)).
 
 ## `Query rejected: unsafe javascript: expression`
 Caller-supplied `query` / `having` values may only use GlideSystem date helpers (`javascript:gs.daysAgo(7)`, `gs.daysAgoStart(1)`, `gs.beginningOfToday()`, `gs.beginningOfLastWeek()`, `gs.monthsAgoStart(1)`, `gs.nowDateTime()` …). Anything else — `gs.getUserName()`, `gs.getUserID()`, `GlideRecord`, `;`, `new` — is refused, including when it follows a safe helper in the same query. Use the `RELATIVE*`, `MORETHAN`/`LESSTHAN`, `DATEPART` operators (see `servicenow://help/query-syntax`), or start the server with `--allow-js-queries` / `SERVICENOW_ALLOW_JS_QUERIES=true`. The server's own internal queries (for example the `gs.getUserName()` lookup behind `get_current_user`) are not affected.

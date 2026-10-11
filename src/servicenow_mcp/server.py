@@ -12,6 +12,7 @@ from servicenow_mcp import __version__
 from servicenow_mcp.auth.auth_manager import AuthManager
 from servicenow_mcp.middleware.audit import TRUNCATION_SUFFIX, AuditMiddleware
 from servicenow_mcp.middleware.policy import PolicyMiddleware
+from servicenow_mcp.middleware.read_only_identity import ReadOnlyIdentityMiddleware
 from servicenow_mcp.utils.config import ServerConfig
 
 if TYPE_CHECKING:
@@ -67,11 +68,13 @@ SERVER_INSTRUCTIONS = render_instructions()
 
 mcp = FastMCP("servicenow-mcp", version=__version__, instructions=SERVER_INSTRUCTIONS)
 # The first middleware added is the outermost. Audit wraps everything so policy
-# denials and truncated responses are recorded; policy runs before the tool;
-# the response limiter stays innermost. Both of ours read the config lazily per
-# call and no-op until init_services() has run.
+# denials and truncated responses are recorded; policy runs before the tool,
+# then the snc_read_only check hides or refuses write tools; the response
+# limiter stays innermost. Ours read the config lazily per call and no-op until
+# init_services() has run.
 mcp.add_middleware(AuditMiddleware())
 mcp.add_middleware(PolicyMiddleware())
+mcp.add_middleware(ReadOnlyIdentityMiddleware())
 mcp.add_middleware(
     ResponseLimitingMiddleware(max_size=500_000, truncation_suffix=TRUNCATION_SUFFIX)
 )
