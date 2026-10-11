@@ -1,5 +1,17 @@
 # Configuration Guide
 
+## Recommended integration identity
+
+How to set up the ServiceNow user this server signs in as, following ServiceNow's [Security Best Practices Guide](https://www.servicenow.com/content/dam/servicenow-assets/public/en-us/doc-type/resource-center/white-paper/instance-security-best-practice.pdf) (release Australia, 2026-09-18). Page numbers refer to that guide.
+
+- **One dedicated machine user per integration**, flagged *Web service access only*, so it cannot sign in to the UI and every action in the audit trail traces back to this integration (pp. 15, 18, 28). The start-here `mcp.integration` user is one; on a company instance ask your admin for one per team or pipeline rather than sharing a person's account.
+- **Tokens over long-lived passwords** (p. 29). Use [OAuth client credentials](#oauth-client-credentials-headless) for headless and CI use, and the per-user [OAuth 2.1 + PKCE proxy](deployment.md#oauth-21--pkce-recommended-for-production) when people should act with their own permissions. Basic auth is fine on a developer instance; the OAuth password grant is legacy because it skips MFA.
+- **Least privilege.** `itil` + `snc_read_only` reads incidents, changes, problems, SLAs and the CMDB, and can't change anything; add only the roles your tools need ([roles](tools.md#roles)). `snc_read_only` blocks writes whatever other roles the user has, and the server then hides its write tools. Never give the integration user `admin` outside a developer instance.
+- **Scope tables and APIs on the instance.** ACLs, Machine Identity access controls and REST API access policies limit what the identity can reach even where its roles would allow more (pp. 17, 37). ServiceNow enforces these for every client, dot-walked fields included, so this is where to keep an integration away from HR, security or user data.
+- **Keep secrets out of logs and files** (p. 30). The audit log records field names, never values; give the server its credentials through the environment or a [launcher](#keeping-secrets-out-of-config-files) that reads your OS secret store.
+
+One thing to know when you grant `itil`: on a base instance it can read every user's role assignments (`sys_user_has_role`), including who holds `admin`. The server uses that table only for the caller's own rows, but the data is there for any `itil` user; tighten that table's read ACL if it matters on your instance.
+
 ## Configuration Examples
 
 Copy `.mcp.json.example` to `.mcp.json` and fill in your credentials. The JSON format is the same for Claude Code (`.mcp.json`) and Claude Desktop (`claude_desktop_config.json`).
@@ -137,14 +149,14 @@ Every client below accepts a launcher command, so the password or key can come f
 ```toml
 [mcp_servers.servicenow]
 command = "uvx"
-args = ["mcp-server-servicenow", "--read-only"]
+args = ["mcp-server-servicenow"]
 env = { SERVICENOW_INSTANCE_URL = "https://your-instance.service-now.com", SERVICENOW_AUTH_TYPE = "basic", SERVICENOW_USERNAME = "mcp.integration" }
 env_vars = ["SERVICENOW_PASSWORD"]   # forwarded from the shell that starts codex
 ```
 
 ### pi (`~/.pi/agent/mcp.json`, or `.pi/mcp.json` per project)
 
-Written by `pi mcp add servicenow --exposure direct --env … -- uvx mcp-server-servicenow --read-only`; check it with `pi mcp list`. Use `"exposure": "direct"` so the model calls the tools by name.
+Written by `pi mcp add servicenow --exposure direct --env … -- uvx mcp-server-servicenow`; check it with `pi mcp list`. pi has no approval prompts, so add `--read-only` if the identity can write. Use `"exposure": "direct"` so the model calls the tools by name.
 
 ## Configuration Reference
 

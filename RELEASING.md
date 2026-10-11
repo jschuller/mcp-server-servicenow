@@ -38,8 +38,13 @@ the release (see Failure modes).
    uv run pytest tests/ --ignore=tests/integration     # unit suite
    uv run --with build,twine python -m build
    uv run --with build,twine twine check --strict dist/*
+   curl -sfL "$(jq -r '."$schema"' server.json)" -o /tmp/server.schema.json
+   uv run --with jsonschema python -c 'import json, jsonschema; jsonschema.validate(json.load(open("server.json")), json.load(open("/tmp/server.schema.json")))'
    uv run pytest tests/integration/ -v                 # live E2E (below)
    ```
+
+   The `server.json` check catches what the registry would reject on release
+   day, such as a description over 100 characters.
 
    The live checks read credentials from the environment only — start them
    under a secret-store launcher, never from a file:
@@ -48,9 +53,17 @@ the release (see Failure modes).
    with-secrets SERVICENOW_API_KEY=svc/homelab/servicenow-<pdi>-apikey -- env \
      SERVICENOW_INSTANCE_URL=https://<pdi>.service-now.com \
      SERVICENOW_AUTH_TYPE=api_key \
-     sh -c 'uv run pytest tests/integration/ -v -rs && uv run python scripts/stdio_smoke.py --profile readonly'
+     sh -c 'uv run pytest tests/integration/ -v -rs && uv run python scripts/stdio_smoke.py --profile readonly && uv run mcp-server-servicenow --check'
    ```
 
+   The `itil` + `snc_read_only` key must list 12 tools with no flag, and
+   `--check` must exit 0 (record, schema and aggregate show as limits under
+   an API key). Repeat the smoke and `--check` with an OAuth
+   client-credentials identity (`SERVICENOW_AUTH_TYPE=oauth`,
+   `SERVICENOW_CLIENT_ID`, the secret from the store, `SERVICENOW_USERNAME=`
+   and `SERVICENOW_PASSWORD=` blank so a local `.env` can't turn it into the
+   password grant), and `--check` with the instance URL as `devNNNNNN`, with
+   a trailing slash and as a pasted UI URL: all must reach the instance.
    Tools the identity is refused are skipped with the missing grant named.
    The integration suite needs an awake PDI.
    If it fails with `Got HTML instead of JSON`, the instance is
@@ -62,9 +75,10 @@ the release (see Failure modes).
 
 3. **Real-client check** (the unit suite drives an in-memory client; these
    surfaces behave differently):
-   - Claude Code: `claude mcp add servicenow-dev -- uv run --directory . mcp-server-servicenow …`,
-     then update a scratch incident — Claude Code's permission prompt must
-     appear before the write tool runs.
+   - Claude Code: `claude mcp add servicenow-dev -- uv run --directory . mcp-server-servicenow …`
+     with the start-here identity and no flag must list 12 tools; with a
+     writable identity, update a scratch incident — Claude Code's permission
+     prompt must appear before the write tool runs.
    - Claude Desktop: point `claude_desktop_config.json` at the local build;
      a read and a scratch update work.
    - Plugin: `claude --plugin-dir .` with only `SERVICENOW_INSTANCE_URL/USERNAME/PASSWORD`
@@ -73,7 +87,7 @@ the release (see Failure modes).
    - Run Claude Code as `command claude …` if your shell aliases `claude`
      (e.g. to `--dangerously-skip-permissions`), or the permission checks
      are skipped.
-   - Codex: `codex mcp add … -- uv run --directory . mcp-server-servicenow --read-only`,
+   - Codex: `codex mcp add … -- uv run --directory . mcp-server-servicenow`,
      then `codex exec` a read question — read-only tools run without approval,
      a skill is readable via `read_mcp_resource`, a write tool is refused by
      `codex exec`; in the TUI a write tool shows Codex's approval prompt.

@@ -60,7 +60,7 @@ claude mcp add servicenow \
   -e SERVICENOW_INSTANCE_URL=https://devNNNNNN.service-now.com \
   -e SERVICENOW_USERNAME=mcp.integration \
   -e SERVICENOW_PASSWORD="$SERVICENOW_PASSWORD" \
-  -- uvx mcp-server-servicenow --read-only
+  -- uvx mcp-server-servicenow
 ```
 
 <details>
@@ -71,14 +71,16 @@ Install uv with `winget install astral-sh.uv`, then:
 ```powershell
 $s = Read-Host 'Password' -AsSecureString
 $p = [Runtime.InteropServices.Marshal]::PtrToStringBSTR([Runtime.InteropServices.Marshal]::SecureStringToBSTR($s))
-claude mcp add servicenow -e SERVICENOW_INSTANCE_URL=https://devNNNNNN.service-now.com -e SERVICENOW_USERNAME=mcp.integration -e "SERVICENOW_PASSWORD=$p" -- uvx mcp-server-servicenow --read-only
+claude mcp add servicenow -e SERVICENOW_INSTANCE_URL=https://devNNNNNN.service-now.com -e SERVICENOW_USERNAME=mcp.integration -e "SERVICENOW_PASSWORD=$p" -- uvx mcp-server-servicenow
 ```
 </details>
 
 <details>
 <summary><strong>VS Code (GitHub Copilot)</strong></summary>
 
-Add to `.vscode/mcp.json`; VS Code asks for the URL and password on first start and stores them securely. Use Copilot Chat in **Agent** mode.
+[![Install in VS Code](https://img.shields.io/badge/VS_Code-Install_server-0098FF?logo=visualstudiocode&logoColor=white)](https://vscode.dev/redirect/mcp/install?name=servicenow&inputs=%5B%7B%22type%22%3A%22promptString%22%2C%22id%22%3A%22servicenow-url%22%2C%22description%22%3A%22ServiceNow%20instance%20URL%2C%20e.g.%20https%3A%2F%2FdevNNNNNN.service-now.com%22%7D%2C%7B%22type%22%3A%22promptString%22%2C%22id%22%3A%22servicenow-username%22%2C%22description%22%3A%22ServiceNow%20integration%20user%22%2C%22default%22%3A%22mcp.integration%22%7D%2C%7B%22type%22%3A%22promptString%22%2C%22id%22%3A%22servicenow-password%22%2C%22description%22%3A%22Password%20for%20the%20integration%20user%22%2C%22password%22%3Atrue%7D%5D&config=%7B%22type%22%3A%22stdio%22%2C%22command%22%3A%22uvx%22%2C%22args%22%3A%5B%22mcp-server-servicenow%22%5D%2C%22env%22%3A%7B%22SERVICENOW_INSTANCE_URL%22%3A%22%24%7Binput%3Aservicenow-url%7D%22%2C%22SERVICENOW_USERNAME%22%3A%22%24%7Binput%3Aservicenow-username%7D%22%2C%22SERVICENOW_PASSWORD%22%3A%22%24%7Binput%3Aservicenow-password%7D%22%7D%7D)
+
+The button adds the server to your VS Code user profile and asks for the instance URL, user and password on first start, storing the password securely. Or add this to `.vscode/mcp.json`. Use Copilot Chat in **Agent** mode.
 
 ```json
 {
@@ -90,7 +92,7 @@ Add to `.vscode/mcp.json`; VS Code asks for the URL and password on first start 
     "servicenow": {
       "type": "stdio",
       "command": "uvx",
-      "args": ["mcp-server-servicenow", "--read-only"],
+      "args": ["mcp-server-servicenow"],
       "env": {
         "SERVICENOW_INSTANCE_URL": "${input:servicenow-url}",
         "SERVICENOW_USERNAME": "mcp.integration",
@@ -112,7 +114,7 @@ Edit `claude_desktop_config.json` (macOS: `~/Library/Application Support/Claude/
   "mcpServers": {
     "servicenow": {
       "command": "uvx",
-      "args": ["mcp-server-servicenow", "--read-only"],
+      "args": ["mcp-server-servicenow"],
       "env": {
         "SERVICENOW_INSTANCE_URL": "https://devNNNNNN.service-now.com",
         "SERVICENOW_USERNAME": "mcp.integration",
@@ -128,7 +130,7 @@ Codex, opencode, Antigravity, Cursor, pi, the Claude Code plugin and keeping the
 
 ### 4. Check it works
 
-Ask: *"List the 5 most recent incidents."* `--read-only` hides the write tools; drop it once the user has write roles.
+Ask: *"List the 5 most recent incidents."* The start-here user holds `snc_read_only`, so the server lists only the 12 read-only tools. Give the user write roles (and remove `snc_read_only`) and the 7 write tools appear; your client asks before each write.
 
 No answer? Run the same configuration with `--check`. It makes read-only requests, prints one line per check (instance reachable, identity, roles, table read, schema, aggregates) and never prints a secret:
 
@@ -170,20 +172,21 @@ ServiceNow's ACLs decide what the user can do; the server adds nothing on top.
 
 | You want | Roles | Run with |
 |---|---|---|
-| Read ITSM and CMDB data (the [start-here](#2-create-an-integration-user) user) | `itil` + `snc_read_only` | `--read-only` |
-| …and create or update incidents and CIs | `itil` (no `snc_read_only`) | no flag; the client asks before writes |
+| Read ITSM and CMDB data (the [start-here](#2-create-an-integration-user) user) | `itil` + `snc_read_only` | no flag: write tools are hidden for `snc_read_only` |
+| …and create or update incidents and CIs | `itil` (no `snc_read_only`) | no flag; the client asks before writes (`--read-only` on clients that don't ask) |
 | …and delete incidents, problems, changes | add `itil_admin` | |
 | Table schemas | add `personalize_dictionary` | |
 | Update sets, system properties | `admin` — on a PDI only | |
 
-Per-tool detail: [roles per tool](https://github.com/jschuller/mcp-server-servicenow/blob/main/docs/tools.md#roles).
+Per-tool detail: [roles per tool](https://github.com/jschuller/mcp-server-servicenow/blob/main/docs/tools.md#roles). Setting up a company instance: [recommended integration identity](https://github.com/jschuller/mcp-server-servicenow/blob/main/docs/configuration.md#recommended-integration-identity).
 
 ## Safety and governance
 
 - **Read-only mode** — `--read-only` hides the 7 write tools and refuses any non-GET request.
+- **Read-only identities see read-only tools** — when the user holds `snc_read_only` the write tools are hidden without a flag. A convenience, not a control: ServiceNow refuses those writes anyway.
 - **Table scope lives in ServiceNow** — ACLs and REST API access policies on the integration user decide which tables and fields it can read, dot-walks included.
 - **Audit log** — one JSON line per tool call or resource read: who, which table, outcome; field names only, never values.
-- **Your client approves writes** — every tool is annotated read-only or destructive, so Claude Code, Copilot and Codex ask before a write. Clients that don't ask (opencode by default, pi) belong on `--read-only`.
+- **Your client approves writes** — every tool is annotated read-only or destructive, so Claude Code, Copilot and Codex ask before a write. Clients that don't ask (opencode by default, pi) need a read-only identity, or `--read-only` when the identity can write.
 
 Flags and environment variables: [configuration](https://github.com/jschuller/mcp-server-servicenow/blob/main/docs/configuration.md#safety-rails).
 
@@ -194,13 +197,13 @@ Verified on 2026-10-11 against ServiceNow Brazil: Claude Code 2.1.296, VS Code 1
 ## More
 
 - [Client setup](https://github.com/jschuller/mcp-server-servicenow/blob/main/docs/clients.md) — every client, the Claude Code plugin, Windows
-- [Configuration](https://github.com/jschuller/mcp-server-servicenow/blob/main/docs/configuration.md) — OAuth, API keys, multiple instances, secrets, every setting
+- [Configuration](https://github.com/jschuller/mcp-server-servicenow/blob/main/docs/configuration.md) — the recommended identity, OAuth client credentials (headless), API keys, multiple instances, secrets, every setting
 - [Remote deployment](https://github.com/jschuller/mcp-server-servicenow/blob/main/docs/deployment.md) — from source, Streamable HTTP, OAuth 2.1 + PKCE, Docker, Cloud Run
 - [Alongside ServiceNow's own MCP servers](https://github.com/jschuller/mcp-server-servicenow/blob/main/docs/native-mcp.md)
 - [Architecture and embedding](https://github.com/jschuller/mcp-server-servicenow/blob/main/docs/architecture.md) — mount it in your own FastMCP server
 - [Contributing](https://github.com/jschuller/mcp-server-servicenow/blob/main/CONTRIBUTING.md) · [Changelog](https://github.com/jschuller/mcp-server-servicenow/blob/main/CHANGELOG.md) · [Support](https://github.com/jschuller/mcp-server-servicenow/blob/main/SUPPORT.md) · [Security](https://github.com/jschuller/mcp-server-servicenow/blob/main/SECURITY.md)
 
-Next: a `--check` connection diagnostic, MCP prompts (0.9), and the SEP-2640 skills extension once FastMCP ships it.
+Next: a skill for access and role hygiene, then a foundation for extending the server with your own skill packs, and MCP prompts.
 
 **Related:** [sn-app-template](https://github.com/jschuller/sn-app-template) — a ServiceNow scoped app template for Claude Code + now-sdk that pairs with this server.
 

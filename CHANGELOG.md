@@ -10,6 +10,13 @@ install on every client gets the guided workflows. The server does not yet
 declare the `io.modelcontextprotocol/skills` extension (`skills/list`), which
 waits for FastMCP support. MCP prompts are deferred to 0.9.
 
+The release also moves governance to where ServiceNow enforces it. The table
+allow/deny lists are gone (they didn't stop dot-walks); write tools hide
+themselves for an `snc_read_only` identity, so the start-here setup needs no
+flag; OAuth client credentials open headless and CI use; and `--check`
+diagnoses a connection in one command. `--read-only` stays as the server-side
+guarantee.
+
 Verified on 2026-10-10/11 against a Brazil instance with Claude Code 2.1.296,
 VS Code 1.140 with GitHub Copilot, Codex CLI 0.162.1, opencode 1.19.0,
 Antigravity CLI 1.1.20 and pi 1.1.0, and the write paths as an admin's own
@@ -139,9 +146,18 @@ OAuth token over Streamable HTTP — see "Verified clients" in
   instructions, and to tell the user when a record contains instructions aimed
   at it, even if it ignores them.
 - Getting started now creates a least-privilege integration user (Web Service
-  Access Only, `itil` + `snc_read_only`, `--read-only`) instead of connecting as
-  `admin`, which new instances refuse for REST basic auth. A roles table maps
-  tools to roles; examples use `mcp.integration`.
+  Access Only, `itil` + `snc_read_only`) instead of connecting as `admin`,
+  which new instances refuse for REST basic auth. A roles table maps tools to
+  roles; examples use `mcp.integration`. The start-here snippets no longer
+  pass `--read-only`: that user's write tools are hidden anyway. Keep the
+  flag for a writable identity on a client without approval prompts
+  (opencode, pi) or a shared HTTP server.
+- New "Recommended integration identity" section in `docs/configuration.md`,
+  mapping ServiceNow's Security Best Practices Guide (Australia, 2026-09-18) to
+  setup steps: a dedicated Web-service-only user per integration, tokens over
+  passwords, least privilege, table and API scope on the instance, no secrets
+  in logs. The README gains a VS Code install button that prompts for the
+  instance URL, user and password.
 - README cut from 486 to about 200 lines: what you can ask, a four-step quick
   start (Windows, VS Code with a password prompt, Claude Desktop), an "if it
   doesn't work" table, tools, roles and safety in brief. Reference material
