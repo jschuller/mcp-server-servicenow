@@ -172,12 +172,6 @@ def parse_args() -> argparse.Namespace:
         help="Permit arbitrary javascript: in caller queries (SERVICENOW_ALLOW_JS_QUERIES)",
     )
     safety.add_argument(
-        "--write-confirm",
-        action="store_true",
-        default=_env_bool("SERVICENOW_WRITE_CONFIRM", False),
-        help="Ask the user to confirm update/delete calls via MCP elicitation (SERVICENOW_WRITE_CONFIRM)",
-    )
-    safety.add_argument(
         "--audit-log",
         default=_env_str("SERVICENOW_AUDIT_LOG", "stderr"),
         help="Audit log target: 'stderr' (default), 'off', or a file path (SERVICENOW_AUDIT_LOG)",
@@ -192,7 +186,6 @@ def _safety_kwargs(args: argparse.Namespace) -> dict[str, Any]:
         "table_allowlist": _parse_csv(getattr(args, "table_allowlist", None)),
         "table_denylist": _parse_csv(getattr(args, "table_denylist", None)),
         "allow_js_queries": bool(getattr(args, "allow_js_queries", False)),
-        "write_confirm": bool(getattr(args, "write_confirm", False)),
         "audit_log": getattr(args, "audit_log", None) or "stderr",
     }
 
@@ -391,8 +384,6 @@ def main() -> None:
                 config.table_denylist or "-",
                 config.table_allowlist or "-",
             )
-        if config.write_confirm:
-            logger.info("Write confirmation: on (update/delete prompt via elicitation)")
 
         from servicenow_mcp.middleware.audit import configure_audit_log
 

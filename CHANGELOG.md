@@ -15,6 +15,11 @@ Codex CLI 0.162.1 and pi 1.1.0, and the write paths as an admin's own OAuth
 token over Streamable HTTP — see "Verified clients" in the README.
 
 ### Upgrade notes
+- **Breaking: `--write-confirm` / `SERVICENOW_WRITE_CONFIRM` are removed.** The
+  server no longer starts with the flag; the environment variable is ignored.
+  `update_record`, `update_ci` and `delete_record` lose their `confirm`
+  argument. Approval of writes is the MCP client's job (tool annotations),
+  with ServiceNow's ACLs and `snc_read_only` as the boundary.
 - **Breaking (Claude Code plugin):** the four `/servicenow:*` slash commands
   are now the skills' own commands — `/servicenow:triage` →
   `/servicenow:triaging-incidents`, `/servicenow:cmdb` →
@@ -72,6 +77,12 @@ token over Streamable HTTP — see "Verified clients" in the README.
 
 ### Removed
 - `commands/` and `agents/servicenow-admin.md`.
+- Opt-in write confirmation (`--write-confirm`, `confirm.py`, the `confirm`
+  tool argument, the audit `confirm`/`round` fields and the
+  `cancelled`/`confirmation_required` outcomes). Where clients could show it,
+  it came after their own approval prompt; where they couldn't, the model
+  could pass `confirm=true` itself. About 290 lines of source and 360 of tests
+  and smoke checks.
 
 ## [0.7.0] - 2026-09-05
 

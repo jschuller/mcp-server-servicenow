@@ -63,12 +63,10 @@ the release (see Failure modes).
 3. **Real-client check** (the unit suite drives an in-memory client; these
    surfaces behave differently):
    - Claude Code: `claude mcp add servicenow-dev -- uv run --directory . mcp-server-servicenow …`,
-     then update a scratch incident — default config must need no prompt
-     beyond Claude Code's permission gate; with `--write-confirm` the
-     elicitation dialog must appear and *Decline* must stop the write.
+     then update a scratch incident — Claude Code's permission prompt must
+     appear before the write tool runs.
    - Claude Desktop: point `claude_desktop_config.json` at the local build;
-     default works; `--write-confirm` yields `confirmation_required` and a
-     `confirm=true` retry succeeds.
+     a read and a scratch update work.
    - Plugin: `claude --plugin-dir .` with only `SERVICENOW_INSTANCE_URL/USERNAME/PASSWORD`
      set must start (the `${VAR:-default}` passthrough check).
    - the four `skill://…/SKILL.md` resources list and read (Claude Code `/mcp` → resources).
@@ -78,11 +76,9 @@ the release (see Failure modes).
    - Codex: `codex mcp add … -- uv run --directory . mcp-server-servicenow --read-only`,
      then `codex exec` a read question — read-only tools run without approval,
      a skill is readable via `read_mcp_resource`, a write tool is refused by
-     `codex exec`; in the TUI a `--write-confirm` write shows the form.
+     `codex exec`; in the TUI a write tool shows Codex's approval prompt.
    - pi (1.0+): `pi mcp add … --exposure direct -- uv run --directory . mcp-server-servicenow`,
-     `pi mcp list` must report 12/19 tools and 15 resources; with
-     `--write-confirm` a write returns `confirmation_required` and the
-     `confirm=true` retry reaches the instance.
+     `pi mcp list` must report 12/19 tools and 15 resources.
 
 4. Push to main and wait for CI green — the test matrix (3.11–3.14)
    plus the `package` job (version consistency, `uv lock --check`,

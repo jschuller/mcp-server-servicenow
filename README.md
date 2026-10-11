@@ -47,7 +47,7 @@ ServiceNow's **MCP Server Console** (Action Fabric) exposes Now Assist skills, K
 | **Entitlement** | Now Assist / AI-Native SKU (docs: Prime for inbound); metered in assists | MIT, $0, your own compute |
 | **PDIs / GCC** | Not available | Works |
 | **Auth** | OAuth 2.0 auth-code via Machine Identity Console (JWT, no DCR) | OAuth 2.1 + PKCE proxy (DCR + CIMD), static tokens, or a service account |
-| **Governance** | AI Control Tower / AI Gateway | Self-managed: `--read-only`, table allow/deny, opt-in write confirmation, audit log, tool annotations |
+| **Governance** | AI Control Tower / AI Gateway | Self-managed: `--read-only`, table allow/deny, audit log, tool annotations |
 | **Transport** | Streamable HTTP only | stdio + Streamable HTTP |
 | **Resources / skills / prompts** | Roadmap | 5 resources; 4 Agent Skills served as `skill://` resources (SEP-2640); prompts planned for 0.9 |
 
@@ -155,7 +155,7 @@ ServiceNow's ACLs decide what the user can do; the server adds nothing on top. B
 | You want | Roles | Run with |
 |---|---|---|
 | Read ITSM and CMDB data (the [start-here](#2-create-an-integration-user) user) | `itil` + `snc_read_only` | `--read-only` |
-| …and create or update incidents and CIs | `itil` (no `snc_read_only`) | `--write-confirm` if you want a prompt |
+| …and create or update incidents and CIs | `itil` (no `snc_read_only`) | no flag; the client asks before writes |
 | …and delete incidents, problems, changes | add `itil_admin` | |
 | Table schemas (`get_table_schema`, `servicenow://schema/*`) | add `personalize_dictionary` | |
 | Update sets, system properties | `admin` — on a PDI only | |
@@ -220,7 +220,6 @@ Every tool carries MCP annotations (`readOnlyHint`, `destructiveHint`, `idempote
 | `--table-denylist sys_user*` | `SERVICENOW_TABLE_DENYLIST` | These tables may never be accessed; wins over the allowlist |
 | *(always on)* | — | Table names, sys_ids, field lists and `order_by` are validated; `javascript:` in caller queries is limited to `gs.*` date helpers (`gs.daysAgo(7)`, `gs.beginningOfToday()` …) |
 | `--allow-js-queries` | `SERVICENOW_ALLOW_JS_QUERIES=true` | Re-enable arbitrary `javascript:` in queries |
-| `--write-confirm` | `SERVICENOW_WRITE_CONFIRM=true` | Ask the user before `update_record`, `update_ci`, `delete_record` (see below) |
 | `--audit-log stderr\|off\|PATH` | `SERVICENOW_AUDIT_LOG` | One JSON line per tool call / resource read (default: stderr) |
 
 An audit line (keys only — never values):
@@ -229,15 +228,9 @@ An audit line (keys only — never values):
 {"ts":"2026-08-22T19:04:11.512+00:00","run_id":"…","event":"tool_call","name":"update_record","user":"admin","auth_mode":"service-account","transport":"stdio","table":"incident","sys_id":"9d385017c611228701d22104cc95c371","data_keys":["state"],"tags":["table","write"],"outcome":"ok","duration_ms":212.4}
 ```
 
-### Write confirmation (opt-in)
+### Who approves writes
 
-With `--write-confirm`, the three destructive tools fetch the record's current values and ask the user before writing:
-
-- **Claude Code** (2.1.292+ speaks the 2026-07-28 protocol on stdio) and **Cursor** render the prompt as a dialog. *Decline* stops the write; the assistant is told not to retry.
-- **Older handshake-era clients** get the same prompt through `elicitation/create` — **Codex CLI** (2025-06-18) shows it as a form after its own tool approval. The server never asks a client that has not declared elicitation.
-- **pi, Claude Desktop / Cowork, claude.ai connectors and headless runs** cannot show the prompt (Desktop answers with a synthetic *cancel*). They receive a `confirmation_required` error carrying the preview; the assistant shows it and re-runs with `confirm=true`.
-
-It is off by default because the MCP client's own permission prompt is the primary human-in-the-loop, and because automation cannot answer a dialog. Enable it where an AI Steward wants a second gate.
+The MCP client. Every write tool is annotated `destructiveHint`/`readOnlyHint`, and the client decides what needs a human: Claude Code asks before a write tool unless you allowed it, and Codex auto-runs only read-only tools. pi has no approval prompts, so give it `--read-only` or a read-only identity. The server's own gates are the ones above; ServiceNow's ACLs and `snc_read_only` remain the security boundary.
 
 ## Architecture
 
@@ -290,9 +283,9 @@ Checked on 2026-10-10/11 against a ServiceNow Brazil instance (stdio, read-only 
 | Tools + annotations | ✓ (12 in `--read-only`) | ✓ read-only tools run without approval; `codex exec` refuses the rest | ✓ (`--exposure direct`) |
 | Skills as MCP resources | ✓ read before querying, unprompted | ✓ read before querying, unprompted | ✓ when asked (pi passes only the first line of `instructions`) |
 | Skills from disk | ✓ plugin: `/servicenow:<skill>` | not tested | listed with `--skill <dir>` |
-| `--write-confirm` | ✓ dialog; Decline stops the write | ✓ form after Codex's own approval; *False* stops the write | ✓ `confirmation_required` → `confirm=true` |
+| Write tools | permission prompt before each (default mode) | approval prompt in the TUI; `codex exec` refuses them | no prompt: use `--read-only` |
 
-The clients ran with a read-only identity. The write paths (create/update/delete, write confirmation in both protocol eras, update sets, schema) were checked separately over Streamable HTTP with an admin's own ServiceNow OAuth token forwarded per user: `scripts/stdio_smoke.py --profile write`, 41/41, audit lines carry the caller (`"user":"admin","auth_mode":"oauth"`).
+The clients ran with a read-only identity. The write paths (create/update/delete, update sets, schema) were checked separately over Streamable HTTP with an admin's own ServiceNow OAuth token forwarded per user: `scripts/stdio_smoke.py --profile write`, 33/33, audit lines carry the caller (`"user":"admin","auth_mode":"oauth"`).
 
 ## Configuration
 
@@ -353,7 +346,7 @@ pi mcp add servicenow --exposure direct \
   -- uvx mcp-server-servicenow --read-only
 pi mcp list   # connects and lists 12 tools, 15 resources
 ```
-`--exposure direct` lets the model call the tools by name (pi's default, `codemode`, wraps them in scripts). pi has no permission prompts or elicitation: use `--read-only`, or `--write-confirm` for the `confirmation_required` → `confirm=true` round trip.
+`--exposure direct` lets the model call the tools by name (pi's default, `codemode`, wraps them in scripts). pi has no permission prompts: use `--read-only` unless you want the model to write unasked.
 </details>
 
 <details>

@@ -2,11 +2,9 @@
 
 from __future__ import annotations
 
-import functools
 import logging
 from typing import TYPE_CHECKING
 
-import anyio
 from fastmcp import FastMCP
 from fastmcp.server.middleware.response_limiting import ResponseLimitingMiddleware
 
@@ -144,27 +142,6 @@ def make_sn_request(
         )
     return api_request(
         method, url, get_auth_manager(), timeout, params=params, json_data=json_data
-    )
-
-
-async def make_sn_request_async(
-    method: str,
-    url: str,
-    timeout: int = 30,
-    params: dict | None = None,
-    json_data: dict | None = None,
-) -> "requests.Response":
-    """Run :func:`make_sn_request` on a worker thread.
-
-    Async tools execute inline on the event loop, so a blocking ``requests``
-    call inside one would stall every session on streamable-http. Context
-    variables are copied to the thread, so the per-user bearer token still
-    resolves.
-    """
-    return await anyio.to_thread.run_sync(
-        functools.partial(
-            make_sn_request, method, url, timeout, params=params, json_data=json_data
-        )
     )
 
 
