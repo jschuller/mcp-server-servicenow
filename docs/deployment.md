@@ -89,7 +89,7 @@ Three deployment modes with increasing security:
 | Mode | MCP Endpoint Auth | SN Backend Auth | Use Case |
 |------|------------------|-----------------|----------|
 | **stdio** | None (local process) | Global creds (env vars) | Claude Desktop, Claude Code |
-| **HTTP + static tokens** | Bearer tokens (`MCP_STATIC_TOKENS`) | Service account (env vars, **required** — basic, api_key or OAuth client creds); every caller shares one ServiceNow identity, so pair with `--read-only` or a table denylist | CI/CD, development |
+| **HTTP + static tokens** | Bearer tokens (`MCP_STATIC_TOKENS`) | Service account (env vars, **required** — basic, api_key or OAuth client creds); every caller shares one ServiceNow identity, so pair with `--read-only` or an `snc_read_only` identity | CI/CD, development |
 | **HTTP + OAuth** | OAuth 2.1 + PKCE | Per-user SN token | Production, Cloud Run |
 
 An unauthenticated HTTP listener is not supported: the server **fails closed**

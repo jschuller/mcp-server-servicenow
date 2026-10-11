@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "mcp-server-servicenow"
 version = "0.8.0"
-description = "ServiceNow MCP server: Table API, CMDB, schema, aggregates and update sets for Claude Code, GitHub Copilot, Codex and any MCP client. Read-only mode, table allowlists, audit log."
+description = "ServiceNow MCP server: Table API, CMDB, schema, aggregates and update sets for Claude Code, GitHub Copilot, Codex and any MCP client. Read-only mode, query validation, audit log."
 readme = "README.md"
 requires-python = ">=3.11"
 license = {text = "MIT"}

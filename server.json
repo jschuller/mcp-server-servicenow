@@ -2,7 +2,7 @@
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.jschuller/mcp-server-servicenow",
   "title": "ServiceNow MCP Server",
-  "description": "ServiceNow MCP server: Table API, CMDB, schema, update sets. Read-only mode, allowlists, audit log.",
+  "description": "ServiceNow MCP server: Table API, CMDB, schema, update sets. Read-only mode, query validation, audit log.",
   "version": "0.8.0",
   "repository": {
     "url": "https://github.com/jschuller/mcp-server-servicenow",
@@ -85,18 +85,6 @@
           "isRequired": false,
           "description": "Hide write tools and refuse non-GET requests",
           "format": "boolean"
-        },
-        {
-          "name": "SERVICENOW_TABLE_ALLOWLIST",
-          "isRequired": false,
-          "description": "Comma-separated tables/globs that may be accessed",
-          "format": "string"
-        },
-        {
-          "name": "SERVICENOW_TABLE_DENYLIST",
-          "isRequired": false,
-          "description": "Comma-separated tables/globs that may never be accessed",
-          "format": "string"
         },
         {
           "name": "SERVICENOW_ALLOW_JS_QUERIES",

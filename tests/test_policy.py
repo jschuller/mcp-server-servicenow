@@ -1,4 +1,4 @@
-"""PolicyMiddleware: table allow/deny lists, identifier validation, query hardening."""
+"""PolicyMiddleware: identifier validation and query hardening."""
 
 from unittest.mock import Mock
 
@@ -68,54 +68,24 @@ async def _call(name: str, args: dict) -> None:
         await client.call_tool(name, args)
 
 
-class TestTableLists:
+class TestTableNames:
     @pytest.mark.asyncio
-    async def test_denylist_glob_blocks_table(self, table_mock: Mock) -> None:
-        init_test_services(table_denylist=["sys_user*"])
-        with pytest.raises(ToolError, match="blocked by SERVICENOW_TABLE_DENYLIST"):
-            await _call("list_records", {"table_name": "sys_user_group"})
+    async def test_class_name_is_validated(self, table_mock: Mock) -> None:
+        init_test_services()
+        with pytest.raises(ToolError, match="Invalid table name"):
+            await _call("list_ci", {"class_name": "cmdb_ci^ORx"})
         table_mock.assert_not_called()
-        await _call("list_records", {"table_name": "incident"})
+        await _call("list_ci", {"class_name": "cmdb_ci_server"})
         table_mock.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_allowlist_exact_and_glob(self, table_mock: Mock) -> None:
-        init_test_services(table_allowlist=["incident", "cmdb_ci*"])
-        await _call("list_records", {"table_name": "incident"})
-        await _call("list_ci", {"class_name": "cmdb_ci_server"})
-        with pytest.raises(ToolError, match="not in SERVICENOW_TABLE_ALLOWLIST"):
-            await _call("list_records", {"table_name": "sys_user"})
-
-    @pytest.mark.asyncio
-    async def test_deny_wins_over_allow(self, table_mock: Mock) -> None:
-        init_test_services(table_allowlist=["*"], table_denylist=["incident"])
-        with pytest.raises(ToolError, match="DENYLIST"):
-            await _call("get_record", {"table_name": "Incident", "sys_id": "abc"})
-
-    @pytest.mark.asyncio
-    async def test_class_name_default_is_policed(self, table_mock: Mock) -> None:
-        init_test_services(table_denylist=["cmdb_ci"])
-        with pytest.raises(ToolError, match="DENYLIST"):
-            await _call("get_ci", {"sys_id": "abc"})
-
-    @pytest.mark.asyncio
-    async def test_fixed_table_tools_are_policed(self, table_mock: Mock) -> None:
-        init_test_services(table_denylist=["cmdb_rel_ci", "sys_properties"])
-        with pytest.raises(ToolError, match="cmdb_rel_ci"):
-            await _call("get_ci_relationships", {"sys_id": "abc"})
-        with pytest.raises(ToolError, match="sys_properties"):
-            await _call("get_system_properties", {})
-
-    @pytest.mark.asyncio
-    async def test_schema_resource_is_policed(self, monkeypatch) -> None:
-        init_test_services(table_denylist=["sys_user"])
+    async def test_schema_resource_is_validated(self, monkeypatch) -> None:
+        init_test_services()
         monkeypatch.setattr(
             "servicenow_mcp.server.make_sn_request",
             Mock(return_value=sn_response({"result": []})),
         )
         async with Client(mcp) as client:
-            with pytest.raises(Exception, match="DENYLIST"):
-                await client.read_resource("servicenow://schema/sys_user")
             with pytest.raises(Exception, match="Invalid table name"):
                 await client.read_resource("servicenow://schema/incident%5EORx")
 

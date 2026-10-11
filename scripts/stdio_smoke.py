@@ -103,17 +103,22 @@ async def section_a(results):
 
 
 async def section_b(results, profile, audit):
-    """Default mode: denylist, javascript: policy, schema, paging, then writes."""
-    async with Client(
-        transport("--table-denylist", "sys_user*", "--audit-log", audit)
-    ) as c:
+    """Default mode: identifier and javascript: policy, schema, paging, then writes."""
+    async with Client(transport("--audit-log", audit)) as c:
         tools = await c.list_tools()
         results.append(ok("default: 19 tools", len(tools) == 19, str(len(tools))))
         try:
-            await c.call_tool("list_records", {"table_name": "sys_user", "limit": 1})
-            results.append(ok("denylist blocks sys_user", False))
+            await c.call_tool(
+                "list_records", {"table_name": "incident^ORx", "limit": 1}
+            )
+            results.append(ok("policy rejects an invalid table name", False))
         except ToolError as e:
-            results.append(ok("denylist blocks sys_user", "DENYLIST" in str(e)))
+            results.append(
+                ok(
+                    "policy rejects an invalid table name",
+                    "Invalid table name" in str(e),
+                )
+            )
         try:
             await c.call_tool(
                 "list_records",

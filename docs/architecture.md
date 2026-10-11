@@ -33,7 +33,7 @@ Built with [FastMCP 4](https://gofastmcp.com): it speaks both the stateless MCP 
 
 ## Mounting it in your own server
 
-The server is a building block: mount it into your own FastMCP server and it keeps its read-only mode, allow/deny lists and audit log. FastMCP does not forward a mounted server's instructions and prefixes its URIs, so pass the rendered ones on:
+The server is a building block: mount it into your own FastMCP server and it keeps its read-only mode, identifier and query validation and audit log. FastMCP does not forward a mounted server's instructions and prefixes its URIs, so pass the rendered ones on:
 
 ```python
 from fastmcp import FastMCP
