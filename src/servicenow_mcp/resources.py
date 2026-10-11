@@ -161,6 +161,12 @@ def current_update_set() -> str:
 # ---------------------------------------------------------------------------
 
 
+# A base instance has 500+ cmdb_ci* classes; page through them, but stop at a
+# bound and say so rather than returning a silently partial list.
+CLASS_PAGE_SIZE = 500
+MAX_CLASS_PAGES = 10
+
+
 @mcp.resource(
     "servicenow://cmdb/classes",
     description="CMDB CI class hierarchy — class names, labels, and parent classes",
@@ -172,17 +178,24 @@ def cmdb_classes() -> str:
     config = get_config()
 
     url = build_url(config.api_url, "table", "sys_db_object")
-    query_params = {
-        "sysparm_query": "nameSTARTSWITHcmdb_ci^ORDERBYname",
-        # Dot-walk the parent's name so super_class is a usable string rather
-        # than a {link, value} reference.
-        "sysparm_fields": "name,label,super_class.name,super_class",
-        "sysparm_limit": 200,
-    }
-
-    response = make_sn_request("GET", url, config.timeout, params=query_params)
-    data = parse_json_response(response, url)
-    result = data.get("result", [])
+    result: list[Dict[str, Any]] = []
+    truncated = False
+    for page in range(MAX_CLASS_PAGES):
+        query_params = {
+            "sysparm_query": "nameSTARTSWITHcmdb_ci^ORDERBYname",
+            # Dot-walk the parent's name so super_class is a usable string
+            # rather than a {link, value} reference.
+            "sysparm_fields": "name,label,super_class.name,super_class",
+            "sysparm_limit": CLASS_PAGE_SIZE,
+            "sysparm_offset": page * CLASS_PAGE_SIZE,
+        }
+        response = make_sn_request("GET", url, config.timeout, params=query_params)
+        batch = parse_json_response(response, url).get("result", [])
+        result.extend(batch)
+        if len(batch) < CLASS_PAGE_SIZE:
+            break
+    else:
+        truncated = True
     classes = [
         {
             "name": r.get("name"),
@@ -192,7 +205,10 @@ def cmdb_classes() -> str:
         }
         for r in result
     ]
-    return json.dumps({"count": len(classes), "classes": classes})
+    body: Dict[str, Any] = {"count": len(classes), "classes": classes}
+    if truncated:
+        body["truncated"] = True
+    return json.dumps(body)
 
 
 # ---------------------------------------------------------------------------

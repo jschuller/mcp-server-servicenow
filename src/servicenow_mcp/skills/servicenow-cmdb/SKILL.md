@@ -76,30 +76,38 @@ Query the CMDB Health Dashboard tables for data quality KPIs. Uses a validation 
 
 **Progress checklist:**
 ```
-- [ ] Query health audit results
-- [ ] Check active health rules
-- [ ] Get health scores by class
-- [ ] Identify top failing rules
+- [ ] Read the latest health scores
+- [ ] Read the last processing cycle's results
+- [ ] Check which KPIs and metrics are enabled
+- [ ] Check the staleness and orphan rules behind them
 - [ ] Recommend remediation actions
 - [ ] (Optional) Re-assess after fixes
 ```
 
-1. List recent health audit results:
+1. Latest scores (the newest rows are current; older rows are kept as history):
    ```
-   list_records(table_name="cmdb_health_audit", limit=20, order_by="-sys_created_on")
+   list_records(table_name="cmdb_health_scorecard", limit=20, order_by="-sys_created_on")
    ```
-2. Check active health rules:
+2. Results from the most recent processing cycle:
    ```
-   list_records(table_name="cmdb_health_rule", query="active=true", limit=20)
+   list_records(table_name="cmdb_health_result", limit=20, order_by="-sys_created_on")
    ```
-3. Look at health scores by CI class:
+3. Which KPIs and metrics are tracked, and how they are configured:
    ```
-   list_records(table_name="cmdb_health_config", limit=20)
+   list_records(table_name="cmdb_health_metric", fields="name,friendly_name,description,parent", limit=50)
    ```
-4. Summarize: overall health score, top failing rules, classes with lowest scores.
-5. Recommend specific remediation actions for each failing rule.
-6. After remediation, re-query health scores to verify improvement.
-7. **Full CMDB audit** (when asked for an audit or the health tables are empty): enumerate the populated CI classes (`list_records(table_name="sys_db_object", query="super_classISNOTEMPTY^nameSTARTSWITHcmdb_ci", fields="name,label", limit=100)` then `aggregate_records` per class), sample records per class for missing key fields (`name`, `sys_class_name`, `operational_status`, `support_group`), find orphaned CIs (no `cmdb_rel_ci` rows in either direction), flag duplicates (same `name` across classes), and close with a findings-then-recommendations report. Keep it read-only unless the user asks for fixes.
+4. The rules that decide what counts as stale or orphaned, per class:
+   ```
+   list_records(table_name="cmdb_health_staleness_rule", fields="applies_to,duration", limit=50)
+   list_records(table_name="cmdb_health_orphan_rule", limit=50)
+   ```
+   `cmdb_health_metric_status` shows whether each KPI's last run completed, hit its failure limit or timed out; `cmdb_health_config` holds the inclusion rules (which classes are scored).
+5. Summarize: overall and per-KPI scores, the weakest classes, and missing rules (a class with no staleness or orphan rule is not scored for it).
+6. Recommend specific remediation actions for each weak KPI.
+7. After remediation, re-query the scores to verify improvement. Scores change only when the CMDB Health jobs run again, so say when that is.
+
+Empty scorecard and result tables mean the CMDB Health jobs have not run (common on a developer instance): say so and use the full audit below instead.
+8. **Full CMDB audit** (when asked for an audit or the health tables are empty): enumerate the populated CI classes (`list_records(table_name="sys_db_object", query="super_classISNOTEMPTY^nameSTARTSWITHcmdb_ci", fields="name,label", limit=100)` then `aggregate_records` per class), sample records per class for missing key fields (`name`, `sys_class_name`, `operational_status`, `support_group`), find orphaned CIs (no `cmdb_rel_ci` rows in either direction), flag duplicates (same `name` across classes), and close with a findings-then-recommendations report. Keep it read-only unless the user asks for fixes.
 
 ### 4. Investigate Data Quality
 

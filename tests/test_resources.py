@@ -109,3 +109,55 @@ class TestCmdbClassesResource:
         assert payload["classes"][0]["super_class"] == "cmdb_ci_computer"
         assert payload["classes"][1]["super_class"] == ""
         assert "super_class.name" in mock.call_args.kwargs["params"]["sysparm_fields"]
+
+
+def _class_rows(start: int, count: int) -> list[dict]:
+    return [
+        {"name": f"cmdb_ci_{i:04d}", "label": f"C{i}", "super_class": ""}
+        for i in range(start, start + count)
+    ]
+
+
+@pytest.mark.asyncio
+async def test_cmdb_classes_pages_past_the_first_batch(monkeypatch) -> None:
+    """A base instance has 500+ classes; the old single 200-row read cut them off."""
+    import json
+    from unittest.mock import Mock
+
+    from servicenow_mcp import resources
+    from tests.conftest import sn_response
+
+    size = resources.CLASS_PAGE_SIZE
+    mock = Mock(
+        side_effect=[
+            sn_response({"result": _class_rows(0, size)}),
+            sn_response({"result": _class_rows(size, 20)}),
+        ]
+    )
+    monkeypatch.setattr(resources, "make_sn_request", mock)
+    async with Client(mcp) as client:
+        content = await client.read_resource("servicenow://cmdb/classes")
+    payload = json.loads(content[0].text)
+    assert payload["count"] == size + 20
+    assert "truncated" not in payload
+    offsets = [c.kwargs["params"]["sysparm_offset"] for c in mock.call_args_list]
+    assert offsets == [0, size]
+
+
+@pytest.mark.asyncio
+async def test_cmdb_classes_says_when_it_stops_at_the_bound(monkeypatch) -> None:
+    import json
+    from unittest.mock import Mock
+
+    from servicenow_mcp import resources
+    from tests.conftest import sn_response
+
+    monkeypatch.setattr(resources, "CLASS_PAGE_SIZE", 2)
+    monkeypatch.setattr(resources, "MAX_CLASS_PAGES", 3)
+    mock = Mock(side_effect=lambda *a, **k: sn_response({"result": _class_rows(0, 2)}))
+    monkeypatch.setattr(resources, "make_sn_request", mock)
+    async with Client(mcp) as client:
+        content = await client.read_resource("servicenow://cmdb/classes")
+    payload = json.loads(content[0].text)
+    assert payload["count"] == 6 and payload["truncated"] is True
+    assert mock.call_count == 3

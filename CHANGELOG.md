@@ -64,7 +64,8 @@ OAuth token over Streamable HTTP — see "Verified clients" in
   hibernating PDI), the identity and its direct roles, whether write tools
   are hidden, a Table API read, schema access (a 403 names
   `personalize_dictionary`) and the Aggregate API (an API key without an
-  access policy for it is reported as a policy limit). Exit code 0 when
+  access policy for it is reported as a policy limit, as is the per-record
+  GET behind `get_record`). Exit code 0 when
   authentication and a read work. It never prints a secret, so the output
   can go straight into a Q&A post.
 - **OAuth client credentials grant** for headless use (CI, scheduled jobs,
@@ -93,6 +94,15 @@ OAuth token over Streamable HTTP — see "Verified clients" in
 - CI: Python 3.14, and a check that the wheel carries the 4 skills.
 
 ### Fixed
+- The `servicenow-cmdb` skill named CMDB Health tables that don't exist
+  (`cmdb_health_audit`, `cmdb_health_rule`, `cmdb_health_kpi`; the instance
+  answers 400). It now reads `cmdb_health_scorecard`, `cmdb_health_result`,
+  `cmdb_health_metric` and the staleness and orphan rule tables, each checked
+  live with a least-privilege identity, and falls back to the full audit when
+  the CMDB Health jobs have not run.
+- `servicenow://cmdb/classes` stopped silently at 200 rows; a base instance
+  has 700+ `cmdb_ci*` classes. It now pages through them (up to 5,000) and
+  says `truncated: true` if it ever stops at that bound.
 - The instance URL is normalised at startup: surrounding spaces, a trailing
   slash, a missing `https://`, a bare instance name (`dev12345` →
   `https://dev12345.service-now.com`) and a pasted UI path or query are all
