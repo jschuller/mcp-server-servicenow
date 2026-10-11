@@ -90,7 +90,7 @@ Add to `.vscode/mcp.json` in your workspace, or run **MCP: Open User Configurati
 }
 ```
 
-Click **Start** above the server in `mcp.json` (or run **MCP: List Servers**), then use Copilot Chat in **Agent** mode; the 12 read-only tools appear in the tools picker. VS Code asks you to confirm tool calls, with options to allow a tool for the session, the workspace or always. Copilot does not read the skills on its own: attach one with **Add Context › MCP Resources** (for example `skill://servicenow-cmdb/SKILL.md`) when you want the guided workflow.
+Click **Start** above the server in `mcp.json` (or run **MCP: List Servers**), then use Copilot Chat in **Agent** mode; the 12 read-only tools appear in the tools picker. Tools annotated `readOnlyHint` run without a prompt; write tools get a **Run …** confirmation, which you can allow for the session, the workspace or always. Copilot does not read the skills on its own: attach one with **Add Context › MCP Resources** (for example `skill://servicenow-cmdb/SKILL.md`) when you want the guided workflow.
 
 ## Cursor
 
@@ -194,7 +194,7 @@ Checked on 2026-10-11 against a ServiceNow Brazil PDI (stdio, read-only identity
 | Client | Protocol | Tools and approval | Skills over MCP |
 |---|---|---|---|
 | Claude Code 2.1.296 | 2026-07-28 | 12 tools in `--read-only`; permission prompt before writes (default mode); plugin adds `/servicenow:<skill>` | read before querying, unprompted |
-| VS Code 1.140 + GitHub Copilot | not recorded | 12 tools in Agent mode; VS Code asks to confirm tool calls | not read on its own; attach via Add Context › MCP Resources |
+| VS Code 1.140 + GitHub Copilot | not recorded | 12 tools in Agent mode; read-only tools run without approval; confirmation before write tools | not read on its own; attach via Add Context › MCP Resources |
 | Codex CLI 0.162.1 | 2025-06-18 | read-only tools run without approval; approval prompt for the rest; `codex exec` refuses them | read before querying, unprompted |
 | Antigravity CLI 1.1.20 | not recorded | loaded on demand; asks before every MCP call; print mode denies unless allowed | read before querying, unprompted |
 | opencode 1.19.0 | not recorded | runs every MCP tool without asking unless `permission` says `ask` | read before querying, unprompted |
