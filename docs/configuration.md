@@ -96,6 +96,24 @@ Copy `.mcp.json.example` to `.mcp.json` and fill in your credentials. The JSON f
 }
 ```
 
+### Keeping secrets out of config files
+
+Every client below accepts a launcher command, so the password or key can come from your OS secret store at start-up instead of sitting in JSON or TOML. The pattern is `<launcher> VAR=<secret-name> -- uvx mcp-server-servicenow …` — for example a small script that runs `security find-generic-password` (macOS Keychain) or `secret-tool lookup` (Linux) and `exec`s the server with the value in its environment. Claude Desktop does not expand `${VAR}`, so it needs a launcher; Claude Code, Codex (`env_vars = ["SERVICENOW_PASSWORD"]`) and pi (`"${SERVICENOW_PASSWORD}"`) can also forward a variable from the parent shell.
+
+### Codex CLI (`~/.codex/config.toml`)
+
+```toml
+[mcp_servers.servicenow]
+command = "uvx"
+args = ["mcp-server-servicenow", "--read-only"]
+env = { SERVICENOW_INSTANCE_URL = "https://your-instance.service-now.com", SERVICENOW_AUTH_TYPE = "basic", SERVICENOW_USERNAME = "svc.mcp" }
+env_vars = ["SERVICENOW_PASSWORD"]   # forwarded from the shell that starts codex
+```
+
+### pi (`~/.pi/agent/mcp.json`, or `.pi/mcp.json` per project)
+
+Written by `pi mcp add servicenow --exposure direct --env … -- uvx mcp-server-servicenow --read-only`; check it with `pi mcp list`. Use `"exposure": "direct"` so the model calls the tools by name.
+
 ## Configuration Reference
 
 All settings can be passed as CLI args or environment variables. See `.env.example`.

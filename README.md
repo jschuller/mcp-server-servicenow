@@ -178,7 +178,8 @@ Each skill also exposes `skill://<name>/_manifest` (a JSON file list with SHA-25
 How clients pick them up:
 
 - **Claude Code** reads them on its own: the server's `instructions` tell the model which skill matches which request, and the model fetches the resource before calling tools. The Claude Code plugin additionally installs the same four files as filesystem skills.
-- **Hosts implementing SEP-2640** (prototypes exist for Gemini CLI, Goose and Claude Code) list them next to local skills and load them on activation.
+- **Codex CLI and pi** expose MCP resources to the model (`list_mcp_resources` / `read_mcp_resource`). Codex follows the instructions and reads the matching skill unprompted; pi passes only their first line, so its model reads a skill when asked. Both also load the same `SKILL.md` folders from disk (`~/.agents/skills/`, or pi's `--skill <dir>`).
+- **Hosts implementing SEP-2640** list them next to local skills and load them on activation. The server will declare the extension (`skills/list`) once FastMCP ships it.
 - **Claude Desktop** lists them under the server's connector entry in the `+` menu; attaching one reads it over MCP and lands an audit line (verified on Desktop 1.46388.4).
 - **Any other client that surfaces MCP resources** — VS Code's *Add Context → MCP Resources*, Gemini CLI's `@skill://…` — can attach them like any resource.
 
@@ -208,9 +209,9 @@ An audit line (keys only — never values):
 
 With `--write-confirm`, the three destructive tools fetch the record's current values and ask the user before writing:
 
-- **Claude Code** (stdio, handshake-era protocol) and **Cursor** render the prompt as a dialog (`elicitation/create`). *Decline* stops the write; the assistant is told not to retry.
-- **2026-07-28 clients** get the same prompt as a multi round-trip `InputRequiredResult`; the server never sends one to a client that has not declared elicitation.
-- **Claude Desktop / Cowork, claude.ai connectors and headless runs** cannot show the prompt (Desktop answers with a synthetic *cancel*). They receive a `confirmation_required` error carrying the preview; the assistant shows it and re-runs with `confirm=true`.
+- **Claude Code** (2.1.292+ speaks the 2026-07-28 protocol on stdio) and **Cursor** render the prompt as a dialog. *Decline* stops the write; the assistant is told not to retry.
+- **Older handshake-era clients** get the same prompt through `elicitation/create` — **Codex CLI** (2025-06-18) shows it as a form after its own tool approval. The server never asks a client that has not declared elicitation.
+- **pi, Claude Desktop / Cowork, claude.ai connectors and headless runs** cannot show the prompt (Desktop answers with a synthetic *cancel*). They receive a `confirmation_required` error carrying the preview; the assistant shows it and re-runs with `confirm=true`.
 
 It is off by default because the MCP client's own permission prompt is the primary human-in-the-loop, and because automation cannot answer a dialog. Enable it where an AI Steward wants a second gate.
 
@@ -219,7 +220,7 @@ It is off by default because the MCP client's own permission prompt is the prima
 ```mermaid
 graph TD
     CC["MCP Client"]
-    subgraph SERVER["FastMCP 4.0"]
+    subgraph SERVER["FastMCP 4"]
         TT["table_tools (6)"]
         CT["cmdb_tools (5)"]
         ST["system_tools (3)"]
@@ -244,6 +245,28 @@ graph TD
     AM -.->|"credentials"| AR
     AR -->|"REST API"| SN
 ```
+
+The server is also a building block: mount it into your own FastMCP server and it keeps its read-only mode, allow/deny lists and audit log. FastMCP does not forward a mounted server's instructions and prefixes its URIs, so pass the rendered ones on:
+
+```python
+from fastmcp import FastMCP
+from servicenow_mcp.server import mcp as servicenow, render_instructions
+
+app = FastMCP("orchestrator", instructions=render_instructions("snow"))
+app.mount(servicenow, namespace="snow")  # tools snow_*, resources skill://snow/…
+```
+
+## Verified clients
+
+Checked on 2026-10-10/11 against a ServiceNow Brazil instance (stdio, read-only API-key identity, this release):
+
+| | Claude Code 2.1.296 | Codex CLI 0.162.1 | pi 1.1.0 |
+|---|---|---|---|
+| Protocol negotiated | 2026-07-28 | 2025-06-18 | 2025-11-25 |
+| Tools + annotations | ✓ (12 in `--read-only`) | ✓ read-only tools run without approval; `codex exec` refuses the rest | ✓ (`--exposure direct`) |
+| Skills as MCP resources | ✓ read before querying, unprompted | ✓ read before querying, unprompted | ✓ when asked (pi passes only the first line of `instructions`) |
+| Skills from disk | ✓ plugin: `/servicenow:<skill>` | not tested | listed with `--skill <dir>` |
+| `--write-confirm` | ✓ dialog; Decline stops the write | ✓ form after Codex's own approval; *False* stops the write | ✓ `confirmation_required` → `confirm=true` |
 
 ## Configuration
 
@@ -282,9 +305,58 @@ Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
 </details>
 
 <details>
-<summary><strong>Cursor / VS Code</strong></summary>
+<summary><strong>Codex CLI</strong></summary>
 
-Add to `.cursor/mcp.json` or `.vscode/mcp.json`:
+```bash
+codex mcp add servicenow \
+  --env SERVICENOW_INSTANCE_URL=https://your-instance.service-now.com \
+  --env SERVICENOW_AUTH_TYPE=basic --env SERVICENOW_USERNAME=svc.mcp \
+  -- uvx mcp-server-servicenow --read-only
+```
+Codex auto-approves tools annotated `readOnlyHint` and asks before the rest. Keep the password out of `config.toml`: forward it from your shell with `env_vars = ["SERVICENOW_PASSWORD"]`, or wrap the command in a secret-store launcher.
+</details>
+
+<details>
+<summary><strong>pi</strong> (1.0+, built-in MCP)</summary>
+
+```bash
+pi mcp add servicenow --exposure direct \
+  --env SERVICENOW_INSTANCE_URL=https://your-instance.service-now.com \
+  --env SERVICENOW_AUTH_TYPE=basic --env SERVICENOW_USERNAME=svc.mcp \
+  --env 'SERVICENOW_PASSWORD=${SERVICENOW_PASSWORD}' \
+  -- uvx mcp-server-servicenow --read-only
+pi mcp list   # connects and lists 12 tools, 15 resources
+```
+`--exposure direct` lets the model call the tools by name (pi's default, `codemode`, wraps them in scripts). pi has no permission prompts or elicitation: use `--read-only`, or `--write-confirm` for the `confirmation_required` → `confirm=true` round trip.
+</details>
+
+<details>
+<summary><strong>VS Code</strong></summary>
+
+Add to `.vscode/mcp.json`:
+```json
+{
+  "servers": {
+    "servicenow": {
+      "type": "stdio",
+      "command": "uvx",
+      "args": ["mcp-server-servicenow"],
+      "env": {
+        "SERVICENOW_INSTANCE_URL": "https://your-instance.service-now.com",
+        "SERVICENOW_AUTH_TYPE": "basic",
+        "SERVICENOW_USERNAME": "admin",
+        "SERVICENOW_PASSWORD": "your-password"
+      }
+    }
+  }
+}
+```
+</details>
+
+<details>
+<summary><strong>Cursor</strong></summary>
+
+Add to `.cursor/mcp.json`:
 ```json
 {
   "mcpServers": {
@@ -322,15 +394,14 @@ pip install -e ".[dev]"
 # Run unit tests
 python -m pytest tests/ -v --ignore=tests/integration
 
-# Run integration tests (requires PDI credentials)
-# Option 1: Create .env.test (gitignored, auto-loaded)
-cp .env.example .env.test  # then fill in your credentials
+# Live tests read credentials from the environment only (use a secret-store
+# launcher rather than a file). Refused tools are skipped with the missing grant.
+SERVICENOW_INSTANCE_URL=https://your-pdi.service-now.com \
+SERVICENOW_USERNAME=svc.mcp SERVICENOW_PASSWORD=... \
 python -m pytest tests/integration/ -v
 
-# Option 2: Inline env vars
-SERVICENOW_INSTANCE_URL=https://your-pdi.service-now.com \
-SERVICENOW_USERNAME=admin SERVICENOW_PASSWORD=your-password \
-python -m pytest tests/integration/ -v
+# End-to-end over stdio, both protocol eras (readonly profile changes nothing)
+python scripts/stdio_smoke.py --profile readonly
 
 # Lint
 ruff check src/ tests/
@@ -367,7 +438,7 @@ claude plugin install servicenow@mcp-server-servicenow
 claude --plugin-dir /path/to/mcp-server-servicenow
 ```
 
-The skills appear as `servicenow:triaging-incidents`, `servicenow:servicenow-cmdb`, `servicenow:reviewing-update-sets` and `servicenow:exploring-tables`. The `/servicenow:*` slash commands and the `servicenow-admin` subagent shipped in 0.7.x were removed in 0.8.0 — their workflows now live in the skills.
+The skills appear as `/servicenow:triaging-incidents`, `/servicenow:servicenow-cmdb`, `/servicenow:reviewing-update-sets` and `/servicenow:exploring-tables` (Claude Code skills double as slash commands). In 0.8.0 these replaced the 0.7.x commands (`/servicenow:triage`, `/servicenow:cmdb`, `/servicenow:explore-table`, `/servicenow:review-update-set`) and the `servicenow-admin` subagent.
 
 > **Note:** The plugin auto-configures the MCP server — no manual `.mcp.json` setup required.
 
@@ -376,16 +447,16 @@ The skills appear as `servicenow:triaging-incidents`, `servicenow:servicenow-cmd
 - **Phase 1** &#x2705; Foundation — 18 tools, OAuth retry, structured error handling
 - **Phase 2** &#x2705; Remote access — FastMCP 3.0, Streamable HTTP, Cloud Run deployment
 - **Phase 3** &#x2705; Security — OAuth 2.1 + PKCE proxy, per-user SN auth, matches native Zurich model
-- **Phase 4** &#x2705; Skills & workflows — 4 Claude Code skills (CMDB, table explorer, update set reviewer, incident triage)
-- **Phase 4.5** &#x2705; Plugin packaging — Claude Code plugin with slash commands, admin agent, zero-config install
+- **Phase 4** &#x2705; Skills & workflows — 4 skills (CMDB, table explorer, update set reviewer, incident triage)
+- **Phase 4.5** &#x2705; Plugin packaging — Claude Code plugin, zero-config install
 - **Phase 5** &#x2705; Distribution — PyPI package, [MCP Registry](https://registry.modelcontextprotocol.io), automated publish workflows
 - **Sprint 2** &#x2705; FastMCP 3.1.1 — MultiAuth, token caching, connection pooling, response limiting, tool tags
 - **Sprint 3** &#x2705; Resources + Aggregation — 5 MCP resources, `aggregate_records` Stats API tool
 - **v0.6.0** &#x2705; FastMCP 4.0 — MCP 2026-07-28 stateless protocol support, fail-closed HTTP hardening, community fixes
 - **v0.6.1** &#x2705; OAuth ROPC timeout + refresh-token grant, mypy in CI, dependency refresh
 - **v0.7.0** &#x2705; Safety & governance — tool annotations, read-only mode, table allow/deny lists, opt-in destructive-call confirmation, JSON audit log, schema inheritance
-- **v0.8.0** &#x2705; Skills over MCP — the four skills ship in the wheel as `skill://` resources (SEP-2640), server instructions, plugin slimmed to server + skills
-- **Next** — MCP prompts (v0.9), "Run alongside native" guide, per-token scopes over HTTP, developer-plane tools (system logs, health checks)
+- **v0.8.0** Skills over MCP — the four skills ship in the wheel as `skill://` resources (SEP-2640 shape), server instructions, `render_instructions` for composition, update-set preference and auth fixes; verified with Claude Code, Codex and pi
+- **Next** — declare the SEP-2640 skills extension when FastMCP ships it, a read-only `check_connection` diagnostic, MCP prompts (v0.9), "Run alongside native" guide, per-token scopes over HTTP
 
 ## Related Projects
 
