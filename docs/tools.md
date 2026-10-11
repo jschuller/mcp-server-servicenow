@@ -1,6 +1,6 @@
 # Tools, resources and skills
 
-19 tools, 5 resources and 4 Agent Skills. Every tool carries MCP annotations (`readOnlyHint`, `destructiveHint`, `idempotentHint`, `openWorldHint`), so your client decides which calls need your approval. `--read-only` hides the 7 write tools.
+19 tools, 5 resources and 4 Agent Skills. Every tool carries MCP annotations (`readOnlyHint`, `destructiveHint`, `idempotentHint`, `openWorldHint`), so your client decides which calls need your approval. `--read-only` hides the 7 write tools, and so does an identity with `snc_read_only`.
 
 ## Tools
 
@@ -41,12 +41,12 @@
 
 ## Roles
 
-ServiceNow's ACLs decide what the user can do; the server adds nothing on top. Base-system roles, from least to most:
+ServiceNow's ACLs decide what the user can do; the server adds nothing on top. Base-system roles, from least to most (choosing an identity for a company instance: [recommended integration identity](configuration.md#recommended-integration-identity)):
 
 | You want | Roles | Run with |
 |---|---|---|
-| Read ITSM and CMDB data (the [start-here](../README.md#2-create-an-integration-user) user) | `itil` + `snc_read_only` | `--read-only` |
-| …and create or update incidents and CIs | `itil` (no `snc_read_only`) | no flag; the client asks before writes |
+| Read ITSM and CMDB data (the [start-here](../README.md#2-create-an-integration-user) user) | `itil` + `snc_read_only` | no flag: write tools are hidden for `snc_read_only` |
+| …and create or update incidents and CIs | `itil` (no `snc_read_only`) | no flag; the client asks before writes (`--read-only` on clients that don't ask) |
 | …and delete incidents, problems, changes | add `itil_admin` | |
 | Table schemas (`get_table_schema`, `servicenow://schema/*`) | add `personalize_dictionary` | |
 | Update sets, system properties | `admin` — on a PDI only | |

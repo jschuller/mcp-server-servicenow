@@ -1,6 +1,6 @@
 # Client setup
 
-Every snippet below assumes the [start-here](../README.md#2-create-an-integration-user) identity: user `mcp.integration` (*Web service access only*, roles `itil` + `snc_read_only`) and `--read-only`. Drop `--read-only` once the user has write roles. You need [uv](https://docs.astral.sh/uv/getting-started/installation/) (`uvx` runs the server without installing it): `curl -LsSf https://astral.sh/uv/install.sh | sh` on macOS/Linux, `winget install astral-sh.uv` on Windows.
+Every snippet below assumes the [start-here](../README.md#2-create-an-integration-user) identity: user `mcp.integration` (*Web service access only*, roles `itil` + `snc_read_only`). Because it holds `snc_read_only`, the server lists only the 12 read-only tools; with a user that can write, all 19 appear and your client decides when to ask. Add `--read-only` for a writable identity on a client without approval prompts (opencode, pi) or on a shared HTTP server. You need [uv](https://docs.astral.sh/uv/getting-started/installation/) (`uvx` runs the server without installing it): `curl -LsSf https://astral.sh/uv/install.sh | sh` on macOS/Linux, `winget install astral-sh.uv` on Windows.
 
 Basic auth is the default (`SERVICENOW_AUTH_TYPE=basic`). OAuth, API keys, multiple instances and a launcher that reads secrets from your OS store: [configuration.md](configuration.md).
 
@@ -14,7 +14,7 @@ claude mcp add servicenow \
   -e SERVICENOW_INSTANCE_URL=https://devNNNNNN.service-now.com \
   -e SERVICENOW_USERNAME=mcp.integration \
   -e SERVICENOW_PASSWORD="$SERVICENOW_PASSWORD" \
-  -- uvx mcp-server-servicenow --read-only
+  -- uvx mcp-server-servicenow
 ```
 
 Windows (PowerShell 5.1 or 7):
@@ -22,7 +22,7 @@ Windows (PowerShell 5.1 or 7):
 ```powershell
 $s = Read-Host 'Password' -AsSecureString
 $p = [Runtime.InteropServices.Marshal]::PtrToStringBSTR([Runtime.InteropServices.Marshal]::SecureStringToBSTR($s))
-claude mcp add servicenow -e SERVICENOW_INSTANCE_URL=https://devNNNNNN.service-now.com -e SERVICENOW_USERNAME=mcp.integration -e "SERVICENOW_PASSWORD=$p" -- uvx mcp-server-servicenow --read-only
+claude mcp add servicenow -e SERVICENOW_INSTANCE_URL=https://devNNNNNN.service-now.com -e SERVICENOW_USERNAME=mcp.integration -e "SERVICENOW_PASSWORD=$p" -- uvx mcp-server-servicenow
 ```
 
 Claude Code keeps the value in its own config (`~/.claude.json`); for a company instance, use a launcher from [keeping secrets out of config files](configuration.md#keeping-secrets-out-of-config-files).
@@ -52,7 +52,7 @@ Edit `claude_desktop_config.json` — macOS: `~/Library/Application Support/Clau
   "mcpServers": {
     "servicenow": {
       "command": "uvx",
-      "args": ["mcp-server-servicenow", "--read-only"],
+      "args": ["mcp-server-servicenow"],
       "env": {
         "SERVICENOW_INSTANCE_URL": "https://devNNNNNN.service-now.com",
         "SERVICENOW_USERNAME": "mcp.integration",
@@ -79,7 +79,7 @@ Add to `.vscode/mcp.json` in your workspace, or run **MCP: Open User Configurati
     "servicenow": {
       "type": "stdio",
       "command": "uvx",
-      "args": ["mcp-server-servicenow", "--read-only"],
+      "args": ["mcp-server-servicenow"],
       "env": {
         "SERVICENOW_INSTANCE_URL": "${input:servicenow-url}",
         "SERVICENOW_USERNAME": "mcp.integration",
@@ -101,7 +101,7 @@ Add to `.cursor/mcp.json` (project) or `~/.cursor/mcp.json`; Cursor reads the pa
   "mcpServers": {
     "servicenow": {
       "command": "uvx",
-      "args": ["mcp-server-servicenow", "--read-only"],
+      "args": ["mcp-server-servicenow"],
       "env": {
         "SERVICENOW_INSTANCE_URL": "https://devNNNNNN.service-now.com",
         "SERVICENOW_USERNAME": "mcp.integration",
@@ -120,7 +120,7 @@ Not yet verified against this release.
 codex mcp add servicenow \
   --env SERVICENOW_INSTANCE_URL=https://devNNNNNN.service-now.com \
   --env SERVICENOW_USERNAME=mcp.integration \
-  -- uvx mcp-server-servicenow --read-only
+  -- uvx mcp-server-servicenow
 ```
 
 Then forward the password from your shell instead of writing it to `~/.codex/config.toml`: add `env_vars = ["SERVICENOW_PASSWORD"]` under `[mcp_servers.servicenow]` ([example](configuration.md#codex-cli-codexconfigtoml)). Codex auto-approves tools annotated `readOnlyHint` and asks before the rest.
@@ -133,7 +133,7 @@ agy mcp add \
   -e SERVICENOW_INSTANCE_URL=https://devNNNNNN.service-now.com \
   -e SERVICENOW_USERNAME=mcp.integration \
   -e SERVICENOW_PASSWORD="$SERVICENOW_PASSWORD" \
-  servicenow uvx mcp-server-servicenow --read-only
+  servicenow uvx mcp-server-servicenow
 ```
 
 Antigravity asks before every MCP tool call, read-only ones included, and print mode (`agy -p`) denies what it cannot ask about. For a read-only server you can pre-approve its tools in `~/.gemini/antigravity-cli/settings.json`: `"permissions": {"allow": ["mcp(servicenow/*)"]}`.
@@ -150,7 +150,7 @@ Add to `opencode.json` in your project, or `~/.config/opencode/opencode.json`; o
   "mcp": {
     "servicenow": {
       "type": "local",
-      "command": ["uvx", "mcp-server-servicenow", "--read-only"],
+      "command": ["uvx", "mcp-server-servicenow"],
       "environment": {
         "SERVICENOW_INSTANCE_URL": "https://devNNNNNN.service-now.com",
         "SERVICENOW_USERNAME": "mcp.integration",
@@ -161,7 +161,7 @@ Add to `opencode.json` in your project, or `~/.config/opencode/opencode.json`; o
 }
 ```
 
-Check it with `opencode mcp list`. opencode **allows MCP tools without asking** by default, so keep `--read-only`, or make it ask before every ServiceNow call with `"permission": { "servicenow_*": "ask" }` at the top level of the same file (`opencode run` then refuses those calls instead of asking).
+Check it with `opencode mcp list`. opencode **allows MCP tools without asking** by default. The start-here user already hides the write tools; with a writable identity add `--read-only`, or make it ask before every ServiceNow call with `"permission": { "servicenow_*": "ask" }` at the top level of the same file (`opencode run` then refuses those calls instead of asking).
 
 ## pi
 
@@ -170,11 +170,11 @@ pi mcp add servicenow --exposure direct \
   --env SERVICENOW_INSTANCE_URL=https://devNNNNNN.service-now.com \
   --env SERVICENOW_USERNAME=mcp.integration \
   --env 'SERVICENOW_PASSWORD=${SERVICENOW_PASSWORD}' \
-  -- uvx mcp-server-servicenow --read-only
+  -- uvx mcp-server-servicenow
 pi mcp list   # connects and lists 12 tools, 15 resources
 ```
 
-`--exposure direct` lets the model call the tools by name (pi's default, `codemode`, wraps them in scripts). pi has no permission prompts: keep `--read-only` unless you want the model to write unasked.
+`--exposure direct` lets the model call the tools by name (pi's default, `codemode`, wraps them in scripts). pi has no permission prompts: the start-here user already hides the write tools; with a writable identity add `--read-only` unless you want the model to write unasked.
 
 ## How clients use the skills
 
@@ -193,7 +193,7 @@ Checked on 2026-10-11 against a ServiceNow Brazil PDI (stdio, read-only identity
 
 | Client | Protocol | Tools and approval | Skills over MCP |
 |---|---|---|---|
-| Claude Code 2.1.296 | 2026-07-28 | 12 tools in `--read-only`; permission prompt before writes (default mode); plugin adds `/servicenow:<skill>` | read before querying, unprompted |
+| Claude Code 2.1.296 | 2026-07-28 | 12 tools (`snc_read_only` identity); permission prompt before writes (default mode); plugin adds `/servicenow:<skill>` | read before querying, unprompted |
 | VS Code 1.140 + GitHub Copilot | not recorded | 12 tools in Agent mode; read-only tools run without approval; confirmation before write tools | not read on its own; attach via Add Context › MCP Resources |
 | Codex CLI 0.162.1 | 2025-06-18 | read-only tools run without approval; approval prompt for the rest; `codex exec` refuses them | read before querying, unprompted |
 | Antigravity CLI 1.1.20 | not recorded | loaded on demand; asks before every MCP call; print mode denies unless allowed | read before querying, unprompted |
