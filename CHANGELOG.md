@@ -11,8 +11,9 @@ declare the `io.modelcontextprotocol/skills` extension (`skills/list`), which
 waits for FastMCP support. MCP prompts are deferred to 0.9.
 
 Verified on 2026-10-10/11 against a Brazil instance with Claude Code 2.1.296,
-Codex CLI 0.162.1, Antigravity CLI 1.1.20 and pi 1.1.0, and the write paths as
-an admin's own OAuth token over Streamable HTTP — see "Verified clients" in
+VS Code 1.140 with GitHub Copilot, Codex CLI 0.162.1, opencode 1.19.0,
+Antigravity CLI 1.1.20 and pi 1.1.0, and the write paths as an admin's own
+OAuth token over Streamable HTTP — see "Verified clients" in
 `docs/clients.md`.
 
 ### Upgrade notes

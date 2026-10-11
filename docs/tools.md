@@ -103,4 +103,4 @@ All off by default except the audit log; flags and environment variables are in 
 {"ts":"2026-08-22T19:04:11.512+00:00","run_id":"…","event":"tool_call","name":"update_record","user":"admin","auth_mode":"service-account","transport":"stdio","table":"incident","sys_id":"9d385017c611228701d22104cc95c371","data_keys":["state"],"tags":["table","write"],"outcome":"ok","duration_ms":212.4}
 ```
 
-**Who approves writes:** the MCP client. Claude Code and VS Code ask before a write tool unless you allowed it; Codex auto-runs only read-only tools; Antigravity asks before every MCP tool; pi has no approval prompts, so give it `--read-only` or a read-only identity. ServiceNow's ACLs and `snc_read_only` remain the security boundary.
+**Who approves writes:** the MCP client. Claude Code and VS Code ask before a write tool unless you allowed it; Codex auto-runs only read-only tools; Antigravity asks before every MCP tool; opencode runs MCP tools without asking unless its `permission` config says `ask`, and pi has no approval prompts, so give those two `--read-only` or a read-only identity. ServiceNow's ACLs and `snc_read_only` remain the security boundary.

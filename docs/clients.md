@@ -90,7 +90,7 @@ Add to `.vscode/mcp.json` in your workspace, or run **MCP: Open User Configurati
 }
 ```
 
-Use Copilot Chat in **Agent** mode; the tools appear under the tools picker.
+Click **Start** above the server in `mcp.json` (or run **MCP: List Servers**), then use Copilot Chat in **Agent** mode; the 12 read-only tools appear in the tools picker. VS Code asks you to confirm tool calls, with options to allow a tool for the session, the workspace or always. Copilot does not read the skills on its own: attach one with **Add Context › MCP Resources** (for example `skill://servicenow-cmdb/SKILL.md`) when you want the guided workflow.
 
 ## Cursor
 
@@ -138,27 +138,30 @@ agy mcp add \
 
 Antigravity asks before every MCP tool call, read-only ones included, and print mode (`agy -p`) denies what it cannot ask about. For a read-only server you can pre-approve its tools in `~/.gemini/antigravity-cli/settings.json`: `"permissions": {"allow": ["mcp(servicenow/*)"]}`.
 
-## Gemini CLI
+**Gemini CLI:** Google now points individual users to Antigravity; on 2026-10-11 Gemini CLI 0.63.0 refused personal Google sign-in. With a Gemini API key or a Google Cloud project it takes the same `mcpServers` block as Claude Desktop in `~/.gemini/settings.json` (not verified).
 
-Add to `~/.gemini/settings.json` (or `.gemini/settings.json` in a trusted project); Gemini CLI expands `$VAR` from its environment:
+## opencode
+
+Add to `opencode.json` in your project, or `~/.config/opencode/opencode.json`; opencode fills `{env:…}` from the environment it was started in:
 
 ```json
 {
-  "mcpServers": {
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
     "servicenow": {
-      "command": "uvx",
-      "args": ["mcp-server-servicenow", "--read-only"],
-      "env": {
+      "type": "local",
+      "command": ["uvx", "mcp-server-servicenow", "--read-only"],
+      "environment": {
         "SERVICENOW_INSTANCE_URL": "https://devNNNNNN.service-now.com",
         "SERVICENOW_USERNAME": "mcp.integration",
-        "SERVICENOW_PASSWORD": "$SERVICENOW_PASSWORD"
+        "SERVICENOW_PASSWORD": "{env:SERVICENOW_PASSWORD}"
       }
     }
   }
 }
 ```
 
-Not verified: on 2026-10-11 Gemini CLI 0.63.0 no longer accepted personal Google sign-in ("migrate to Antigravity"), so it needs a Gemini API key or a Google Cloud project.
+Check it with `opencode mcp list`. opencode **allows MCP tools without asking** by default, so keep `--read-only`, or make it ask before every ServiceNow call with `"permission": { "servicenow_*": "ask" }` at the top level of the same file (`opencode run` then refuses those calls instead of asking).
 
 ## pi
 
@@ -178,20 +181,23 @@ pi mcp list   # connects and lists 12 tools, 15 resources
 - **Claude Code** reads them on its own: the server's `instructions` tell the model which skill matches which request, and the model fetches the resource before calling tools. The plugin also installs the same four files as filesystem skills.
 - **Codex CLI and pi** expose MCP resources to the model (`list_mcp_resources` / `read_mcp_resource`). Codex follows the instructions and reads the matching skill unprompted; pi passes only their first line, so its model reads a skill when asked. Both also load the same `SKILL.md` folders from disk (`~/.agents/skills/`, or pi's `--skill <dir>`).
 - **Antigravity CLI** loads tools on demand and reads the server's `instructions`; it read the CMDB skill and a reference file unprompted before querying.
+- **opencode** gives the model `list_mcp_resources` / `read_mcp_resource`; it read the CMDB skill, a reference file and the query-syntax help unprompted before querying.
+- **VS Code (Copilot)** lists them under **Add Context › MCP Resources**; in our check Copilot called the tools without reading a skill first, so attach one yourself.
 - **Claude Desktop** lists them under the server's connector entry in the `+` menu; attaching one reads it over MCP (verified on Desktop 1.46388.4).
 - **Hosts implementing SEP-2640** list them next to local skills. The server will declare the extension (`skills/list`) once FastMCP ships it.
 - **Any other client that surfaces MCP resources** — VS Code's *Add Context → MCP Resources*, for example — can attach them like any resource.
 
 ## Verified clients
 
-Checked on 2026-10-10/11 against ServiceNow Brazil instances (stdio, read-only identity, this release):
+Checked on 2026-10-11 against a ServiceNow Brazil PDI (stdio, read-only identity, this release), asking for the five most recent incidents and a CMDB health summary:
 
-| | Claude Code 2.1.296 | Codex CLI 0.162.1 | Antigravity CLI 1.1.20 | pi 1.1.0 |
-|---|---|---|---|---|
-| Protocol negotiated | 2026-07-28 | 2025-06-18 | not recorded | 2025-11-25 |
-| Tools + annotations | ✓ (12 in `--read-only`) | ✓ read-only tools run without approval; `codex exec` refuses the rest | ✓ loaded on demand; asks before every MCP call | ✓ (`--exposure direct`) |
-| Skills as MCP resources | ✓ read before querying, unprompted | ✓ read before querying, unprompted | ✓ read before querying, unprompted | ✓ when asked (pi passes only the first line of `instructions`) |
-| Skills from disk | ✓ plugin: `/servicenow:<skill>` | not tested | not tested | listed with `--skill <dir>` |
-| Write tools | permission prompt before each (default mode) | approval prompt in the TUI; `codex exec` refuses them | permission prompt; print mode denies | no prompt: use `--read-only` |
+| Client | Protocol | Tools and approval | Skills over MCP |
+|---|---|---|---|
+| Claude Code 2.1.296 | 2026-07-28 | 12 tools in `--read-only`; permission prompt before writes (default mode); plugin adds `/servicenow:<skill>` | read before querying, unprompted |
+| VS Code 1.140 + GitHub Copilot | not recorded | 12 tools in Agent mode; VS Code asks to confirm tool calls | not read on its own; attach via Add Context › MCP Resources |
+| Codex CLI 0.162.1 | 2025-06-18 | read-only tools run without approval; approval prompt for the rest; `codex exec` refuses them | read before querying, unprompted |
+| Antigravity CLI 1.1.20 | not recorded | loaded on demand; asks before every MCP call; print mode denies unless allowed | read before querying, unprompted |
+| opencode 1.19.0 | not recorded | runs every MCP tool without asking unless `permission` says `ask` | read before querying, unprompted |
+| pi 1.1.0 | 2025-11-25 | `--exposure direct`; no approval prompts | when asked (pi passes only the first line of `instructions`) |
 
-The write paths (create/update/delete, update sets, schema) were checked separately over Streamable HTTP with an admin's own ServiceNow OAuth token forwarded per user: `scripts/stdio_smoke.py --profile write`, 33/33, audit lines carry the caller (`"user":"admin","auth_mode":"oauth"`).
+Clients without approval prompts (opencode by default, pi) should run with `--read-only` or a read-only identity. The write paths (create/update/delete, update sets, schema) were checked separately over Streamable HTTP with an admin's own ServiceNow OAuth token forwarded per user: `scripts/stdio_smoke.py --profile write`, 33/33, audit lines carry the caller (`"user":"admin","auth_mode":"oauth"`).
