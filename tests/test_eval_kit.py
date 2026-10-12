@@ -296,6 +296,10 @@ def test_summary_against_a_tools_only_baseline(tmp_path: Path) -> None:
     assert "| easy | 1.00 | 1.00 | +0.00 |" in text
     assert "| Cost (list-price estimate) | $0.75 |" in text
     assert badge["message"] == "1/2 cases, +0.50 vs tools"
+    assert (
+        "--eval-baseline . ../tools-only && claude plugin eval ../tools-only --ablation none"
+        in text
+    )
 
 
 def test_tools_only_copy(tmp_path: Path) -> None:

@@ -403,6 +403,14 @@ def summarize(
         f"Reproduce from this commit: `{reproduce}`",
         "",
     ]
+    if baseline is not None:
+        baseline_cmd = (
+            "mcp-server-servicenow --eval-baseline . ../tools-only && "
+            + reproduce.replace("eval .", "eval ../tools-only").replace(
+                f"--ablation {ablation}", "--ablation none"
+            )
+        )
+        lines[-1:-1] = ["", f"Tools-only baseline: `{baseline_cmd}`"]
 
     ratio = 0.0
     if isinstance(passed, int) and isinstance(total, int) and total > 0:

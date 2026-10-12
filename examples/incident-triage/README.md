@@ -17,3 +17,4 @@ It needs `itil`. Add `snc_read_only` for a read-only identity; the skill then pr
   - or load this folder as a Claude Code plugin: `claude --plugin-dir examples/incident-triage`.
 - **Validate:** `uvx mcp-server-servicenow --validate-skills skills --strict`.
 - **Behaviour tests with mocked tools:** `claude plugin eval .`. This uses your Claude plan's allowance.
+- **Results:** [RESULTS.md](RESULTS.md), from a pinned run. It includes what the skills add over the bare tools, case by case.
