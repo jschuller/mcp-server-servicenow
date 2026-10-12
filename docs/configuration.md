@@ -202,6 +202,8 @@ These run, print a report and exit; they don't start the server.
 | `--strict` | With `--validate-skills`: warnings fail too |
 | `--eval-mocks PLUGIN_DIR` | Write `claude plugin eval` mocks of this server's tools into the plugin's `evals/mocks/<server>/` ([eval kit](skill-profile.md#the-eval-kit)); keeps your edits |
 | `--eval-summary RESULT_JSON` | Print a Markdown summary of a finished eval run for a `RESULTS.md`; exit 1 on a partial run |
+| `--eval-baseline PLUGIN_DIR OUT_DIR` | Copy a skills plugin without its skills, to run the same cases against the bare tools |
+| `--baseline RESULT_JSON` | With `--eval-summary`: the tools-only run, to report what the skills add |
 | `--badge FILE` | With `--eval-summary`: also write a shields.io endpoint badge |
 
 Boolean env vars accept `1`, `true`, `yes`, `on` (case-insensitive). Empty values and unexpanded `${VAR}` placeholders (as Claude Code passes for unset plugin env vars) are treated as unset.

@@ -5,7 +5,7 @@ import os
 import subprocess
 import sys
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, List
 
 import pytest
 
@@ -15,6 +15,7 @@ from servicenow_mcp.eval_kit import (
     summarize,
     tools_list,
     write_eval_mocks,
+    write_tools_only,
 )
 from servicenow_mcp.skill_lint import TABLES_KEY
 
@@ -161,8 +162,8 @@ def test_summary_table_and_badge(tmp_path: Path) -> None:
     assert "| Cases passed | 1 / 2 (threshold 0.8) |" in text
     assert "| Δ vs no plugin | +0.25 |" in text
     assert "| Model / judge | sonnet / default |" in text
-    assert "| sla-overlap | 1.00 | +0.50 |" in text
-    assert "| change-collision | 0.50 | — |" in text
+    assert "| sla-overlap | 1.00 | — | — | +0.50 |" in text
+    assert "| change-collision | 0.50 | — | — | — |" in text
     assert "| Kind | self-reported |" in text
     assert (
         "claude plugin eval . --ablation with-without --model sonnet --runs 3" in text
@@ -240,3 +241,75 @@ def test_cli(tmp_path: Path) -> None:
         [*cmd, "--eval-summary", str(partial)], capture_output=True, text=True, env=env
     )
     assert out.returncode == 1 and "partial run" in out.stderr
+
+
+def _case(name: str, runs: List[Dict[str, bool]], delta: Any = None) -> Dict[str, Any]:
+    """A case whose 'task' grader passes per run as given; 'skill-fired' always passes."""
+    return {
+        "name": name,
+        "runsPerCase": len(runs),
+        "graders": [
+            {"name": "task", "type": "llm"},
+            {"name": "skill-fired", "type": "tool_used", "config": {"tool": "Skill"}},
+        ],
+        "arms": {
+            "with": [
+                {
+                    "graders": [
+                        {"name": "task", "passed": r["task"], "weight": 1},
+                        {
+                            "name": "skill-fired",
+                            "passed": r.get("skill", False),
+                            "weight": 1,
+                        },
+                    ]
+                }
+                for r in runs
+            ]
+        },
+        "aggregates": {"score": 1, "delta": delta},
+    }
+
+
+def test_summary_against_a_tools_only_baseline(tmp_path: Path) -> None:
+    with_skills = {
+        **RESULT,
+        "cases": [
+            _case("fallback", [{"task": True, "skill": True}] * 2),
+            _case("easy", [{"task": True, "skill": True}] * 2),
+        ],
+    }
+    tools_only = {
+        **RESULT,
+        "costUsd": 0.5,
+        "cases": [
+            _case("fallback", [{"task": False}, {"task": False}]),
+            _case("easy", [{"task": True}, {"task": True}]),
+        ],
+    }
+    main = write_result(tmp_path, with_skills)
+    base = tmp_path / "baseline.json"
+    base.write_text(json.dumps(tools_only))
+    text, badge = summarize(main, base)
+    assert "| Δ vs tools only | +0.50 |" in text
+    assert "| fallback | 1.00 | 0.00 | +1.00 |" in text
+    assert "| easy | 1.00 | 1.00 | +0.00 |" in text
+    assert "| Cost (list-price estimate) | $0.75 |" in text
+    assert badge["message"] == "1/2 cases, +0.50 vs tools"
+
+
+def test_tools_only_copy(tmp_path: Path) -> None:
+    plugin = make_plugin(tmp_path / "plugin")
+    write_eval_mocks(plugin, "9.9.9")
+    (plugin / "evals" / "results" / "old").mkdir(parents=True)
+    (plugin / "evals" / "case").mkdir()
+    (plugin / "evals" / "case" / "prompt.md").write_text("Hi")
+    out = tmp_path / "tools-only"
+    write_tools_only(plugin, out)
+    manifest = json.loads((out / ".claude-plugin" / "plugin.json").read_text())
+    assert "skills" not in manifest and manifest["name"] == "my-skills"
+    assert (out / "evals" / "case" / "prompt.md").is_file()
+    assert (out / "evals" / "mocks" / "servicenow" / "_tools.json").is_file()
+    assert not (out / "evals" / "results").exists() and not (out / "skills").exists()
+    with pytest.raises(EvalKitError, match="not empty"):
+        write_tools_only(plugin, out)

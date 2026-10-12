@@ -12,8 +12,12 @@ Claude Code plugin whose ``mcpServers`` runs this server:
 
 Existing mocks and fixtures are kept, so edit them freely.
 
-``mcp-server-servicenow --eval-summary aggregate-result.json`` turns a finished run
-(``schemaVersion`` 1) into a Markdown table for a ``RESULTS.md``, and with ``--badge FILE``
+``mcp-server-servicenow --eval-baseline PLUGIN_DIR OUT_DIR`` copies the plugin without its
+skills, so the same cases run against the bare tools.
+
+``mcp-server-servicenow --eval-summary aggregate-result.json [--baseline tools-only.json]``
+turns a finished run (``schemaVersion`` 1) into a Markdown table for a ``RESULTS.md``, with
+what the skills add over the bare tools when a baseline run is given; ``--badge FILE``
 writes a shields.io endpoint badge. A partial run is refused.
 """
 
@@ -22,9 +26,10 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import shutil
 import subprocess
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 from servicenow_mcp.skill_lint import (
     TABLES_KEY,
@@ -218,22 +223,89 @@ def _mocks_version(result: Dict[str, Any]) -> Optional[str]:
     return None
 
 
-def summarize(result_path: Path) -> Tuple[str, Dict[str, Any]]:
-    """Markdown for RESULTS.md and a shields.io endpoint badge, from a finished run."""
+def write_tools_only(plugin_dir: Path, out_dir: Path) -> List[str]:
+    """Copy a plugin without its skills, so the same cases measure the bare tools.
+
+    The copy keeps the manifest's name, so mocked tool names match the graders, and the
+    whole ``evals/`` folder except ``results/``. Return the paths written.
+    """
+    manifest = read_manifest(plugin_dir)
+    if servicenow_server(manifest) is None:
+        raise EvalKitError(
+            f"{plugin_dir}: plugin.json has no mcpServers entry that runs "
+            "mcp-server-servicenow"
+        )
+    if out_dir.exists() and any(out_dir.iterdir()):
+        raise EvalKitError(f"{out_dir}: not empty; give a new folder")
+    if not (plugin_dir / "evals").is_dir():
+        raise EvalKitError(f"{plugin_dir}: no evals/ folder to copy")
+    baseline = {k: v for k, v in manifest.items() if k != "skills"}
+    baseline["description"] = "Tools-only baseline: the same server, no skills"
+    (out_dir / ".claude-plugin").mkdir(parents=True)
+    (out_dir / ".claude-plugin" / "plugin.json").write_text(
+        json.dumps(baseline, indent=2) + "\n", encoding="utf-8"
+    )
+    shutil.copytree(
+        plugin_dir / "evals",
+        out_dir / "evals",
+        ignore=lambda folder, names: [n for n in names if n == "results"],
+    )
+    return [".claude-plugin/plugin.json", "evals/"]
+
+
+def _load_result(path: Path) -> Dict[str, Any]:
     try:
-        result = json.loads(result_path.read_text(encoding="utf-8"))
+        result = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError) as exc:
-        raise EvalKitError(f"{result_path}: cannot read ({exc})") from exc
+        raise EvalKitError(f"{path}: cannot read ({exc})") from exc
     if not isinstance(result, dict) or result.get("schemaVersion") != 1:
         raise EvalKitError(
-            f"{result_path}: not a claude plugin eval result with schemaVersion 1"
+            f"{path}: not a claude plugin eval result with schemaVersion 1"
         )
     if result.get("partial"):
         reason = result.get("partialReason") or "unknown reason"
         raise EvalKitError(
-            f"{result_path}: a partial run ({reason}) is not comparable; "
+            f"{path}: a partial run ({reason}) is not comparable; "
             "run the suite to completion"
         )
+    return result
+
+
+def _skill_graders(case: Dict[str, Any]) -> Set[Any]:
+    """Graders that check the Skill tool fired: they can't pass without skills."""
+    names = set()
+    for grader in case.get("graders") or []:
+        config = grader.get("config") or {}
+        if grader.get("type") == "tool_used" and config.get("tool") == "Skill":
+            names.add(grader.get("name"))
+    return names
+
+
+def _task_score(case: Dict[str, Any]) -> Optional[float]:
+    """Mean with-arm score over the graders that aren't Skill checks."""
+    skip = _skill_graders(case)
+    scores = []
+    for run in (case.get("arms") or {}).get("with") or []:
+        graders = [g for g in run.get("graders") or [] if g.get("name") not in skip]
+        weight = sum(_number(g.get("weight")) or 1.0 for g in graders)
+        if weight:
+            got = sum(
+                _number(g.get("weight")) or 1.0 for g in graders if g.get("passed")
+            )
+            scores.append(got / weight)
+    return sum(scores) / len(scores) if scores else None
+
+
+def summarize(
+    result_path: Path, baseline_path: Optional[Path] = None
+) -> Tuple[str, Dict[str, Any]]:
+    """Markdown for RESULTS.md and a shields.io endpoint badge, from a finished run.
+
+    With ``baseline_path`` (a tools-only run of the same cases, from ``--eval-baseline``),
+    it also reports what the skills add over the bare tools, case by case.
+    """
+    result = _load_result(result_path)
+    baseline = _load_result(baseline_path) if baseline_path else None
 
     suite = result.get("suite") or {}
     agg = result.get("aggregates") or {}
@@ -251,6 +323,21 @@ def summarize(result_path: Path) -> Tuple[str, Dict[str, Any]]:
     commit = _commit()
     mocks_version = _mocks_version(result)
 
+    tools_only: Dict[Any, Optional[float]] = {}
+    if baseline is not None:
+        tools_only = {
+            c.get("name"): _task_score(c)
+            for c in baseline.get("cases") or []
+            if isinstance(c, dict)
+        }
+    over_tools = [
+        s - t
+        for c in cases
+        for s, t in [(_task_score(c), tools_only.get(c.get("name")))]
+        if s is not None and t is not None
+    ]
+    mean_over_tools = sum(over_tools) / len(over_tools) if over_tools else None
+
     rows = [
         (
             "Cases passed",
@@ -258,6 +345,12 @@ def summarize(result_path: Path) -> Tuple[str, Dict[str, Any]]:
             + (f" (threshold {threshold:g})" if threshold is not None else ""),
         ),
         ("Suite score", _fmt(_number(agg.get("overallScore")))),
+        (
+            "Δ vs tools only",
+            _fmt(mean_over_tools, signed=True)
+            if mean_over_tools is not None
+            else "— (no tools-only baseline)",
+        ),
         (
             "Δ vs no plugin",
             _fmt(mean_delta, signed=True)
@@ -271,18 +364,25 @@ def summarize(result_path: Path) -> Tuple[str, Dict[str, Any]]:
             "Mocks from",
             f"mcp-server-servicenow {mocks_version}" if mocks_version else "—",
         ),
-        ("Cost (list-price estimate)", f"${_number(result.get('costUsd')) or 0:.2f}"),
+        ("Cost (list-price estimate)", f"${_cost(result, baseline):.2f}"),
         ("Started", str(result.get("startedAt") or "—")),
         ("Commit", commit or "—"),
         ("Kind", f"CI-run: {ci_url}" if ci_url else "self-reported"),
     ]
     lines = ["## Eval results", "", "| | |", "|---|---|"]
     lines += [f"| {k} | {v} |" for k, v in rows]
-    lines += ["", "| Case | Score | Δ |", "|---|---|---|"]
+    lines += [
+        "",
+        "| Case | Score | Tools only | Δ vs tools | Δ vs no plugin |",
+        "|---|---|---|---|---|",
+    ]
     for case in cases:
         case_agg = case.get("aggregates") or {}
+        mine, bare = _task_score(case), tools_only.get(case.get("name"))
         lines.append(
             f"| {case.get('name', '?')} | {_fmt(_number(case_agg.get('score')))} | "
+            f"{_fmt(bare)} | "
+            f"{_fmt(mine - bare if mine is not None and bare is not None else None, signed=True)} | "
             f"{_fmt(_number(case_agg.get('delta')), signed=True)} |"
         )
     reproduce = f"claude plugin eval . --ablation {ablation}"
@@ -294,8 +394,11 @@ def summarize(result_path: Path) -> Tuple[str, Dict[str, Any]]:
         reproduce += f" --runs {runs[-1]}"
     lines += [
         "",
-        "Δ compares the plugin with no plugin at all, and the mocked tools are absent "
-        "without the plugin, so it overstates what the skills add over the bare tools.",
+        "- **Δ vs tools only:** the same cases with this server's tools and no skills "
+        "(`--eval-baseline`), scored without the graders that check a skill fired. "
+        "It is what the skills add.",
+        "- **Δ vs no plugin:** what `claude plugin eval` reports. The mocked tools are "
+        "absent without the plugin, so it overstates what the skills add.",
         "",
         f"Reproduce from this commit: `{reproduce}`",
         "",
@@ -306,7 +409,16 @@ def summarize(result_path: Path) -> Tuple[str, Dict[str, Any]]:
         ratio = passed / total
     color = "brightgreen" if ratio == 1 else ("yellow" if ratio >= 0.8 else "red")
     message = f"{passed}/{total} cases"
-    if mean_delta is not None:
+    if mean_over_tools is not None:
+        message += f", {mean_over_tools:+.2f} vs tools"
+    elif mean_delta is not None:
         message += f", Δ {mean_delta:+.2f}"
     badge = {"schemaVersion": 1, "label": "evals", "message": message, "color": color}
     return "\n".join(lines), badge
+
+
+def _cost(result: Dict[str, Any], baseline: Optional[Dict[str, Any]]) -> float:
+    total = _number(result.get("costUsd")) or 0.0
+    if baseline is not None:
+        total += _number(baseline.get("costUsd")) or 0.0
+    return total

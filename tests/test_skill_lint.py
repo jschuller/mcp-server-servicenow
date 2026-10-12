@@ -474,3 +474,15 @@ def test_tools_json_drift(tmp_path: Path) -> None:
     (warning,) = plugin_messages(lint_skills([plugin]), "warning")
     assert "missing: get_ci" in warning and "unknown: old_tool" in warning
     assert "changed: " in warning and "--eval-mocks" in warning
+
+
+def test_eval_frontmatter_must_parse(tmp_path: Path) -> None:
+    plugin = make_wrapper(tmp_path)
+    case = plugin / "evals" / "my-case"
+    (case / "graders").mkdir(parents=True)
+    (case / "prompt.md").write_text("---\ndescription: Overlap: find them\n---\n\nHi\n")
+    (case / "graders" / "ok.md").write_text("---\ntype: llm\n---\n\nPASS if fine.\n")
+    (plugin / "evals" / "mocks" / "servicenow").mkdir(parents=True)
+    (plugin / "evals" / "mocks" / "servicenow" / "get_ci.md").write_text("{}")
+    errors = plugin_messages(lint_skills([plugin]), "error")
+    assert len(errors) == 1 and "skips this file" in errors[0]

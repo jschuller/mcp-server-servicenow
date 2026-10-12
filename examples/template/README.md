@@ -40,21 +40,23 @@ This writes `evals/mocks/servicenow/`:
 
 The defaults behave like a least-privilege identity: rows come from `fixtures/<table>.json`, aggregates are refused with a 401, and the schema with a 403. Put invented sample rows in the fixtures, never records from a real instance. A case can override any mock in its own `mocks/` folder. Commit `evals/mocks/`, including `.replay/` if it appears.
 
-Write a case per job the skill does (`evals/<case>/prompt.md` plus `graders/`), then run:
+Write a case per job the skill does (`evals/<case>/prompt.md` plus `graders/`), then run the cases with your skills, and again with the bare tools:
 
 ```bash
-claude plugin eval . --runs 3 --ablation with-without
+claude plugin eval . --runs 3 --ablation none --json evals/results.json
+uvx mcp-server-servicenow==0.9.0 --eval-baseline . ../tools-only
+claude plugin eval ../tools-only --runs 3 --ablation none --json evals/baseline.json
 ```
 
-Runs use your Claude plan's allowance or your API key.
+The second run is what tells you whether the skill helps. A case the bare tools already pass shows the skill adds nothing there. Runs use your Claude plan's allowance or your API key.
 
 ## 3. Publish results with the skill
 
 ```bash
-uvx mcp-server-servicenow==0.9.0 --eval-summary evals/results/<run>/aggregate-result.json --badge evals/badge.json > RESULTS.md
+uvx mcp-server-servicenow==0.9.0 --eval-summary evals/results.json --baseline evals/baseline.json --badge evals/badge.json > RESULTS.md
 ```
 
-Commit `RESULTS.md` and `evals/badge.json`, then tag the commit. Anyone can re-run the suite from that tag, because the mocks and cases are in the repository.
+Commit `RESULTS.md` and `evals/badge.json`, then tag the commit. Don't commit the raw result files: they record paths on your machine. Anyone can re-run the suite from that tag, because the mocks and cases are in the repository.
 
 A run in GitHub Actions (`evals.yml`) is labelled **CI-run** and links its log. A local run is labelled **self-reported**. The workflow needs one repository secret:
 - **`ANTHROPIC_API_KEY`**: billed per call.

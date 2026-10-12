@@ -139,6 +139,23 @@ def parse_args() -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--baseline",
+        metavar="RESULT_JSON",
+        help=(
+            "With --eval-summary: a tools-only run of the same cases (see "
+            "--eval-baseline), to report what the skills add over the bare tools"
+        ),
+    )
+    parser.add_argument(
+        "--eval-baseline",
+        nargs=2,
+        metavar=("PLUGIN_DIR", "OUT_DIR"),
+        help=(
+            "Copy a skills plugin without its skills into OUT_DIR, so "
+            "claude plugin eval OUT_DIR runs the same cases against the bare tools"
+        ),
+    )
+    parser.add_argument(
         "--badge",
         metavar="FILE",
         help="With --eval-summary: also write a shields.io endpoint badge to FILE",
@@ -396,13 +413,29 @@ def run_eval_mocks(plugin_dir: str) -> int:
     return 0
 
 
-def run_eval_summary(result: str, badge: Optional[str]) -> int:
+def run_eval_baseline(plugin_dir: str, out_dir: str) -> int:
+    """``--eval-baseline``: write a tools-only copy of a skills plugin."""
+    from servicenow_mcp.eval_kit import EvalKitError, write_tools_only
+
+    try:
+        written = write_tools_only(Path(plugin_dir), Path(out_dir))
+    except EvalKitError as exc:
+        print(f"error   {exc}")
+        return 1
+    for path in written:
+        print(f"wrote   {Path(out_dir) / path}")
+    return 0
+
+
+def run_eval_summary(
+    result: str, badge: Optional[str], baseline: Optional[str] = None
+) -> int:
     """``--eval-summary``: print a run's summary, optionally write its badge."""
     from servicenow_mcp.eval_kit import EvalKitError, summarize
 
     logging.getLogger().setLevel(logging.WARNING)
     try:
-        text, badge_json = summarize(Path(result))
+        text, badge_json = summarize(Path(result), Path(baseline) if baseline else None)
     except EvalKitError as exc:
         print(f"error   {exc}", file=sys.stderr)
         return 1
@@ -426,7 +459,10 @@ def main() -> None:
             sys.exit(run_eval_mocks(args.eval_mocks))
 
         if getattr(args, "eval_summary", None):
-            sys.exit(run_eval_summary(args.eval_summary, args.badge))
+            sys.exit(run_eval_summary(args.eval_summary, args.badge, args.baseline))
+
+        if getattr(args, "eval_baseline", None):
+            sys.exit(run_eval_baseline(*args.eval_baseline))
 
         if getattr(args, "validate_skills", None):
             sys.exit(run_validate_skills(args.validate_skills, strict=args.strict))

@@ -63,13 +63,29 @@ jobs:
           set +e
           claude plugin eval . --trust-plugin --json evals/results.json \
             --runs "$RUNS" --threshold "$THRESHOLD" --model "$MODEL" --judge-model "$JUDGE" \
-            --ablation with-without --no-publish --max-cost-usd "$MAX_COST"
+            --ablation none --no-publish --max-cost-usd "$MAX_COST"
           echo "code=$?" >> "$GITHUB_OUTPUT"
+      - name: Run the same cases with the bare tools (what the skills add)
+        if: always() && steps.run.outputs.code != ''
+        env:
+          RUNS: ${{ inputs.runs }}
+          MODEL: ${{ inputs.model }}
+          JUDGE: ${{ inputs.judge-model }}
+          MAX_COST: ${{ inputs.max-cost-usd }}
+        run: |
+          uvx "mcp-server-servicenow==${SERVER_VERSION}" --eval-baseline . "$RUNNER_TEMP/tools-only"
+          # Its own exit code doesn't matter: skill checks can't pass without skills.
+          claude plugin eval "$RUNNER_TEMP/tools-only" --trust-plugin --json evals/baseline.json \
+            --runs "$RUNS" --model "$MODEL" --judge-model "$JUDGE" \
+            --ablation none --no-publish --max-cost-usd "$MAX_COST" || true
       - name: Summary
         if: always() && steps.run.outputs.code != ''
         run: |
+          baseline=()
+          if [ -f evals/baseline.json ]; then baseline=(--baseline evals/baseline.json); fi
           uvx "mcp-server-servicenow==${SERVER_VERSION}" --eval-summary evals/results.json \
-            --badge evals/badge.json > RESULTS.md && cat RESULTS.md >> "$GITHUB_STEP_SUMMARY"
+            "${baseline[@]}" --badge evals/badge.json > RESULTS.md
+          cat RESULTS.md >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always()
         with:
@@ -78,6 +94,7 @@ jobs:
             RESULTS.md
             evals/badge.json
             evals/results.json
+            evals/baseline.json
             evals/results/
           if-no-files-found: ignore
       - name: Fail below the threshold

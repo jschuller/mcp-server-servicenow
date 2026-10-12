@@ -50,7 +50,7 @@ These rules keep a skill safe to read and to serve: it is instructions and refer
 
 - A **Tables and roles** section: each table, what it gives, and the least role that reads it.
 - A **When access is denied** section:
-  - a 403 means "not assessable with this identity";
+  - a 403 means "not assessable with this identity". Name the role it needs; more access means another identity configured in the server, never credentials asked for in the conversation;
   - 0 rows or fields missing from every row mean "possibly hidden by an ACL";
   - under API-key auth, a 401 from the Aggregate API or a single-record read means a REST API access policy doesn't cover it.
 - **Sources**: cite ServiceNow's documentation by link, in your own words. Pair the readable page with the ServiceNowDocs file at the commit you read:
@@ -105,8 +105,11 @@ The reason is that `claude plugin eval` runs a plugin's hooks, agents and server
   - An empty fixture, `{"count": 0, "records": []}`, for every table the skills declare.
 
   Existing mocks and fixtures are kept. Tools without a mock, including every write tool, aren't available in a run.
-- **`mcp-server-servicenow --eval-summary RESULT_JSON [--badge FILE]`** reads a finished `aggregate-result.json` (`schemaVersion` 1) and prints a Markdown summary. It records:
-  - cases passed, the suite score and Δ;
+- **`mcp-server-servicenow --eval-baseline PLUGIN_DIR OUT_DIR`** copies the plugin without its skills: the same name, server, cases and mocks. Running the cases against it measures the bare tools.
+- **`mcp-server-servicenow --eval-summary RESULT_JSON [--baseline RESULT_JSON] [--badge FILE]`** reads a finished `aggregate-result.json` (`schemaVersion` 1) and prints a Markdown summary. It records:
+  - cases passed and the suite score;
+  - Δ vs tools only, per case and overall, from the baseline run. Graders that check a skill fired are left out, since they can't pass without skills;
+  - Δ vs no plugin, as the eval tool reports it;
   - the model and judge;
   - runs per case and the Claude Code version;
   - the server version that generated the mocks;
@@ -192,5 +195,5 @@ The action needs a release of mcp-server-servicenow that has `--validate-skills`
 
 - **Prompts and the Skills extension.** Prompts move to 0.10. The server will declare `io.modelcontextprotocol/skills` once FastMCP implements `skills/list` (FastMCP issue #5016).
 - **Behaviour evals in CI.** The template's `evals.yml` runs an author's suite with the author's own credential. Running this repository's suites in its CI would need a credential and a usage budget, which has not been decided.
-- **Δ against the bare tools.** The eval tool's Δ compares a plugin with no plugin at all. A fairer baseline for a skill is the same server without the skill. Running the same cases against a tools-only wrapper is still to be tried.
+- **Δ against the bare tools** is measured by a second run against a tools-only copy (`--eval-baseline`). A built-in third arm in `claude plugin eval` would make it one command.
 - **Tables declared but used through dot-walks.** The validator only flags a declared table the skill never mentions. A finer rule would need to parse dot-walks.

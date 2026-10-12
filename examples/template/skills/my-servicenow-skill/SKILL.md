@@ -23,7 +23,7 @@ Declare every table your tool calls read in `io.github.jschuller/servicenow-tabl
 
 ## When access is denied
 
-- **403** on a table: not assessable with this identity. Say which table and which role it needs.
+- **403** on a table: not assessable with this identity. Say which table and which role it needs. More access means another identity configured in the server; never ask for credentials in the conversation.
 - **0 rows** or **fields missing** from every row (`list_records` adds a `warning`): possibly hidden by an ACL. Don't report "nothing found" as a fact.
 - **`aggregate_records` refused** (401 under API-key auth): count from `list_records` rows instead.
 

@@ -28,3 +28,6 @@ docs/mcp-enhancement-roadmap.md
 
 # claude plugin eval output, wherever a suite lives (keep mocks/ and mocks/.replay/)
 **/evals/results/
+# raw result files record local paths; publish RESULTS.md instead
+**/evals/results.json
+**/evals/baseline.json

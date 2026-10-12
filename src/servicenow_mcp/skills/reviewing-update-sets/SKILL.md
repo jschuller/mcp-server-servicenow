@@ -28,7 +28,7 @@ This skill needs an **admin-level identity**. Every table it reads returns 403 o
 
 ## When access is denied
 
-- **403** on `sys_update_set` (or `list_update_sets` fails): the review is not assessable with this identity. Say an admin-level identity is needed, and stop rather than guess.
+- **403** on `sys_update_set` (or `list_update_sets` fails): the review is not assessable with this identity. Say an admin-level identity is needed, configured in the MCP server by whoever runs it, and stop rather than guess. Never ask for credentials or tokens in the conversation.
 - **0 rows** from `sys_update_preview_problem`: either nothing was found or the rows are hidden. Check the set's `collisions` count and state before calling a set clean.
 
 ## Workflows

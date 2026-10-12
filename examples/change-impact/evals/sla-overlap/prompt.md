@@ -1,5 +1,5 @@
 ---
-description: SLA rationalisation: find overlapping definitions and breach rates.
+description: "SLA rationalisation: find overlapping definitions and breach rates."
 max_turns: 15
 allowed_tools: [Skill, Read]
 ---

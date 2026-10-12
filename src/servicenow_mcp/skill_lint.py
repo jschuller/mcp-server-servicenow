@@ -756,6 +756,25 @@ def _check_tools_json(
         )
 
 
+def _check_eval_files(plugin: Path, report: SkillReport) -> None:
+    """Case, grader and mock files need YAML frontmatter that parses, or the case is skipped."""
+    evals = plugin / "evals"
+    if not evals.is_dir():
+        return
+    for path in sorted(evals.rglob("*.md")):
+        rel = path.relative_to(plugin).as_posix()
+        if "/results/" in f"/{rel}" or "/.replay/" in f"/{rel}":
+            continue
+        text = path.read_text(encoding="utf-8", errors="replace")
+        if not text.startswith("---"):
+            continue  # a mock body without frontmatter is fine
+        data, _, problem = _frontmatter(text)
+        if data is None:
+            report.add(
+                "error", rel, None, f"{problem}; claude plugin eval skips this file"
+            )
+
+
 def lint_plugin(plugin: Path, catalog_tools: List[Dict[str, Any]]) -> SkillReport:
     """Check a plugin wrapper: skills plus this server, nothing that runs other code."""
     manifest_path = plugin / ".claude-plugin" / "plugin.json"
@@ -801,6 +820,7 @@ def lint_plugin(plugin: Path, catalog_tools: List[Dict[str, Any]]) -> SkillRepor
             report.add(
                 "error", where, None, f"skills path {entry!r} is not a folder inside"
             )
+    _check_eval_files(plugin, report)
     servers = manifest.get("mcpServers")
     if servers is None:
         report.add("warning", where, None, "no mcpServers: the skills have no tools")

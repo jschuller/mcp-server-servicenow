@@ -57,10 +57,20 @@ content and fixes prepared as 0.8.1, which was never released.
   - an empty fixture for every declared table.
 
   It keeps your edits.
-- **`--eval-summary RESULT_JSON [--badge FILE]`** turns a finished run into a
-  `RESULTS.md` table: score, Δ, models, versions, commit, "CI-run" or "self-reported",
-  and a command to reproduce it. `--badge` writes a shields.io badge. A partial run is
-  refused.
+- **`--eval-baseline PLUGIN_DIR OUT_DIR`** copies a skills plugin without its skills,
+  so the same cases measure the bare tools.
+- **`--eval-summary RESULT_JSON [--baseline RESULT_JSON] [--badge FILE]`** turns a
+  finished run into a `RESULTS.md` table: score, what the skills add over the bare
+  tools per case, Δ vs no plugin, models, versions, commit, "CI-run" or
+  "self-reported", and a command to reproduce it. `--badge` writes a shields.io badge.
+  A partial run is refused.
+  - **Why the baseline:** on the examples, Δ vs no plugin was +1.00 on every case that
+    reads data, but the bare tools alone already scored 1.00 on change collision, so
+    the skill added nothing there. They scored 0.00 on the trend case, where the skill's
+    row-count fallback adds +1.00.
+- **Eval case files are checked:** frontmatter that doesn't parse is an error, because
+  `claude plugin eval` skips the case. The example `sla-overlap` case had an unquoted
+  colon and had never run.
 - **`actions/validate-skills`**, a composite GitHub Action that runs the validator and a
   ServiceNowDocs citation check (blobless clone: an error when a cited page disappears,
   a warning when it changed). This repository's CI runs it with `--strict` on the
@@ -119,6 +129,12 @@ content and fixes prepared as 0.8.1, which was never released.
     read the skill first in 1 of 8 runs of "what's on fire", against 5 of 7 for 0.8.0.
   - The new wording read it in 7 of 7. On an access question it read it in 5 of 5,
     against 1 of 4 before. It still skipped the skill for "which user am I?" (3 of 3).
+- **On a 403, the instructions add that more access means another identity configured
+  in the server, never credentials asked for in the chat.**
+  - Before: in a fresh-session test, 1 of 7 update-set answers offered to continue if the
+    user supplied "an admin token".
+  - After: none of 5 did. `reviewing-update-sets`, the template and the skill profile
+    say the same.
 - **Tool parameter examples lead with platform tables.** The descriptions, plugin and
   package keywords no longer present the server as an ITSM tool.
 

@@ -1,2 +1,5 @@
 # claude plugin eval output (keep evals/mocks/ and evals/mocks/.replay/)
 evals/results/
+# raw result files record local paths; publish RESULTS.md instead
+evals/results.json
+evals/baseline.json

@@ -87,9 +87,15 @@ Point mcp-server-servicenow at a personal developer instance, with an identity t
    Re-running it refreshes `_tools.json` and keeps everything you edited.
 2. **Fill the fixtures** with invented rows that exercise the skill, including the awkward cases: a hidden field, an empty table, a denial. A case can override any mock in its own `mocks/` folder.
 3. **Write cases:** `evals/<case>/prompt.md` (what a user would ask) plus `graders/`. Prefer deterministic graders (`tool_used`, `regex`), and keep `llm` graders to short, concrete PASS/FAIL rules. Add one case where the skill must not fire.
-4. **Run:** `claude plugin eval . --runs 3 --ablation with-without`. Runs count against your Claude plan's usage or your API bill.
+4. **Run the cases with your skills, then with the bare tools:**
+   ```bash
+   claude plugin eval . --runs 3 --ablation none --json evals/results.json
+   uvx mcp-server-servicenow==0.9.0 --eval-baseline . ../tools-only
+   claude plugin eval ../tools-only --runs 3 --ablation none --json evals/baseline.json
+   ```
+   `--eval-baseline` copies your plugin without its skills: same name, same server, same cases and mocks. Runs count against your Claude plan's usage or your API bill.
 
-Read the score with Δ, not on its own. Δ compares your plugin with no plugin at all, and the mocked tools are absent in the run without the plugin, so it overstates what the skills add over the bare tools. A study of agent skills (SkillsBench) found that skills authors write for themselves often add nothing.
+Read the score next to the tools-only score. The eval tool's own Δ compares your plugin with no plugin at all, and without the plugin the mocked tools are absent too, so that Δ overstates what the skills add. A study of agent skills (SkillsBench) found that skills authors write for themselves often add nothing. Our own examples show the same: on the change-collision case the bare tools already score 1.00, and the no-plugin Δ of +1.00 says nothing about the skill.
 
 ## Install it
 
@@ -109,13 +115,13 @@ Two shortcuts:
 - **Your repository, your licence.** Publish the skills in your own repository, under the licence you choose. This project doesn't host or republish them.
 - **Results live with the skill.** Write `RESULTS.md` from a finished run, then commit it with the mocks and cases and tag the commit:
   ```bash
-  uvx mcp-server-servicenow==0.9.0 --eval-summary evals/results/<run>/aggregate-result.json --badge evals/badge.json > RESULTS.md
+  uvx mcp-server-servicenow==0.9.0 --eval-summary evals/results.json --baseline evals/baseline.json --badge evals/badge.json > RESULTS.md
   ```
-  The summary records the models, the Claude Code version, the server version the mocks came from, the commit, and a command to reproduce the run. It refuses a partial run. There are two kinds of results:
+  The summary records what the skills add over the bare tools, case by case, and the models, the Claude Code version, the server version the mocks came from, the commit, and a command to reproduce the run. It refuses a partial run. There are two kinds of results:
   - **CI-run:** produced by the template's `evals.yml` in GitHub Actions; it links the public log.
   - **Self-reported:** run anywhere else.
 
-  Nobody verifies either; the committed mocks make both reproducible.
+  Nobody verifies either; the committed mocks make both reproducible. Commit `RESULTS.md`, not the raw result files: those record paths on your machine.
 - **Be findable:** add the GitHub topic `servicenow-mcp-skill` to your repository.
 - **Tell people about it** in [Discussions › Skills](https://github.com/jschuller/mcp-server-servicenow/discussions/categories/skills). The form asks for:
   - the repository and a tag;
