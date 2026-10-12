@@ -5,9 +5,10 @@ Five hand-written resources:
 - servicenow://instance — instance URL, version, logged-in user, timezone
 - servicenow://update-set/current — the caller's current update set
 - servicenow://cmdb/classes — CMDB class hierarchy from sys_db_object
-- servicenow://help/query-syntax — encoded query operators (static markdown)
+- servicenow://help/query-syntax — encoded query operators; an alias for
+  skill://exploring-tables/references/query-syntax.md
 
-Plus the four Agent Skills under src/servicenow_mcp/skills/, served by FastMCP's
+Plus the five Agent Skills under src/servicenow_mcp/skills/, served by FastMCP's
 SkillsDirectoryProvider as skill://<name>/SKILL.md, skill://<name>/_manifest
 (SHA-256 per file) and skill://<name>/references/<file> — the SEP-2640 convention.
 """
@@ -215,96 +216,9 @@ def cmdb_classes() -> str:
 # servicenow://help/query-syntax
 # ---------------------------------------------------------------------------
 
-_QUERY_SYNTAX_REFERENCE = """\
-# ServiceNow Encoded Query Syntax
-
-## Comparison Operators
-
-| Operator | Meaning | Example |
-|----------|---------|---------|
-| `=` | Equals | `active=true` |
-| `!=` | Not equals | `state!=6` |
-| `LIKE` | Contains | `short_descriptionLIKEnetwork` |
-| `NOT LIKE` | Does not contain | `short_descriptionNOT LIKEtest` |
-| `STARTSWITH` | Starts with | `numberSTARTSWITHINC` |
-| `ENDSWITH` | Ends with | `nameENDSWITHserver` |
-| `IN` | In list (comma-separated) | `stateIN1,2,3` |
-| `NOT IN` | Not in list | `stateNOT IN6,7` |
-| `ISEMPTY` | Field is empty | `assignmentISEMPTY` |
-| `ISNOTEMPTY` | Field is not empty | `assigned_toISNOTEMPTY` |
-| `INSTANCEOF` | Is instance of class | `sys_class_nameINSTANCEOFcmdb_ci_server` |
-
-## Numeric / Date Operators
-
-| Operator | Meaning | Example |
-|----------|---------|---------|
-| `>` | Greater than | `priority>2` |
-| `>=` | Greater than or equal | `priority>=2` |
-| `<` | Less than | `priority<3` |
-| `<=` | Less than or equal | `priority<=3` |
-| `BETWEEN` | Between two values | `priorityBETWEEN1@3` |
-| `SAMEAS` | Same as field | `opened_bySAMEAScaller_id` |
-| `NSAMEAS` | Not same as field | `opened_byNSAMEAScaller_id` |
-| `GT_FIELD` | Greater than field | `sys_updated_onGT_FIELDsys_created_on` |
-| `LT_FIELD` | Less than field | `sys_updated_onLT_FIELDsys_created_on` |
-
-## Relative Date Operators
-
-| Operator | Meaning | Example |
-|----------|---------|---------|
-| `RELATIVEGT` | After relative date | `sys_created_onRELATIVEGT@year@ago@1` |
-| `RELATIVELT` | Before relative date | `sys_created_onRELATIVELT@dayofweek@ago@3` |
-| `MORETHAN` | More than N units ago | `sys_created_onMORETHAN30@dayofweek@ago` |
-| `LESSTHAN` | Less than N units ago | `sys_created_onLESSTHAN7@dayofweek@ago` |
-| `DATEPART` | Date part equals | `sys_created_onDATEPART2024@year` |
-| `javascript:gs.daysAgo(7)` | 7 days ago | `sys_created_on>=javascript:gs.daysAgo(7)` |
-| `javascript:gs.daysAgoStart(1)` | Start of yesterday | `sys_created_on>=javascript:gs.daysAgoStart(1)` |
-| `javascript:gs.beginningOfToday()` | Start of today | `sys_updated_on>=javascript:gs.beginningOfToday()` |
-| `javascript:gs.beginningOfLastMonth()` | Start of last month | `sys_created_on>=javascript:gs.beginningOfLastMonth()` |
-
-## Server-side script in queries
-
-Only GlideSystem **date helpers** are accepted in `javascript:` expressions
-(`gs.daysAgo*`, `gs.hoursAgo*`, `gs.monthsAgo*`, `gs.yearsAgo*`,
-`gs.beginningOf*`, `gs.endOf*`, `gs.now*`). Anything else — `gs.getUserName()`,
-`GlideRecord`, `;`, `new` — is rejected with "Query rejected: unsafe javascript:".
-Prefer the `RELATIVE*`, `MORETHAN`/`LESSTHAN` and `DATEPART` operators above; the
-server operator can re-enable arbitrary script with `--allow-js-queries`.
-
-## Join Operators
-
-| Operator | Meaning | Example |
-|----------|---------|---------|
-| `^` | AND | `active=true^priority=1` |
-| `^OR` | OR | `priority=1^ORpriority=2` |
-| `^NQ` | New query (UNION) | `active=true^NQstate=6` |
-
-## Order Operators
-
-| Operator | Meaning | Example |
-|----------|---------|---------|
-| `ORDERBY` | Sort ascending | `active=true^ORDERBYnumber` |
-| `ORDERBYDESC` | Sort descending | `active=true^ORDERBYDESCsys_created_on` |
-
-## Common Patterns
-
-```
-# Active P1 incidents assigned to someone, newest first
-active=true^priority=1^assigned_toISNOTEMPTY^ORDERBYDESCsys_created_on
-
-# Incidents created in last 7 days
-sys_created_on>=javascript:gs.daysAgo(7)
-
-# CIs of type Server or Linux Server
-sys_class_nameINSTANCEOFcmdb_ci_server
-
-# Open incidents for a specific CI
-active=true^cmdb_ci=<sys_id>
-
-# Records updated today
-sys_updated_on>=javascript:gs.beginningOfToday()
-```
-"""
+# The operator reference lives with the exploring-tables skill, so clients that
+# load skills natively get it too; this URI stays as an alias for the same file.
+_QUERY_SYNTAX_PATH = ("skills", "exploring-tables", "references", "query-syntax.md")
 
 
 @mcp.resource(
@@ -315,14 +229,14 @@ sys_updated_on>=javascript:gs.beginningOfToday()
 )
 def query_syntax_help() -> str:
     """Return the encoded query syntax reference."""
-    return _QUERY_SYNTAX_REFERENCE
+    return files("servicenow_mcp").joinpath(*_QUERY_SYNTAX_PATH).read_text("utf-8")
 
 
 # ---------------------------------------------------------------------------
 # skill://<name>/... — Agent Skills served over MCP (SEP-2640 convention)
 # ---------------------------------------------------------------------------
 
-# The four SKILL.md directories ship as package data. FastMCP's provider exposes
+# The SKILL.md directories ship as package data. FastMCP's provider exposes
 # each as skill://<name>/SKILL.md plus a skill://<name>/_manifest (SHA-256 per
 # file) and, with supporting_files="resources", every reference file by URI.
 _SKILLS_ROOT = Path(str(files("servicenow_mcp").joinpath("skills")))
