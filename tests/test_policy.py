@@ -24,6 +24,13 @@ TAUGHT_HELPERS = [
     "sys_created_on>=javascript:gs.beginningOfLastMonth()",
     "state=6^ORstate=7^resolved_at>=javascript:gs.daysAgoStart(7)^active=true",
     "sys_created_on<javascript:gs.nowDateTime()",
+    # Ranges as the list UI writes them: ends separated by "@".
+    "opened_atONToday@javascript:gs.beginningOfToday()@javascript:gs.endOfToday()",
+    "opened_atON2026-10-01@javascript:gs.dateGenerate('2026-10-01','start')"
+    "@javascript:gs.dateGenerate('2026-10-01','end')",
+    "opened_atBETWEENjavascript:gs.dateGenerate('2026-10-01','00:00:00')"
+    "@javascript:gs.dateGenerate('2026-10-07','23:59:59')^active=true",
+    "opened_atBETWEENjavascript:gs.daysAgoStart(7)@javascript:gs.daysAgoEnd(0)",
 ]
 
 UNSAFE = [
@@ -33,6 +40,14 @@ UNSAFE = [
     "x=JavaScript:new GlideRecord('sys_user')",
     "x=javascript:gs.daysAgo(gs.getProperty('x'))",
     "x=javascript:gs.daysAgo(7) ^y=1",
+    # A safe first end does not excuse an unsafe second one.
+    "opened_atONToday@javascript:gs.beginningOfToday()@javascript:gs.getUserID()",
+    "opened_atBETWEENjavascript:gs.daysAgoStart(7)@javascript:gs.daysAgoEnd(0);gs.log(1)",
+    # dateGenerate takes literals only.
+    "opened_atON2026-10-01@javascript:gs.dateGenerate(gs.getUserID(),'start')",
+    "opened_atON2026-10-01@javascript:gs.dateGenerate('2026-10-01',gs.getUserID())",
+    "opened_atON2026-10-01@javascript:gs.dateGenerate('2026-10-01','start')+1",
+    "opened_atON2026-10-01@javascript:gs.dateGenerate('2026-10-01','middle')",
 ]
 
 

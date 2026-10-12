@@ -36,14 +36,23 @@ STATE_RE = re.compile(r"^[A-Za-z_ ]+$")
 
 JS_PREFIX_RE = re.compile(r"javascript:", re.IGNORECASE)
 # The only server-side script allowed in an encoded query: GlideSystem date
-# helpers with a numeric (or empty) argument, terminated by ``^`` or the end of
-# the value. Covers gs.daysAgo(7), gs.daysAgoStart(1), gs.beginningOfToday(),
-# gs.beginningOfLastWeek(), gs.monthsAgoStart(1), gs.nowDateTime() ...
+# helpers. Either a relative helper with a numeric (or empty) argument —
+# gs.daysAgo(7), gs.daysAgoStart(1), gs.beginningOfToday(),
+# gs.beginningOfLastWeek(), gs.monthsAgoStart(1), gs.nowDateTime() ... — or
+# gs.dateGenerate() with a literal date and 'start', 'end' or a literal time,
+# which is how the list UI writes ON and BETWEEN ranges. Each helper must end
+# the value: at ``^``, at the ``@`` that separates the ends of a range, or at
+# the end of the query.
+_RELATIVE_DATE_HELPER = (
+    r"gs\.(?:beginningOf|endOf|daysAgo|hoursAgo|minutesAgo|monthsAgo|yearsAgo|"
+    r"quartersAgo|now|nowDateTime)[A-Za-z0-9]*\(\s*-?\d*\s*\)"
+)
+_DATE_GENERATE = (
+    r"gs\.dateGenerate\(\s*['\"]\d{4}-\d{2}-\d{2}['\"]\s*,"
+    r"\s*['\"](?:start|end|\d{2}:\d{2}:\d{2})['\"]\s*\)"
+)
 SAFE_JS_RE = re.compile(
-    r"javascript:gs\."
-    r"(?:beginningOf|endOf|daysAgo|hoursAgo|minutesAgo|monthsAgo|yearsAgo|"
-    r"quartersAgo|now|nowDateTime)"
-    r"[A-Za-z0-9]*\(\s*-?\d*\s*\)(?=\^|$)",
+    rf"javascript:(?:{_RELATIVE_DATE_HELPER}|{_DATE_GENERATE})(?=[\^@]|$)",
     re.IGNORECASE,
 )
 
@@ -125,8 +134,8 @@ def check_query(name: str, value: Any, config: ServerConfig) -> None:
         raise PolicyError(
             f"Query rejected: unsafe javascript: expression in {name} "
             f"({offending!r}). Only GlideSystem date helpers such as "
-            "javascript:gs.daysAgo(7) or javascript:gs.beginningOfToday() are "
-            "allowed; use RELATIVE*/MORETHAN/LESSTHAN operators instead, or start "
+            "javascript:gs.daysAgo(7), javascript:gs.beginningOfToday() or "
+            "javascript:gs.dateGenerate('2026-10-01','start') are allowed; use RELATIVE*/MORETHAN/LESSTHAN operators instead, or start "
             "the server with --allow-js-queries (SERVICENOW_ALLOW_JS_QUERIES=true)."
         )
 
