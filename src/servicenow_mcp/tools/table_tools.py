@@ -58,7 +58,7 @@ def list_records(
     table_name: Annotated[
         str,
         Field(
-            description="The ServiceNow table name (e.g., 'incident', 'sys_user', 'cmdb_ci')"
+            description="The ServiceNow table name (e.g., 'sys_user', 'cmdb_ci_server', 'incident')"
         ),
     ],
     query: Annotated[
@@ -178,7 +178,9 @@ def delete_record(
 def aggregate_records(
     table_name: Annotated[
         str,
-        Field(description="The ServiceNow table name (e.g., 'incident', 'cmdb_ci')"),
+        Field(
+            description="The ServiceNow table name (e.g., 'sys_user_group', 'cmdb_ci', 'incident')"
+        ),
     ],
     count: Annotated[bool, Field(description="Include record count in results")] = True,
     avg_fields: Annotated[

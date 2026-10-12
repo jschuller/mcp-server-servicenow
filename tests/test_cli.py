@@ -324,7 +324,7 @@ class TestSafetyFlags:
 
         wire = asyncio.run(instructions())
         assert wire == SERVER_INSTRUCTIONS
-        assert "skill://triaging-incidents/SKILL.md" in wire
+        assert "skill://analyzing-access/SKILL.md" in wire
         assert "servicenow://help/query-syntax" in wire
 
     def test_audit_log_configured(self, monkeypatch):

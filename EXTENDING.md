@@ -1,6 +1,6 @@
 # Write your own ServiceNow skills
 
-mcp-server-servicenow gives an AI assistant tools to read your instance (tables, CMDB, update sets, schema) and ships five skills that teach common jobs. Your organisation knows things those skills don't: your conventions, your CMDB classes, how you run change. Write them down as skills of your own.
+mcp-server-servicenow gives an AI assistant tools to read your instance (tables, CMDB, update sets, schema) and ships four skills for Now Platform jobs (tables, access, update sets, CMDB data quality). Your organisation knows things those skills don't: your conventions, your CMDB classes, how you run change. Write them down as skills of your own.
 
 A skill is a folder with a `SKILL.md` file, in the open [Agent Skills](https://agentskills.io) format. Claude Code, Claude, Codex, VS Code with Copilot, Cursor, opencode, Gemini CLI and pi all load skill folders natively. This project adds a short profile for ServiceNow skills, a validator, a GitHub Action, a template and an example. It doesn't host your skills.
 

@@ -43,7 +43,6 @@ SKILLS = (
     "exploring-tables",
     "reviewing-update-sets",
     "servicenow-cmdb",
-    "triaging-incidents",
 )
 REFUSED = (
     "401",
@@ -95,9 +94,9 @@ async def section_a(results):
         res = await c.list_resources()
         results.append(
             ok(
-                "read-only: 21 resources incl. 17 skill://",
-                len(res) == 21
-                and sum(str(r.uri).startswith("skill://") for r in res) == 17,
+                "read-only: 18 resources incl. 14 skill://",
+                len(res) == 18
+                and sum(str(r.uri).startswith("skill://") for r in res) == 14,
                 str(len(res)),
             )
         )
@@ -288,7 +287,7 @@ def check_audit(results, profile, audit):
 
 async def section_d(results, skills_audit):
     """Skills over MCP (SEP-2640 shape) and the help resource, both eras."""
-    skill_dir = Path(REPO) / "src/servicenow_mcp/skills/triaging-incidents"
+    skill_dir = Path(REPO) / "src/servicenow_mcp/skills/analyzing-access"
     for mode in ("legacy", "auto"):
         async with Client(transport("--audit-log", skills_audit), mode=mode) as c:
             uris = {str(r.uri) for r in await c.list_resources()}
@@ -301,17 +300,15 @@ async def section_d(results, skills_audit):
                     listed == {f"skill://{n}/SKILL.md" for n in SKILLS},
                 )
             )
-            body = (await c.read_resource("skill://triaging-incidents/SKILL.md"))[
-                0
-            ].text
+            body = (await c.read_resource("skill://analyzing-access/SKILL.md"))[0].text
             results.append(
                 ok(
                     f"skills[{mode}]: SKILL.md body",
-                    "# Triaging ServiceNow Incidents" in body,
+                    "# Analyzing ServiceNow Access" in body,
                 )
             )
             manifest = json.loads(
-                (await c.read_resource("skill://triaging-incidents/_manifest"))[0].text
+                (await c.read_resource("skill://analyzing-access/_manifest"))[0].text
             )
             want = (
                 "sha256:"
@@ -326,11 +323,11 @@ async def section_d(results, skills_audit):
             )
             ref = (
                 await c.read_resource(
-                    "skill://triaging-incidents/references/incident-fields.md"
+                    "skill://analyzing-access/references/access-errors.md"
                 )
             )[0].text
             results.append(
-                ok(f"skills[{mode}]: reference read", "Priority Matrix" in ref)
+                ok(f"skills[{mode}]: reference read", "## Silent effects" in ref)
             )
             qs = (await c.read_resource("servicenow://help/query-syntax"))[0].text
             results.append(ok(f"skills[{mode}]: query-syntax help", "STARTSWITH" in qs))
@@ -345,7 +342,7 @@ async def section_d(results, skills_audit):
             results.append(
                 ok(
                     f"skills[{mode}]: instructions on wire",
-                    "skill://triaging-incidents/SKILL.md" in (c.instructions or ""),
+                    "skill://analyzing-access/SKILL.md" in (c.instructions or ""),
                 )
             )
     lines = [json.loads(line) for line in open(skills_audit) if line.strip()]
@@ -354,7 +351,7 @@ async def section_d(results, skills_audit):
             "skills: audit resource_read line for skill://",
             any(
                 line.get("event") == "resource_read"
-                and line.get("name") == "skill://triaging-incidents/SKILL.md"
+                and line.get("name") == "skill://analyzing-access/SKILL.md"
                 and line.get("outcome") == "ok"
                 for line in lines
             ),

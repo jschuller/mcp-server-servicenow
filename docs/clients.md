@@ -29,7 +29,7 @@ Claude Code keeps the value in its own config (`~/.claude.json`); for a company 
 
 ### Claude Code plugin
 
-The plugin wires up the same server and also installs the five skills as filesystem skills, so they appear as `/servicenow:triaging-incidents`, `/servicenow:servicenow-cmdb`, `/servicenow:reviewing-update-sets`, `/servicenow:exploring-tables` and `/servicenow:analyzing-access`.
+The plugin wires up the same server and also installs the four skills as filesystem skills, so they appear as `/servicenow:servicenow-cmdb`, `/servicenow:reviewing-update-sets`, `/servicenow:exploring-tables` and `/servicenow:analyzing-access`.
 
 ```bash
 export SERVICENOW_INSTANCE_URL="https://devNNNNNN.service-now.com"
@@ -171,7 +171,7 @@ pi mcp add servicenow --exposure direct \
   --env SERVICENOW_USERNAME=mcp.integration \
   --env 'SERVICENOW_PASSWORD=${SERVICENOW_PASSWORD}' \
   -- uvx mcp-server-servicenow
-pi mcp list   # connects and lists 12 tools, 21 resources
+pi mcp list   # connects and lists 12 tools, 18 resources
 ```
 
 `--exposure direct` lets the model call the tools by name (pi's default, `codemode`, wraps them in scripts). pi has no permission prompts: the start-here user already hides the write tools; with a writable identity add `--read-only` unless you want the model to write unasked.

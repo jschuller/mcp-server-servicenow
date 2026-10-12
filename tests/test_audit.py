@@ -116,11 +116,11 @@ async def test_skill_resource_read_line(captured: _Capture) -> None:
     """Every skill load is audited; an unknown URI is labelled unknown_resource."""
     init_test_services()
     async with Client(mcp) as client:
-        await client.read_resource("skill://triaging-incidents/SKILL.md")
+        await client.read_resource("skill://analyzing-access/SKILL.md")
         with pytest.raises(Exception):
             await client.read_resource("skill://no-such-skill/SKILL.md")
     assert captured.lines[0]["event"] == "resource_read"
-    assert captured.lines[0]["name"] == "skill://triaging-incidents/SKILL.md"
+    assert captured.lines[0]["name"] == "skill://analyzing-access/SKILL.md"
     assert captured.lines[0].get("table") is None  # None fields are not emitted
     assert captured.lines[0]["outcome"] == "ok"
     assert captured.lines[1]["outcome"] == "unknown_resource"

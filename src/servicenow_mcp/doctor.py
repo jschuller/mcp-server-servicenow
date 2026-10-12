@@ -17,6 +17,10 @@ from servicenow_mcp.utils.user import fetch_current_user, fetch_direct_roles, ha
 
 OK, WARN, FAIL, INFO = "ok", "warn", "FAIL", "info"
 
+# A base-platform table that itil and snc_read_only identities can both read, so the
+# Table, record, schema and Stats probes work without any application plugin.
+PROBE_TABLE = "sys_user_group"
+
 # Prefixes of http.py's messages for a request that never reached a working
 # ServiceNow API (DNS, TLS, refused connection, timeout, a hibernating PDI).
 _UNREACHABLE = (
@@ -163,22 +167,22 @@ class Doctor:
             )
 
     def check_table_read(self) -> bool:
-        url = build_url(self.config.api_url, "table", "incident")
+        url = build_url(self.config.api_url, "table", PROBE_TABLE)
         try:
             rows = self.get(url, {"sysparm_limit": 1, "sysparm_fields": "sys_id"})
         except Exception as exc:
-            self.add(FAIL, "table", f"incident read failed: {_first_line(exc)}")
+            self.add(FAIL, "table", f"{PROBE_TABLE} read failed: {_first_line(exc)}")
             return False
         result = rows.get("result") or []
         if result:
             self.sample_sys_id = result[0].get("sys_id")
-            self.add(OK, "table", "Table API read works (incident, 1 row)")
+            self.add(OK, "table", f"Table API read works ({PROBE_TABLE}, 1 row)")
         else:
             self.add(
                 WARN,
                 "table",
-                "Table API read works, but no incident is visible (none exist, "
-                "or ACLs hide them: list_records needs itil for incidents)",
+                f"Table API read works, but no {PROBE_TABLE} row is visible "
+                "(none exist, or ACLs hide them from this identity)",
             )
         return True
 
@@ -186,7 +190,7 @@ class Doctor:
         """A per-record GET: get_record, get_ci and the update-set reads use it."""
         if not self.sample_sys_id:
             return
-        url = build_url(self.config.api_url, "table", "incident", self.sample_sys_id)
+        url = build_url(self.config.api_url, "table", PROBE_TABLE, self.sample_sys_id)
         try:
             self.get(url, {"sysparm_fields": "sys_id"})
         except Exception as exc:
@@ -203,7 +207,7 @@ class Doctor:
     def check_schema(self) -> None:
         url = build_url(self.config.api_url, "table", "sys_dictionary")
         try:
-            self.get(url, {"sysparm_query": "name=incident", "sysparm_limit": 1})
+            self.get(url, {"sysparm_query": f"name={PROBE_TABLE}", "sysparm_limit": 1})
         except Exception as exc:
             if "403" in str(exc):
                 self.add(
@@ -218,7 +222,7 @@ class Doctor:
         self.add(OK, "schema", "sys_dictionary readable (get_table_schema works)")
 
     def check_aggregate(self) -> None:
-        url = build_url(self.config.api_url, "stats", "incident")
+        url = build_url(self.config.api_url, "stats", PROBE_TABLE)
         try:
             self.get(url, {"sysparm_count": "true"})
         except Exception as exc:

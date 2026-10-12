@@ -9,7 +9,7 @@
   "plugins": [
     {
       "name": "servicenow",
-      "description": "ServiceNow developer data plane — incidents, CMDB, update sets, table explorer. 19 MCP tools, 5 resources, 5 Agent Skills served over MCP, read-only mode, OAuth client credentials, audit log.",
+      "description": "ServiceNow developer data plane for the Now Platform — tables and schema, CMDB data quality, update sets, access reviews. 19 MCP tools, 5 resources, 4 Agent Skills served over MCP, read-only mode, OAuth client credentials, audit log.",
       "source": "./",
       "category": "development",
       "author": {
@@ -19,9 +19,9 @@
       "license": "MIT",
       "keywords": [
         "servicenow",
-        "itsm",
+        "now-platform",
         "cmdb",
-        "incidents",
+        "acl",
         "update-sets",
         "mcp"
       ]

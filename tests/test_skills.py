@@ -1,4 +1,4 @@
-"""Tests for the five Agent Skills served over MCP as skill:// resources.
+"""Tests for the four Agent Skills served over MCP as skill:// resources.
 
 FastMCP's SkillsDirectoryProvider (SEP-2640 convention) exposes, per skill,
 ``skill://<name>/SKILL.md``, a ``skill://<name>/_manifest`` with SHA-256 digests,
@@ -28,7 +28,6 @@ SKILL_NAMES = {
     "exploring-tables",
     "reviewing-update-sets",
     "servicenow-cmdb",
-    "triaging-incidents",
 }
 REFERENCE_URIS = {
     "skill://analyzing-access/references/access-errors.md",
@@ -37,7 +36,6 @@ REFERENCE_URIS = {
     "skill://reviewing-update-sets/references/update-set-fields.md",
     "skill://servicenow-cmdb/references/cmdb-tables.md",
     "skill://servicenow-cmdb/references/csdm5.md",
-    "skill://triaging-incidents/references/incident-fields.md",
 }
 SKILLS_ROOT = Path(str(files("servicenow_mcp").joinpath("skills")))
 
@@ -95,15 +93,15 @@ class TestSkillListing:
         async with Client(mcp) as client:
             resources = await client.list_resources()
             templates = await client.list_resource_templates()
-        assert sum(str(r.uri).startswith("skill://") for r in resources) == 17
-        assert len(resources) == 21
+        assert sum(str(r.uri).startswith("skill://") for r in resources) == 14
+        assert len(resources) == 18
         assert len(templates) == 1  # servicenow://schema/{table_name} only
 
     async def test_read_only_mode_keeps_skills(self) -> None:
         mcp.disable(tags={"write"}, components={"tool"})
         async with Client(mcp) as client:
             resources = await client.list_resources()
-        assert sum(str(r.uri).startswith("skill://") for r in resources) == 17
+        assert sum(str(r.uri).startswith("skill://") for r in resources) == 14
 
 
 class TestSkillFrontmatter:
@@ -133,15 +131,15 @@ class TestSkillFrontmatter:
 class TestSkillContent:
     async def test_skill_md_body(self) -> None:
         async with Client(mcp) as client:
-            text = await _read_text(client, "skill://triaging-incidents/SKILL.md")
-        assert "# Triaging ServiceNow Incidents" in text
+            text = await _read_text(client, "skill://analyzing-access/SKILL.md")
+        assert "# Analyzing ServiceNow Access" in text
 
     async def test_reference_read(self) -> None:
         async with Client(mcp) as client:
             text = await _read_text(
-                client, "skill://triaging-incidents/references/incident-fields.md"
+                client, "skill://analyzing-access/references/access-errors.md"
             )
-        assert "Priority Matrix" in text
+        assert "## Silent effects" in text
 
     @pytest.mark.parametrize("name", sorted(SKILL_NAMES))
     async def test_manifest_digests_match_package_files(self, name: str) -> None:
@@ -160,9 +158,7 @@ class TestSkillContent:
     async def test_path_traversal_rejected(self) -> None:
         async with Client(mcp) as client:
             with pytest.raises(Exception):
-                await client.read_resource(
-                    "skill://triaging-incidents/../../etc/passwd"
-                )
+                await client.read_resource("skill://analyzing-access/../../etc/passwd")
 
     async def test_unknown_skill_rejected(self) -> None:
         async with Client(mcp) as client:

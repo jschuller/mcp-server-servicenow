@@ -26,5 +26,5 @@ docs/mcp-enhancement-roadmap.md
 # local skill copies — src/servicenow_mcp/skills/ is the tracked source
 .claude/skills/
 
-# claude plugin eval output
-evals/results/
+# claude plugin eval output, wherever a suite lives (keep mocks/ and mocks/.replay/)
+**/evals/results/

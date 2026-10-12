@@ -1,47 +1,26 @@
 # Changelog
 
-## [Unreleased] — 0.9.0 (user-written skills foundation)
+## [0.9.0] - Unreleased
 
-Write your own ServiceNow skills as plain Agent Skills, which every client loads
-natively. There is no pack format. Skills shared by others stay in their authors'
-repositories. See EXTENDING.md and docs/skill-profile.md.
+"A platform core, and your own skills." The skills shipped in the package now cover
+only the Now Platform: tables and schema, access, update sets, and CMDB data quality.
+Application skills such as incident triage live outside the package. ServiceNow ships
+its own ITSM and CMDB MCP servers, and an organisation's own skills belong in its own
+repository. This release adds what an author needs to write, check and test such
+skills: a validator, a GitHub Action, a template and examples. It also includes the
+content and fixes prepared as 0.8.1, which was never released.
 
-### Added
-- **`--validate-skills PATH [...]`** (with **`--strict`**) checks skill folders offline
-  against the Agent Skills specification and this server's profile:
-  - frontmatter;
-  - declared roles and tables (`io.github.jschuller/servicenow-roles`, `-tables`), and
-    declared write tools (`-writes`);
-  - tool calls in code blocks, checked against the server's identifier and
-    `javascript:` rules;
-  - text-only files with no symlinks, within SEP-2640's size limits;
-  - links that stay inside the skill.
-
-  It warns on undeclared write-tool calls, outside links and credential-like text, and
-  prints a `sha256:` digest per skill for pinning, plus the write tools it declares.
-- **`actions/validate-skills`**, a composite GitHub Action that runs the validator and a
-  ServiceNowDocs citation check (blobless clone: an error when a cited page disappears,
-  a warning when it changed). This repository's CI runs it with `--strict` on the
-  shipped skills and the examples.
-- **`triaging-incidents`** declares `create_record` in `io.github.jschuller/servicenow-writes`.
-- **`examples/`:**
-  - `template/`: a copyable repository with a workflow, an optional Claude Code plugin
-    wrapper and an eval case;
-  - `change-impact/`: two original example skills, `assessing-change-impact` and
-    `reviewing-sla-definitions`, with mocked eval cases.
-- **Docs:** `EXTENDING.md` (the guide), `docs/skill-profile.md` (the reference and the
-  decision record), and a Discussions "Skills" form.
-- **Dependency:** `pyyaml` is now a direct dependency (it was transitive through FastMCP).
-
-## [0.8.1] - Unreleased
-
-A content release. A new `analyzing-access` skill reviews role hygiene and explains
-denials. Every skill now names the tables it reads and the roles they need, and treats
-a 403 as "not assessable with this identity" and empty results or missing fields as
-"possibly hidden by an ACL". Two fixes come from live testing on a Brazil instance:
-the list UI's date ranges are accepted, and `list_records` says when a field it was
-asked for never came back. The version is a patch, but it carries features: one new
-skill and one new response key. Nothing is removed and no configuration changes.
+### Upgrade notes
+- **`skill://triaging-incidents` is gone from the server.** It is now
+  [`examples/incident-triage`](examples/incident-triage/). Install it like any skill:
+  `npx skills add jschuller/mcp-server-servicenow --skill triaging-incidents`, or copy
+  the folder into your client's skills directory. The tools are unchanged; any table,
+  incident included, still works.
+- **`--check` probes `sys_user_group` instead of `incident`**: a base-platform table
+  that both `itil` and `snc_read_only` identities can read. An identity without ITSM
+  roles no longer shows a misleading table warning.
+- **`servicenow-cmdb` names `cmdb_read` and `sn_cmdb_user` as its roles,** taken from
+  the instance's read ACLs. `itil` still works, since it holds both.
 
 ### Security
 - **The `javascript:` guard accepts the list UI's date ranges.** The `@` that separates
@@ -54,6 +33,28 @@ skill and one new response key. Nothing is removed and no configuration changes.
   - This widens what the guard accepts, so it is listed here.
 
 ### Added
+- **`--validate-skills PATH [...]`** (with **`--strict`**) checks skill folders offline
+  against the Agent Skills specification and this server's profile:
+  - frontmatter;
+  - declared roles, tables and write tools (`io.github.jschuller/servicenow-roles`,
+    `-tables`, `-writes`);
+  - tool calls in code blocks, checked against the server's identifier and
+    `javascript:` rules;
+  - text-only files with no symlinks, within SEP-2640's size limits;
+  - links that stay inside the skill.
+
+  It warns on undeclared write-tool calls, outside links and credential-like text, and
+  prints a `sha256:` digest per skill for pinning, plus the write tools it declares.
+- **`actions/validate-skills`**, a composite GitHub Action that runs the validator and a
+  ServiceNowDocs citation check (blobless clone: an error when a cited page disappears,
+  a warning when it changed). This repository's CI runs it with `--strict` on the
+  shipped skills and the examples.
+- **`examples/`:**
+  - `template/`: a starting repository with a workflow, an optional Claude Code plugin
+    wrapper and an eval case;
+  - `incident-triage/`: the former core skill, with its eval cases;
+  - `change-impact/`: two original example skills, `assessing-change-impact` and
+    `reviewing-sla-definitions`, with mocked eval cases.
 - **`skill://analyzing-access`**:
   - who holds `admin` and `security_admin`;
   - roles granted outside groups or left on inactive and long-absent users;
@@ -64,40 +65,48 @@ skill and one new response key. Nothing is removed and no configuration changes.
   `access-errors.md`, `acl-evaluation.md`.
 - **`servicenow-cmdb`:** CSDM 5 conformance by stage, read from `sn_getwell_csdm_score`
   (`references/csdm5.md`).
-- **`triaging-incidents`:** trends use the RELATIVE operators. When `aggregate_records`
-  is refused (401 under API-key auth), the skill counts from `list_records` rows instead.
 - **`exploring-tables`:**
   - choice lists;
   - a sampling fallback when the schema returns 403;
   - the encoded-query reference (below).
 - **`reviewing-update-sets`:** preview problems and collisions of retrieved update sets,
   read-only. Previewing writes, so the skill never runs one.
-- **Frontmatter metadata:** every skill declares `io.github.jschuller/servicenow-roles`
-  and `io.github.jschuller/servicenow-tables`.
+- **Frontmatter metadata:** every skill declares its roles and tables.
 - **`list_records` warning:** when `fields=` names a field that is missing from every
   returned row, the result carries a `warning`. The field either doesn't exist or an ACL
   hides it, and conditions on such a field are ignored rather than rejected. Live:
   `caused_byISEMPTY` and `caused_byISNOTEMPTY` returned the same incidents.
 - **`evals/`:** a trial `claude plugin eval` suite that runs against mocked tools, so it
   needs no instance and no credentials.
+- **Docs:** `EXTENDING.md` (the guide), `docs/skill-profile.md` (the reference and the
+  decision record), and a Discussions "Skills" form.
+- **Dependency:** `pyyaml` is now a direct dependency (it was transitive through FastMCP).
 
 ### Changed
+- **`servicenow-cmdb` is about the CMDB as a data model:** class hierarchy, raw
+  relationships, health, data quality and CSDM conformance. It points CI search and
+  change impact to ServiceNow's CMDB MCP server.
 - **The encoded-query reference moved.** It now lives at
   `skill://exploring-tables/references/query-syntax.md`, so clients that install the
   skills natively get it too. `servicenow://help/query-syntax` stays as an alias for the
   same file. The reference was rewritten and checked against a live instance:
   - added: the RELATIVE family, `ON`/`NOTON`/`BETWEEN` ranges, field-to-field comparisons,
-    and the conditions an instance ignores instead of rejecting;
+    the conditions an instance ignores instead of rejecting, and platform-table patterns;
   - removed: the `MORETHAN`, `LESSTHAN` and `DATEPART` rows, which did not filter as
     described.
-- **Server instructions** add the `analyzing-access` hint. They also ask the model to
-  name filtered fields in `fields=`, and to read a 403 as "not assessable".
+- **Server instructions** list the four platform skills. They ask the model to name
+  filtered fields in `fields=`, and to read a 403 as "not assessable".
   - The skill line now says to read the skill "before your first tool call on a task
     below" (it was "before multi-step ITSM or CMDB work").
   - In fresh Claude Code sessions (2.1.296, Sonnet), the old wording plus the new text
     read the skill first in 1 of 8 runs of "what's on fire", against 5 of 7 for 0.8.0.
   - The new wording read it in 7 of 7. On an access question it read it in 5 of 5,
     against 1 of 4 before. It still skipped the skill for "which user am I?" (3 of 3).
+- **Tool parameter examples lead with platform tables.** The descriptions, plugin and
+  package keywords no longer present the server as an ITSM tool.
+
+### Removed
+- **`triaging-incidents` from the package** (see Upgrade notes).
 
 ## [0.8.0] - 2026-10-11
 

@@ -25,11 +25,11 @@
 
 ## What you can ask
 
-- *"List the 5 most recent P1 incidents and who they're assigned to."*
-- *"How many open incidents does each assignment group have?"*
 - *"Which fields does `cmdb_ci_server` have, including inherited ones?"*
-- *"Which server CIs are missing an IP address or an owner?"*
+- *"Who holds admin, and which roles are granted directly instead of through a group?"*
 - *"Review update set 'Q3 fixes' before I promote it."*
+- *"Which server CIs are missing an IP address or an owner?"*
+- *"How many open incidents does each assignment group have?"* (any table works, not just the platform ones)
 
 ## Quick start
 
@@ -153,7 +153,7 @@ Everything else: run `--check` ([above](#4-check-it-works)), then [TROUBLESHOOTI
 
 ## Tools
 
-19 tools, 5 resources and 5 skills. Full reference: [tools, resources and skills](https://github.com/jschuller/mcp-server-servicenow/blob/main/docs/tools.md).
+19 tools, 5 resources and 4 skills. Full reference: [tools, resources and skills](https://github.com/jschuller/mcp-server-servicenow/blob/main/docs/tools.md).
 
 | Group | Tools |
 |---|---|
@@ -164,7 +164,13 @@ Everything else: run `--check` ([above](#4-check-it-works)), then [TROUBLESHOOTI
 
 **Resources:** table schemas, instance info, the current update set, the CMDB class hierarchy and an encoded-query reference — read without a tool call.
 
-**Skills:** four guided workflows served over MCP as `skill://` resources, so every client gets them with no plugin — `triaging-incidents`, `servicenow-cmdb`, `reviewing-update-sets` (risk categories and a pre-promotion checklist) and `exploring-tables`.
+**Skills:** four guided workflows for the Now Platform, served over MCP as `skill://` resources so every client gets them with no plugin:
+- `exploring-tables`: schemas, choice lists, the encoded-query reference;
+- `analyzing-access`: who holds which roles, and what a 403 or a missing field means;
+- `reviewing-update-sets`: risk categories and a pre-promotion checklist;
+- `servicenow-cmdb`: CMDB data quality and CSDM conformance.
+
+Skills for applications such as ITSM, and for your own conventions, live in your own repository: see [EXTENDING.md](https://github.com/jschuller/mcp-server-servicenow/blob/main/EXTENDING.md). The incident triage skill that shipped here until 0.9.0 is now an [example](https://github.com/jschuller/mcp-server-servicenow/tree/main/examples/incident-triage).
 
 ## Roles
 

@@ -25,8 +25,7 @@ _auth_manager: AuthManager | None = None
 
 # (skill directory, when the model should read it) — the order the model sees.
 _SKILL_HINTS = (
-    ("triaging-incidents", "incidents, INC numbers, outages, P1s, triage, SLAs"),
-    ("servicenow-cmdb", "CIs, classes, dependencies, CMDB health, CSDM"),
+    ("servicenow-cmdb", "CMDB health, data quality, CI classes, relationships, CSDM"),
     ("reviewing-update-sets", 'update sets, promotion, "is this safe to promote"'),
     ("exploring-tables", "table schemas, fields, choice lists, data profiling"),
     ("analyzing-access", "who has admin, role reviews, 403s, missing rows or fields"),

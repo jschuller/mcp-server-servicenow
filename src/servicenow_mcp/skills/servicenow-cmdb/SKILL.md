@@ -1,26 +1,31 @@
 ---
 name: servicenow-cmdb
-description: "Exploring and auditing CMDB configuration items: CI class hierarchy, relationships, health metrics, data quality, and CSDM compliance. Use when the user mentions CMDB, configuration items, CIs, CI classes, dependencies, relationships, CMDB health, CMDB audit, data quality, duplicates, orphaned CIs, CSDM, service taxonomy, Data Foundations certification, staleness, compliance scores, or 'show me what depends on X'."
+description: "Auditing the CMDB as a data model: CI class hierarchy, raw relationships, CMDB health scorecards, data quality (duplicates, orphans, staleness, missing fields) and CSDM 5 conformance. Use when the user mentions CMDB health, CMDB audit, data quality, duplicates, orphaned or stale CIs, CI classes, relationships in cmdb_rel_ci, CSDM, service taxonomy, Data Foundations, compliance scores, or 'how clean is our CMDB'."
 license: MIT
 metadata:
   author: jschuller
   version: "2.0.0"
-  io.github.jschuller/servicenow-roles: "itil snc_read_only"
+  io.github.jschuller/servicenow-roles: "cmdb_read sn_cmdb_user snc_read_only"
   io.github.jschuller/servicenow-tables: "cmdb_ci cmdb_rel_ci sys_db_object service_offering dl_definition cmdb_health_scorecard cmdb_health_result cmdb_health_metric cmdb_health_staleness_rule cmdb_health_orphan_rule sn_getwell_csdm_score"
 
 ---
 
 # ServiceNow CMDB Data Foundations
 
-Explore CI classes, map dependencies, assess CMDB health, investigate data quality, review the CSDM service taxonomy, and score CSDM conformance by stage. See `references/cmdb-tables.md` for CI classes, health KPIs, CSDM mappings and encoded query syntax, and `references/csdm5.md` for CSDM 5 stages and the conformance scores.
+Audit the CMDB as a data model: explore CI classes, read raw relationships, assess CMDB health, investigate data quality, review the CSDM service taxonomy, and score CSDM conformance by stage. This is platform data work, read-only.
+
+For conversational CI search, service topology and change impact, ServiceNow ships its own CMDB MCP server (with Otto for CMDB). It has no health, staleness, duplicate or CSDM conformance tools; that is what this skill covers. See `references/cmdb-tables.md` for CI classes, health KPIs, CSDM mappings and encoded query syntax, and `references/csdm5.md` for CSDM 5 stages and the conformance scores.
 
 ## Tables and roles
 
 | Tables | Readable with |
 |--------|---------------|
-| `cmdb_ci` and most CI classes, `cmdb_rel_ci`, `cmdb_health_*`, `sn_getwell_csdm_score` | `itil` + `snc_read_only` (`snc_read_only` alone gets 403 on `cmdb_ci` and the scores) |
+| `cmdb_ci` and most CI classes, `cmdb_rel_ci`, `service_offering`, `sn_getwell_csdm_score` | `cmdb_read` ("CMDB reader"); `itil` contains it. `snc_read_only` alone gets 403 on `cmdb_ci` and the scores |
+| `cmdb_health_scorecard`, `cmdb_health_result`, `cmdb_health_metric`, the health rules | `sn_cmdb_user` (CMDB Workspace, read-only) or `itil`; `cmdb_read` alone is not enough |
 | Service classes such as `cmdb_ci_service_business` and `cmdb_ci_service_technical` | Often a service or CMDB role beyond `itil`: expect 403 |
-| `sys_db_object` (class hierarchy) | Usually readable; `servicenow://cmdb/classes` reads it for you |
+| `sys_db_object` (class hierarchy) | `itil` and many other roles; `servicenow://cmdb/classes` reads it for you |
+
+Add `snc_read_only` to keep the identity read-only. These are the read ACLs on a Brazil instance; yours may differ. Creating or updating CIs needs `sn_cmdb_editor`: since Zurich, `itil` no longer contains it.
 
 ## When access is denied
 

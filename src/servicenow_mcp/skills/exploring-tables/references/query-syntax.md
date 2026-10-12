@@ -98,19 +98,25 @@ Each helper must end the value: at `^`, at the `@` between the two ends of a ran
 ## Common Patterns
 
 ```
-# Active P1 incidents assigned to someone, newest first
-active=true^priority=1^assigned_toISNOTEMPTY^ORDERBYDESCsys_created_on
+# sys_user: active users who last logged in more than 90 days ago
+active=true^last_login_timeRELATIVELT@dayofweek@ago@90
 
-# Incidents opened in the last 7 days
-opened_atRELATIVEGT@dayofweek@ago@7
+# sys_user: active users who never logged in (RELATIVELT/GT skip empty values)
+active=true^last_login_timeISEMPTY
 
-# Servers, including every server subclass
+# sys_user_has_role: admin grants held by inactive users (dot-walk into the user)
+role.name=admin^user.active=false
+
+# sys_user_group: active groups without a manager
+active=true^managerISEMPTY
+
+# cmdb_ci: servers, including every server subclass
 sys_class_nameINSTANCEOFcmdb_ci_server
 
-# Open incidents for a specific CI
-active=true^cmdb_ci=<sys_id>
+# task (or any table that extends it): active P1 work assigned to someone, newest first
+active=true^priority=1^assigned_toISNOTEMPTY^ORDERBYDESCsys_created_on
 
-# Records updated today
+# Any table: records updated today
 sys_updated_onONToday@javascript:gs.beginningOfToday()@javascript:gs.endOfToday()
 ```
 

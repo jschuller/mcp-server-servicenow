@@ -9,7 +9,7 @@ graph TD
         ST["system_tools (3)"]
         UT["update_set_tools (5)"]
         RS["resources (5)"]
-        SK["skills (5)"]
+        SK["skills (4)"]
         SNR["make_sn_request"]
     end
     subgraph AUTH["Auth + HTTP"]

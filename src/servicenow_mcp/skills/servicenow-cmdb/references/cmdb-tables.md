@@ -91,3 +91,8 @@ Installed with CMDB Health (`com.snc.cmdb`); see ServiceNow's [components instal
 | `^` | AND | `active=true^priority=1` |
 | `^OR` | OR | `state=1^ORstate=2` |
 | `^NQ` | New query (OR group) | `state=1^NQstate=2^priority=1` |
+
+## Sources
+- [Base system roles](https://www.servicenow.com/docs/r/brazil/platform-administration/user-administration/r_BaseSystemRoles.html) · [source](https://github.com/ServiceNow/ServiceNowDocs/blob/753a7f0e8fac/markdown/platform-administration/user-administration/r_BaseSystemRoles.md)
+- [Combined CMDB release notes for upgrades from Zurich to Brazil](https://www.servicenow.com/docs/r/brazil/delta-zurich-brazil/brazil-zurich-configurationmanagementdatabasecmdb-release-notes.html) · [source](https://github.com/ServiceNow/ServiceNowDocs/blob/753a7f0e8fac/markdown/delta-zurich-brazil/brazil-zurich-configurationmanagementdatabasecmdb-release-notes.md)
+- [CMDB MCP Server tools reference](https://www.servicenow.com/docs/r/brazil/servicenow-platform/now-assist-for-configuration-management-database-cmdb/na-cmdb-mcp-server-ref.html) · [source](https://github.com/ServiceNow/ServiceNowDocs/blob/753a7f0e8fac/markdown/servicenow-platform/now-assist-for-configuration-management-database-cmdb/na-cmdb-mcp-server-ref.md)

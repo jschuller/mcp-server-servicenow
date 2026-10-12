@@ -47,7 +47,6 @@ SKILLS = (
     "exploring-tables",
     "reviewing-update-sets",
     "servicenow-cmdb",
-    "triaging-incidents",
 )
 EXPECTED_RESOURCES = {
     "servicenow://instance",
@@ -62,7 +61,6 @@ EXPECTED_RESOURCES = {
     "skill://reviewing-update-sets/references/update-set-fields.md",
     "skill://servicenow-cmdb/references/cmdb-tables.md",
     "skill://servicenow-cmdb/references/csdm5.md",
-    "skill://triaging-incidents/references/incident-fields.md",
 }
 EXPECTED_TEMPLATES = {"servicenow://schema/{table_name}"}
 

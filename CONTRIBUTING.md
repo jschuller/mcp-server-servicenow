@@ -26,7 +26,7 @@ mypy src/
 
 ## Skills
 
-Skills for your own organisation or domain belong in your own repository: see [EXTENDING.md](EXTENDING.md). Changes to the five skills shipped here must pass `mcp-server-servicenow --validate-skills src/servicenow_mcp/skills`, cite ServiceNow documentation by link (the [skill profile](docs/skill-profile.md)), and keep the counts in `tests/test_skills.py` current.
+Skills for your own organisation or domain belong in your own repository: see [EXTENDING.md](EXTENDING.md). Changes to the four skills shipped here must pass `mcp-server-servicenow --validate-skills src/servicenow_mcp/skills`, cite ServiceNow documentation by link (the [skill profile](docs/skill-profile.md)), and keep the counts in `tests/test_skills.py` current.
 
 ## Adding a New Tool
 

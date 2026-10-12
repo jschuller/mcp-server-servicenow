@@ -14,7 +14,7 @@ This project is the other half: the developer loop. It reads and writes any tabl
 | **Auth** | OAuth 2.0 auth-code via Machine Identity Console | Basic, OAuth (client credentials or password grant), API key; over HTTP an OAuth 2.1 + PKCE proxy (DCR + CIMD) |
 | **Governance** | AI Control Tower / AI Gateway | Self-managed: `--read-only`, query validation, JSON audit log, tool annotations; table scope from ServiceNow ACLs |
 | **Transport** | Streamable HTTP | stdio + Streamable HTTP |
-| **Resources / skills / prompts** | Roadmap | 5 resources; 5 Agent Skills as `skill://` resources (SEP-2640); prompts planned |
+| **Resources / skills / prompts** | Roadmap | 5 resources; 4 Agent Skills as `skill://` resources (SEP-2640); prompts planned |
 
 The Console rows were checked against ServiceNow's documentation, KB2952534 and the AI Academy material on 2026-08-22. The pre-built servers' announcement does not state their entitlement, minimum release or PDI availability, so those cells describe the Console; check your instance before relying on them.
 

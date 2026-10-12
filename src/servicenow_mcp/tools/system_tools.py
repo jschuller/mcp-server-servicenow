@@ -74,7 +74,7 @@ def get_table_schema(
     include_inherited: Annotated[
         bool,
         Field(
-            description="Include fields inherited from parent tables (e.g. task fields on incident)"
+            description="Include fields inherited from parent tables (e.g. cmdb_ci fields on cmdb_ci_server)"
         ),
     ] = True,
 ) -> Dict[str, Any]:

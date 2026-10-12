@@ -301,9 +301,9 @@ def test_placeholders_are_not_credentials(tmp_path: Path) -> None:
 
 
 def test_core_name_collision_warns_outside_the_package(tmp_path: Path) -> None:
-    text = GOOD.replace("name: my-skill", "name: triaging-incidents")
+    text = GOOD.replace("name: my-skill", "name: exploring-tables")
     skill = make_skill(
-        tmp_path, {"SKILL.md": text, "references/notes.md": ""}, "triaging-incidents"
+        tmp_path, {"SKILL.md": text, "references/notes.md": ""}, "exploring-tables"
     )
     assert any(
         "also a skill this server ships" in m
@@ -334,7 +334,7 @@ def test_render_and_strict(tmp_path: Path) -> None:
 def test_shipped_skills_pass() -> None:
     """The core skills are the reference implementation of the profile."""
     report = lint_skills([REPO / "src" / "servicenow_mcp" / "skills"])
-    assert len(report.skills) == 5
+    assert len(report.skills) == 4
     assert messages(report, "error") == []
     assert messages(report, "warning") == []  # CI runs them with --strict
 

@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "mcp-server-servicenow"
-version = "0.8.1"
+version = "0.9.0"
 description = "ServiceNow MCP server: Table API, CMDB, schema, aggregates and update sets for Claude Code, GitHub Copilot, Codex and any MCP client. Read-only mode, OAuth client credentials for headless use, audit log."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -38,7 +38,7 @@ keywords = [
     "table-api",
     "cmdb",
     "update-sets",
-    "itsm",
+    "now-platform",
     "claude",
     "claude-code",
     "github-copilot",
@@ -97,6 +97,8 @@ exclude = [
     ".claude-plugin/",
     "dist/",
     "evals/",
+    "examples/",
+    "actions/",
     "*.png",
     "uv.lock",
 ]
