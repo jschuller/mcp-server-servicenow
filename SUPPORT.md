@@ -3,6 +3,7 @@
 - **Setup questions, "is this expected?", how-to** → [Discussions › Q&A](https://github.com/jschuller/mcp-server-servicenow/discussions/categories/q-a). Check [TROUBLESHOOTING](TROUBLESHOOTING.md) first: most first-run problems are a sleeping PDI, the basic-auth restriction or a missing role.
 - **It works for you** → [Discussions › Show and tell](https://github.com/jschuller/mcp-server-servicenow/discussions/categories/show-and-tell). A line with your client and ServiceNow release tells us what to keep working.
 - **Ideas** → [Discussions › Ideas](https://github.com/jschuller/mcp-server-servicenow/discussions/categories/ideas). The server stays small on purpose (tools, resources, skills), so ideas that fit a consumer of the server may be pointed there.
+- **Skills you wrote** → [Discussions › Skills](https://github.com/jschuller/mcp-server-servicenow/discussions/categories/skills), with the form. See [EXTENDING.md](EXTENDING.md) for writing, validating and sharing them. We don't host, vet or endorse shared skills beyond the validator.
 - **A bug you can reproduce** → [open an issue](https://github.com/jschuller/mcp-server-servicenow/issues/new/choose).
 - **A security problem** → privately, as described in [SECURITY.md](SECURITY.md). Never in a public issue or discussion.
 

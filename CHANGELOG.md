@@ -1,5 +1,36 @@
 # Changelog
 
+## [Unreleased] — 0.9.0 (user-written skills foundation)
+
+Write your own ServiceNow skills as plain Agent Skills, which every client loads
+natively. There is no pack format. Skills shared by others stay in their authors'
+repositories. See EXTENDING.md and docs/skill-profile.md.
+
+### Added
+- **`--validate-skills PATH [...]`** (with **`--strict`**) checks skill folders offline
+  against the Agent Skills specification and this server's profile:
+  - frontmatter;
+  - declared roles and tables (`io.github.jschuller/servicenow-roles`, `-tables`);
+  - tool calls in code blocks, checked against the server's identifier and
+    `javascript:` rules;
+  - text-only files with no symlinks, within SEP-2640's size limits;
+  - links that stay inside the skill.
+
+  It warns on write-tool calls, outside links and credential-like text, and prints a
+  `sha256:` digest per skill for pinning.
+- **`actions/validate-skills`**, a composite GitHub Action that runs the validator and a
+  ServiceNowDocs citation check (blobless clone: an error when a cited page disappears,
+  a warning when it changed). This repository's CI uses it on the shipped skills and
+  the examples.
+- **`examples/`:**
+  - `template/`: a copyable repository with a workflow, an optional Claude Code plugin
+    wrapper and an eval case;
+  - `change-impact/`: two original example skills, `assessing-change-impact` and
+    `reviewing-sla-definitions`, with mocked eval cases.
+- **Docs:** `EXTENDING.md` (the guide), `docs/skill-profile.md` (the reference and the
+  decision record), and a Discussions "Skills" form.
+- **Dependency:** `pyyaml` is now a direct dependency (it was transitive through FastMCP).
+
 ## [0.8.1] - Unreleased
 
 A content release. A new `analyzing-access` skill reviews role hygiene and explains

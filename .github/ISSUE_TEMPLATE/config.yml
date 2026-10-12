@@ -6,6 +6,9 @@ contact_links:
   - name: It works for me
     url: https://github.com/jschuller/mcp-server-servicenow/discussions/categories/show-and-tell
     about: Tell us which client and ServiceNow release you run it with.
+  - name: Share skills you wrote
+    url: https://github.com/jschuller/mcp-server-servicenow/discussions/categories/skills
+    about: Post your skills repository in Discussions › Skills (see EXTENDING.md).
   - name: Security vulnerability
     url: https://github.com/jschuller/mcp-server-servicenow/security/advisories/new
     about: Report privately; please don't open a public issue.

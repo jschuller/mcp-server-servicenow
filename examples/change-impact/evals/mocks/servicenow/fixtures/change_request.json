@@ -1,0 +1,4 @@
+{"count": 2, "records": [
+ {"sys_id": "c0000000000000000000000000000076", "number": "CHG0000076", "short_description": "Change default router on unix201", "cmdb_ci": "a0000000000000000000000000000201", "start_date": "2026-08-07 14:30:00", "end_date": "2026-08-07 15:00:00", "state": "-3", "type": "normal", "risk": "2"},
+ {"sys_id": "c0000000000000000000000000000077", "number": "CHG0000077", "short_description": "Patch kernel on unix201", "cmdb_ci": "a0000000000000000000000000000201", "start_date": "2026-08-07 14:45:00", "end_date": "2026-08-07 16:00:00", "state": "-2", "type": "normal", "risk": "3"}
+]}

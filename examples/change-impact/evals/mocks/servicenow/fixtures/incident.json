@@ -1,0 +1,1 @@
+{"count": 1, "records": [{"number": "INC0010201", "short_description": "unix201 unreachable from the app tier", "priority": "2", "opened_at": "2026-08-07 15:20:00", "state": "6"}], "warning": "Fields missing from every row: rfc, caused_by. They don't exist on incident or an ACL hides them from this identity; query conditions on them may have been ignored."}

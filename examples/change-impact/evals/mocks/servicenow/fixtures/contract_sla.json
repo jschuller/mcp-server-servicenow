@@ -1,0 +1,6 @@
+{"count": 4, "records": [
+ {"sys_id": "s1", "name": "Priority 1 resolution (1 hour)", "collection": "incident", "type": "SLA", "target": "resolution", "duration": "1970-01-01 01:00:00", "start_condition": "priority=1^active=true", "active": "true"},
+ {"sys_id": "s2", "name": "P1 resolution - legacy", "collection": "incident", "type": "SLA", "target": "resolution", "duration": "1970-01-01 02:00:00", "start_condition": "priority=1^active=true", "active": "true"},
+ {"sys_id": "s3", "name": "Priority 3 resolution (1 day)", "collection": "incident", "type": "SLA", "target": "resolution", "duration": "1970-01-02 00:00:00", "start_condition": "priority=3^active=true", "active": "true"},
+ {"sys_id": "s4", "name": "Network group resolution", "collection": "incident", "type": "OLA", "target": "resolution", "duration": "1970-01-01 04:00:00", "start_condition": "assignment_group.name=Network", "active": "true"}
+]}

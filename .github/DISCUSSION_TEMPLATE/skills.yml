@@ -1,0 +1,77 @@
+title: "[Skills] "
+labels: []
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Share ServiceNow skills you wrote for mcp-server-servicenow. They stay in **your** repository under **your** licence; this project doesn't host, vet or endorse them beyond the validator. See [EXTENDING.md](https://github.com/jschuller/mcp-server-servicenow/blob/main/EXTENDING.md).
+
+        **Don't paste credentials, instance names you don't own, or record data.**
+  - type: input
+    id: names
+    attributes:
+      label: Skill names
+      placeholder: assessing-change-impact, reviewing-sla-definitions
+    validations:
+      required: true
+  - type: input
+    id: repo
+    attributes:
+      label: Repository URL
+      placeholder: https://github.com/you/servicenow-skills
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version or tag
+      placeholder: v0.1.0
+    validations:
+      required: true
+  - type: input
+    id: license
+    attributes:
+      label: Licence
+      placeholder: MIT / Apache-2.0 / …
+    validations:
+      required: true
+  - type: input
+    id: roles
+    attributes:
+      label: Roles the skills need
+      placeholder: itil snc_read_only
+    validations:
+      required: true
+  - type: input
+    id: tables
+    attributes:
+      label: Tables they read
+      placeholder: change_request task_ci incident
+    validations:
+      required: true
+  - type: input
+    id: releases
+    attributes:
+      label: ServiceNow releases tested
+      placeholder: Brazil PDI, Australia company instance
+    validations:
+      required: true
+  - type: textarea
+    id: validator
+    attributes:
+      label: Output of `mcp-server-servicenow --validate-skills <path> --strict`
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What they do
+      description: A few lines for people deciding whether to try them.
+  - type: checkboxes
+    id: rights
+    attributes:
+      label: Content
+      options:
+        - label: I have the right to publish this content. It is written in my own words, cites ServiceNow documentation by link, and contains no gated (Best Practices portal, KB, training, partner), customer or confidential material and no credentials.
+          required: true

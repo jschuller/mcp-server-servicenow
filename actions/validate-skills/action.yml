@@ -1,0 +1,57 @@
+name: Validate ServiceNow skills
+description: >-
+  Check Agent Skills written for mcp-server-servicenow against the skill profile
+  (frontmatter, tables and roles, safe queries, text-only files) and check their
+  ServiceNowDocs citations.
+inputs:
+  path:
+    description: Space-separated skill folders, or folders above them.
+    default: "."
+  server-version:
+    description: >-
+      mcp-server-servicenow version that validates (it must have --validate-skills,
+      0.9.0 or later). Empty means the latest release; pin it for repeatable builds.
+    default: ""
+  strict:
+    description: Fail on warnings as well as errors.
+    default: "false"
+  citations:
+    description: Check ServiceNowDocs citation links (needs network access to GitHub).
+    default: "true"
+  from-source:
+    description: >-
+      Validate with the mcp-server-servicenow checkout in the workspace instead of a
+      release. Only for the server's own repository.
+    default: "false"
+runs:
+  using: composite
+  steps:
+    - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+    - name: Validate skills
+      shell: bash
+      env:
+        SKILL_PATHS: ${{ inputs.path }}
+        SERVER_VERSION: ${{ inputs.server-version }}
+        STRICT: ${{ inputs.strict }}
+        FROM_SOURCE: ${{ inputs.from-source }}
+      run: |
+        set -euo pipefail
+        read -r -a paths <<< "$SKILL_PATHS"
+        args=(--validate-skills "${paths[@]}")
+        if [ "$STRICT" = "true" ]; then args+=(--strict); fi
+        if [ "$FROM_SOURCE" = "true" ]; then
+          uv run --quiet mcp-server-servicenow "${args[@]}"
+        else
+          spec="mcp-server-servicenow"
+          if [ -n "$SERVER_VERSION" ]; then spec="mcp-server-servicenow==$SERVER_VERSION"; fi
+          uvx --quiet --from "$spec" mcp-server-servicenow "${args[@]}"
+        fi
+    - name: Check ServiceNowDocs citations
+      if: inputs.citations == 'true'
+      shell: bash
+      env:
+        SKILL_PATHS: ${{ inputs.path }}
+      run: |
+        set -euo pipefail
+        read -r -a paths <<< "$SKILL_PATHS"
+        python3 "$GITHUB_ACTION_PATH/check_citations.py" "${paths[@]}"

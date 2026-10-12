@@ -103,3 +103,19 @@ jobs:
               sys.exit(1)
           print(f"Wheel carries {len(skills)} skills and {len(refs)} reference files")
           EOF
+
+  skills:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Validate the shipped skills and their citations
+        uses: ./actions/validate-skills
+        with:
+          path: src/servicenow_mcp/skills
+          from-source: "true"
+      - name: Validate the examples (strict)
+        uses: ./actions/validate-skills
+        with:
+          path: examples
+          from-source: "true"
+          strict: "true"

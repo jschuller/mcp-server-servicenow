@@ -1,0 +1,18 @@
+{
+  "name": "servicenow-change-impact",
+  "version": "0.1.0",
+  "description": "Example skills for mcp-server-servicenow: change impact and SLA definition review (read-only, itil).",
+  "license": "MIT",
+  "skills": "./skills/",
+  "mcpServers": {
+    "servicenow": {
+      "command": "uvx",
+      "args": ["mcp-server-servicenow"],
+      "env": {
+        "SERVICENOW_INSTANCE_URL": "${SERVICENOW_INSTANCE_URL}",
+        "SERVICENOW_USERNAME": "${SERVICENOW_USERNAME:-}",
+        "SERVICENOW_PASSWORD": "${SERVICENOW_PASSWORD:-}"
+      }
+    }
+  }
+}

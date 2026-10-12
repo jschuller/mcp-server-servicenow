@@ -191,4 +191,14 @@ All settings can be passed as CLI args or environment variables. See `.env.examp
 | `SERVICENOW_ALLOW_JS_QUERIES` | `--allow-js-queries` | Permit arbitrary `javascript:` in caller queries (default: only `gs.*` date helpers) |
 | `SERVICENOW_AUDIT_LOG` | `--audit-log` | `stderr` (default), `off`, or a file path for the JSON audit log |
 
+### One-shot commands
+
+These run, print a report and exit; they don't start the server.
+
+| CLI Arg | What it does |
+|---------|--------------|
+| `--check` | Read-only connection doctor: reach, identity, roles, table, schema and aggregate access |
+| `--validate-skills PATH [PATH ...]` | Check skill folders against the [skill profile](skill-profile.md), offline; exit 1 on errors |
+| `--strict` | With `--validate-skills`: warnings fail too |
+
 Boolean env vars accept `1`, `true`, `yes`, `on` (case-insensitive). Empty values and unexpanded `${VAR}` placeholders (as Claude Code passes for unset plugin env vars) are treated as unset.

@@ -201,9 +201,10 @@ Verified on 2026-10-11 against ServiceNow Brazil: Claude Code 2.1.296, VS Code 1
 - [Remote deployment](https://github.com/jschuller/mcp-server-servicenow/blob/main/docs/deployment.md) — from source, Streamable HTTP, OAuth 2.1 + PKCE, Docker, Cloud Run
 - [Alongside ServiceNow's own MCP servers](https://github.com/jschuller/mcp-server-servicenow/blob/main/docs/native-mcp.md)
 - [Architecture and embedding](https://github.com/jschuller/mcp-server-servicenow/blob/main/docs/architecture.md) — mount it in your own FastMCP server
+- [Write your own skills](https://github.com/jschuller/mcp-server-servicenow/blob/main/EXTENDING.md) — the template, the validator, the GitHub Action, sharing
 - [Contributing](https://github.com/jschuller/mcp-server-servicenow/blob/main/CONTRIBUTING.md) · [Changelog](https://github.com/jschuller/mcp-server-servicenow/blob/main/CHANGELOG.md) · [Support](https://github.com/jschuller/mcp-server-servicenow/blob/main/SUPPORT.md) · [Security](https://github.com/jschuller/mcp-server-servicenow/blob/main/SECURITY.md)
 
-Next: a skill for access and role hygiene, then a foundation for extending the server with your own skill packs, and MCP prompts.
+Write your own skills: [EXTENDING.md](https://github.com/jschuller/mcp-server-servicenow/blob/main/EXTENDING.md) covers the template, the validator and how to share them. Next: MCP prompts.
 
 **Related:** [sn-app-template](https://github.com/jschuller/sn-app-template) — a ServiceNow scoped app template for Claude Code + now-sdk that pairs with this server.
 

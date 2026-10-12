@@ -4,7 +4,8 @@ import argparse
 import logging
 import os
 import sys
-from typing import Any, Optional
+from pathlib import Path
+from typing import Any, List, Optional
 from urllib.parse import urlsplit
 
 from dotenv import load_dotenv
@@ -103,6 +104,21 @@ def parse_args() -> argparse.Namespace:
             "Check the connection and identity with read-only requests, print one "
             "line per check and exit (0 when auth and a read work)"
         ),
+    )
+    parser.add_argument(
+        "--validate-skills",
+        nargs="+",
+        metavar="PATH",
+        help=(
+            "Check skill folders (or folders above them) against the Agent Skills "
+            "specification and this server's skill profile, offline; print one line "
+            "per skill and exit (0 when no errors)"
+        ),
+    )
+    parser.add_argument(
+        "--strict",
+        action="store_true",
+        help="With --validate-skills: warnings fail too",
     )
     parser.add_argument(
         "--transport",
@@ -329,6 +345,17 @@ def run_check(args: argparse.Namespace) -> int:
     return run_doctor(config)
 
 
+def run_validate_skills(paths: List[str], *, strict: bool) -> int:
+    """``--validate-skills``: lint skills offline and print the report."""
+    from servicenow_mcp import __version__
+    from servicenow_mcp.skill_lint import lint_skills, render
+
+    logging.getLogger().setLevel(logging.WARNING)
+    text, code = render(lint_skills([Path(p) for p in paths]), __version__, strict)
+    print(text)
+    return code
+
+
 def main() -> None:
     """Main entry point."""
     load_dotenv()
@@ -338,6 +365,9 @@ def main() -> None:
 
         if args.debug:
             logging.getLogger().setLevel(logging.DEBUG)
+
+        if getattr(args, "validate_skills", None):
+            sys.exit(run_validate_skills(args.validate_skills, strict=args.strict))
 
         if getattr(args, "check", False):
             sys.exit(run_check(args))

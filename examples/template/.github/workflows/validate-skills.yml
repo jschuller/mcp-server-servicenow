@@ -1,0 +1,17 @@
+name: Validate skills
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # Pin the action and the server to a release you have tested, e.g. @v0.9.0 and "0.9.0".
+      - uses: jschuller/mcp-server-servicenow/actions/validate-skills@v0.9.0
+        with:
+          path: skills
+          server-version: "0.9.0"
+          strict: "true"

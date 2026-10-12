@@ -1,0 +1,8 @@
+{"count": 6, "records": [
+ {"sla": "s1", "sla.name": "Priority 1 resolution (1 hour)", "has_breached": "true", "stage": "completed"},
+ {"sla": "s1", "sla.name": "Priority 1 resolution (1 hour)", "has_breached": "false", "stage": "completed"},
+ {"sla": "s2", "sla.name": "P1 resolution - legacy", "has_breached": "false", "stage": "completed"},
+ {"sla": "s2", "sla.name": "P1 resolution - legacy", "has_breached": "false", "stage": "completed"},
+ {"sla": "s4", "sla.name": "Network group resolution", "has_breached": "true", "stage": "completed"},
+ {"sla": "s4", "sla.name": "Network group resolution", "has_breached": "true", "stage": "in_progress"}
+]}
