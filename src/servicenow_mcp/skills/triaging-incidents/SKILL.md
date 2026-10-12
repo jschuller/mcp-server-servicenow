@@ -7,6 +7,7 @@ metadata:
   version: "2.0.0"
   io.github.jschuller/servicenow-roles: "itil snc_read_only"
   io.github.jschuller/servicenow-tables: "incident problem change_request sys_user_group cmdb_ci cmdb_rel_ci"
+  io.github.jschuller/servicenow-writes: "create_record"
 
 ---
 

@@ -19,8 +19,9 @@ This server ships five such skills inside the package (`src/servicenow_mcp/skill
 | `license` | Recommended; a warning when missing |
 | `metadata.io.github.jschuller/servicenow-roles` | The roles the skill needs, space-separated, e.g. `"itil snc_read_only"` |
 | `metadata.io.github.jschuller/servicenow-tables` | Every table the skill's tool calls read, space-separated. Required as soon as the skill calls a tool with a table |
+| `metadata.io.github.jschuller/servicenow-writes` | The write tools the skill calls, space-separated, e.g. `"create_record"`. Leave it out for a read-only skill |
 
-The two metadata keys carry a reverse-domain prefix, because the Agent Skills specification asks for "reasonably unique" keys, and SEP-2640 uses the same convention. Values are strings, because the specification defines `metadata` as string-to-string.
+The metadata keys carry a reverse-domain prefix, because the Agent Skills specification asks for "reasonably unique" keys, and SEP-2640 uses the same convention. Values are strings, because the specification defines `metadata` as string-to-string.
 
 ### Tool calls
 
@@ -65,13 +66,16 @@ These rules keep a skill safe to read and to serve: it is instructions and refer
 | Errors | Warnings |
 |--------|----------|
 | Frontmatter missing, not YAML, or breaking the name/description rules | No `license` |
-| A file that isn't `.md`/`.txt`/`.csv`, a hidden file or folder, a symlink, not UTF-8 | A call to a write tool (say so in the skill, and ask before writing) |
+| A file that isn't `.md`/`.txt`/`.csv`, a hidden file or folder, a symlink, not UTF-8 | A call to a write tool that `servicenow-writes` doesn't declare |
 | More than 512 files or 16 MiB | A link outside servicenow.com/docs and ServiceNowDocs |
 | A relative link that leaves the skill or points nowhere | Text that looks like a credential or token |
 | A tool call with an invalid table, field list or `order_by`, or a refused `javascript:` | A declared table the skill never mentions |
 | A tool call reading a table that isn't declared | A code block that names a tool but doesn't parse |
-| Invalid names in the metadata keys | A function that isn't a tool of this server |
+| Invalid names in the metadata keys, or a `servicenow-writes` entry that isn't a write tool | A function that isn't a tool of this server |
 | | A skill name that is also one of this server's skills |
+| | A declared write tool that no call uses |
+
+A skill that declares its writes passes `--strict`, and its line in the output names them (`writes: create_record`), so a reviewer sees them without reading the body. The skill should still say to ask before writing. This repository's own skills run with `--strict` in CI.
 
 The digest covers every file's path and content, so you can pin a skill: if anything changes, the digest changes.
 

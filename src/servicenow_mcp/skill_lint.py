@@ -9,7 +9,8 @@ The profile (docs/skill-profile.md) adds to the Agent Skills specification:
 
 - ``metadata`` keys ``io.github.jschuller/servicenow-roles`` and
   ``io.github.jschuller/servicenow-tables`` (space-separated) declare the roles a
-  skill needs and every table it reads;
+  skill needs and every table it reads, and ``io.github.jschuller/servicenow-writes``
+  names the write tools it calls;
 - tool calls live in fenced code blocks, written as calls
   (``list_records(table_name="incident", query="...")``), and must pass the same
   identifier and ``javascript:`` rules the server applies at run time;
@@ -17,7 +18,8 @@ The profile (docs/skill-profile.md) adds to the Agent Skills specification:
   SEP-2640 per-skill limits, and relative links stay inside the skill.
 
 Errors make a skill unusable or unsafe; warnings are things a reviewer should look
-at (write-tool calls, links outside ServiceNow's documentation, credential-like text).
+at (undeclared write-tool calls, links outside ServiceNow's documentation,
+credential-like text).
 """
 
 from __future__ import annotations
@@ -46,6 +48,7 @@ from servicenow_mcp.middleware.policy import (
 
 ROLES_KEY = "io.github.jschuller/servicenow-roles"
 TABLES_KEY = "io.github.jschuller/servicenow-tables"
+WRITES_KEY = "io.github.jschuller/servicenow-writes"
 
 NAME_RE = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
 ROLE_RE = re.compile(r"^[A-Za-z0-9_.]+$")
@@ -90,6 +93,7 @@ class SkillReport:
     name: str
     path: Path
     digest: str = ""
+    writes: List[str] = field(default_factory=list)  # declared write tools
     findings: List[Finding] = field(default_factory=list)
 
     def add(self, level: str, path: str, line: Optional[int], message: str) -> None:
@@ -232,9 +236,14 @@ def _split_words(value: object) -> Optional[List[str]]:
 
 
 def _check_frontmatter(
-    skill: Path, data: dict, report: SkillReport, core_names: Set[str], is_core: bool
-) -> Tuple[Optional[Set[str]], bool]:
-    """Check name/description/license/metadata; return (declared tables, roles declared)."""
+    skill: Path,
+    data: dict,
+    report: SkillReport,
+    core_names: Set[str],
+    is_core: bool,
+    catalog: ToolCatalog,
+) -> Tuple[Optional[Set[str]], Set[str]]:
+    """Check name/description/license/metadata; return (declared tables, declared writes)."""
     name = data.get("name")
     if not isinstance(name, str) or not name:
         report.add("error", "SKILL.md", None, "frontmatter needs a name")
@@ -276,9 +285,9 @@ def _check_frontmatter(
     metadata = data.get("metadata") or {}
     if not isinstance(metadata, dict):
         report.add("error", "SKILL.md", None, "metadata must be a mapping")
-        return None, False
+        return None, set()
     tables: Optional[Set[str]] = None
-    roles_declared = False
+    writes: Set[str] = set()
     if TABLES_KEY in metadata:
         words = _split_words(metadata[TABLES_KEY])
         if words is None:
@@ -303,8 +312,21 @@ def _check_frontmatter(
                 report.add(
                     "error", "SKILL.md", None, f"{ROLES_KEY}: invalid role names {bad}"
                 )
-            roles_declared = bool(words)
-    return tables, roles_declared
+    if WRITES_KEY in metadata:
+        words = _split_words(metadata[WRITES_KEY])
+        if words is None:
+            report.add("error", "SKILL.md", None, f"{WRITES_KEY} must be a string")
+        else:
+            bad = [w for w in words if w not in catalog.write]
+            if bad:
+                report.add(
+                    "error",
+                    "SKILL.md",
+                    None,
+                    f"{WRITES_KEY}: not write tools of this server {bad}",
+                )
+            writes = set(words) - set(bad)
+    return tables, writes
 
 
 def _fences(text: str) -> Iterator[Tuple[int, str]]:
@@ -362,6 +384,7 @@ def _check_calls(
     content: str,
     catalog: ToolCatalog,
     tables: Optional[Set[str]],
+    writes: Set[str],
     used: Set[str],
     report: SkillReport,
 ) -> None:
@@ -390,12 +413,15 @@ def _check_calls(
                 )
             continue
         if tool in catalog.write:
-            report.add(
-                "warning",
-                rel,
-                line,
-                f"{tool}() writes to the instance; say so and ask before writing",
-            )
+            used.add(tool)
+            if tool not in writes:
+                report.add(
+                    "warning",
+                    rel,
+                    line,
+                    f"{tool}() writes to the instance: declare it in {WRITES_KEY},"
+                    " and say in the skill to ask before writing",
+                )
         args = _literal_kwargs(node)
         table = args.get("table_name") or FIXED_TABLES.get(tool)
         if tool in ("list_ci", "get_ci", "create_ci", "update_ci"):
@@ -510,18 +536,32 @@ def lint_skill(
     main = skill / "SKILL.md"
     data, body_line, problem = _frontmatter(texts.get(main, ""))
     tables: Optional[Set[str]] = None
+    writes: Set[str] = set()
     if data is None:
         report.add("error", "SKILL.md", None, problem)
     else:
-        tables, _ = _check_frontmatter(skill, data, report, core_names, is_core)
+        tables, writes = _check_frontmatter(
+            skill, data, report, core_names, is_core, catalog
+        )
+    report.writes = sorted(writes)
 
-    used: Set[str] = set()
+    used: Set[str] = set()  # tables read and write tools called
     for path, text in texts.items():
         _check_text(skill, path, text, report)
         if path.suffix.lower() == ".md":
             rel = path.relative_to(skill).as_posix()
             for first_line, content in _fences(text):
-                _check_calls(rel, first_line, content, catalog, tables, used, report)
+                _check_calls(
+                    rel, first_line, content, catalog, tables, writes, used, report
+                )
+    unused_writes = sorted(writes - used)
+    if unused_writes:
+        report.add(
+            "warning",
+            "SKILL.md",
+            None,
+            f"{WRITES_KEY} declares tools no call uses: {' '.join(unused_writes)}",
+        )
     if tables:
         # Dot-walks (group.name) read other tables without a call naming them, so
         # only flag a declared table the skill never mentions at all.
@@ -569,7 +609,8 @@ def render(report: LintReport, version: str, strict: bool) -> Tuple[str, int]:
         out.append(f"error   {problem}")
     for skill in report.skills:
         state = "FAIL" if skill.errors else ("warn" if skill.warnings else "ok")
-        out.append(f"{state:<7} {skill.name}  {skill.digest}  ({skill.path})")
+        writes = f"  writes: {' '.join(skill.writes)}" if skill.writes else ""
+        out.append(f"{state:<7} {skill.name}  {skill.digest}  ({skill.path}){writes}")
         out.extend(f.render() for f in skill.findings)
     errors, warnings = report.error_count, report.warning_count
     failed = errors > 0 or (strict and warnings > 0)

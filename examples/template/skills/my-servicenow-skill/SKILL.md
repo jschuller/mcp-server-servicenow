@@ -19,7 +19,7 @@ One paragraph: the job this skill does, for whom, and what it never does (for ex
 |-------|---------------|---------------|
 | `incident` | What you read from it | The least role that can read it |
 
-Declare every table your tool calls read in `io.github.jschuller/servicenow-tables`, and the roles in `io.github.jschuller/servicenow-roles`. Test the skill on a developer instance with an identity that holds exactly those roles.
+Declare every table your tool calls read in `io.github.jschuller/servicenow-tables`, and the roles in `io.github.jschuller/servicenow-roles`. If the skill calls a write tool, add `io.github.jschuller/servicenow-writes` with its name. Test the skill on a developer instance with an identity that holds exactly those roles.
 
 ## When access is denied
 

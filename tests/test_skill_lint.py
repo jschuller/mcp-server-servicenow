@@ -12,6 +12,7 @@ from servicenow_mcp.skill_lint import (
     MAX_FILES,
     ROLES_KEY,
     TABLES_KEY,
+    WRITES_KEY,
     LintReport,
     lint_skills,
     render,
@@ -212,6 +213,39 @@ def test_tool_calls(tmp_path: Path, call: str, level: str, expected: str) -> Non
     assert any(expected in m for m in messages(lint_skills([skill]), level))
 
 
+def test_declared_writes(tmp_path: Path) -> None:
+    call = '\n```\nupdate_record(table_name="task_sla", sys_id="<id>", data={})\n```\n'
+    declared = GOOD.replace(
+        f"  {TABLES_KEY}:", f'  {WRITES_KEY}: "update_record"\n  {TABLES_KEY}:'
+    )
+    skill = make_skill(
+        tmp_path, {"SKILL.md": declared + call, "references/notes.md": ""}
+    )
+    report = lint_skills([skill])
+    assert messages(report, "error") == [] and messages(report, "warning") == []
+    assert report.skills[0].writes == ["update_record"]
+    text, code = render(report, "9.9.9", strict=True)
+    assert code == 0 and "writes: update_record" in text
+
+
+@pytest.mark.parametrize(
+    ("writes", "body", "level", "expected"),
+    [
+        ('"list_records"', "", "error", "not write tools"),
+        ('"update_record"', "", "warning", "declares tools no call uses"),
+        ("[update_record]", "", "error", "must be a string"),
+    ],
+)
+def test_declared_writes_problems(
+    tmp_path: Path, writes: str, body: str, level: str, expected: str
+) -> None:
+    text = GOOD.replace(
+        f"  {TABLES_KEY}:", f"  {WRITES_KEY}: {writes}\n  {TABLES_KEY}:"
+    )
+    skill = make_skill(tmp_path, {"SKILL.md": text + body, "references/notes.md": ""})
+    assert any(expected in m for m in messages(lint_skills([skill]), level))
+
+
 def test_calls_need_declared_tables(tmp_path: Path) -> None:
     text = GOOD.replace(f'  {TABLES_KEY}: "task_sla contract_sla"\n', "")
     skill = make_skill(tmp_path, {"SKILL.md": text, "references/notes.md": ""})
@@ -302,6 +336,7 @@ def test_shipped_skills_pass() -> None:
     report = lint_skills([REPO / "src" / "servicenow_mcp" / "skills"])
     assert len(report.skills) == 5
     assert messages(report, "error") == []
+    assert messages(report, "warning") == []  # CI runs them with --strict
 
 
 def test_cli_exit_codes(tmp_path: Path, good: Path) -> None:

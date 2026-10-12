@@ -10,18 +10,20 @@ repositories. See EXTENDING.md and docs/skill-profile.md.
 - **`--validate-skills PATH [...]`** (with **`--strict`**) checks skill folders offline
   against the Agent Skills specification and this server's profile:
   - frontmatter;
-  - declared roles and tables (`io.github.jschuller/servicenow-roles`, `-tables`);
+  - declared roles and tables (`io.github.jschuller/servicenow-roles`, `-tables`), and
+    declared write tools (`-writes`);
   - tool calls in code blocks, checked against the server's identifier and
     `javascript:` rules;
   - text-only files with no symlinks, within SEP-2640's size limits;
   - links that stay inside the skill.
 
-  It warns on write-tool calls, outside links and credential-like text, and prints a
-  `sha256:` digest per skill for pinning.
+  It warns on undeclared write-tool calls, outside links and credential-like text, and
+  prints a `sha256:` digest per skill for pinning, plus the write tools it declares.
 - **`actions/validate-skills`**, a composite GitHub Action that runs the validator and a
   ServiceNowDocs citation check (blobless clone: an error when a cited page disappears,
-  a warning when it changed). This repository's CI uses it on the shipped skills and
-  the examples.
+  a warning when it changed). This repository's CI runs it with `--strict` on the
+  shipped skills and the examples.
+- **`triaging-incidents`** declares `create_record` in `io.github.jschuller/servicenow-writes`.
 - **`examples/`:**
   - `template/`: a copyable repository with a workflow, an optional Claude Code plugin
     wrapper and an eval case;

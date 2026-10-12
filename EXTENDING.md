@@ -16,6 +16,9 @@ A skill is a folder with a `SKILL.md` file, in the open [Agent Skills](https://a
        io.github.jschuller/servicenow-roles: "itil snc_read_only"
        io.github.jschuller/servicenow-tables: "change_request task_ci incident"
      ```
+   - **Writes:** a skill that calls a write tool names it in a third key, e.g.
+     `io.github.jschuller/servicenow-writes: "create_record"`, and tells the agent to ask
+     before writing. Leave the key out for a read-only skill.
    - **Tool calls:** in code blocks, written as calls, e.g. `list_records(table_name="incident", query="...", fields="...")`. The validator checks them against the server's rules.
    - **Denials:** what a 403 means ("not assessable with this identity"), and what 0 rows or missing fields mean ("possibly hidden by an ACL").
    - **References:** long material goes in `references/*.md`.
@@ -35,7 +38,7 @@ The command runs offline. It prints each skill's `sha256:` digest and every find
 - queries the server would refuse.
 
 Warnings cover what a reviewer should look at:
-- calls to write tools;
+- calls to write tools the skill doesn't declare;
 - links outside ServiceNow's documentation;
 - anything that looks like a credential.
 
@@ -60,7 +63,12 @@ Copy the skill folders where your client looks for skills, with mcp-server-servi
 - Claude Code: `~/.claude/skills/`, or a project's `.claude/skills/`.
 - Other clients: see their skills documentation.
 
-Claude Code can also load the whole repository as a plugin.
+Two shortcuts:
+- **The `skills` command-line tool** ([vercel-labs/skills](https://github.com/vercel-labs/skills)): `npx skills add <owner>/<repo>` finds the skills in a repository, including those that `.claude-plugin/plugin.json` lists, and installs them for Claude Code, Codex, Cursor and other clients.
+  - Pin the tool's version, e.g. `npx skills@1.7.0`.
+  - Add `--copy` for real copies instead of symlinks.
+  - Tested with 1.7.0 on this template and the example.
+- **Claude Code plugin:** Claude Code can load the whole repository as a plugin.
 
 ## Share it
 

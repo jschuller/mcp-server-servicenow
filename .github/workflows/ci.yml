@@ -108,11 +108,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Validate the shipped skills and their citations
+      - name: Validate the shipped skills and their citations (strict)
         uses: ./actions/validate-skills
         with:
           path: src/servicenow_mcp/skills
           from-source: "true"
+          strict: "true"
       - name: Validate the examples (strict)
         uses: ./actions/validate-skills
         with:
