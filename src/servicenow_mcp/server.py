@@ -52,8 +52,8 @@ def render_instructions(namespace: str | None = None) -> str:
     )
     return (
         "ServiceNow developer data plane: Table API, CMDB, update sets, schema.\n"
-        "Before multi-step ITSM or CMDB work, read the matching skill resource (a guided\n"
-        "workflow with encoded-query patterns), then use the tools:\n"
+        "Before your first tool call on a task below, read the matching skill resource (a\n"
+        "guided workflow with encoded-query patterns), then use the tools:\n"
         f"{skills}\n"
         f"Each skill's references/ files are sibling resources; {uri('servicenow', 'help/query-syntax')}\n"
         "lists the encoded-query operators. Queries join with ^ (AND) and ^OR; javascript:\n"

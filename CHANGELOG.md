@@ -59,6 +59,12 @@ skill and one new response key. Nothing is removed and no configuration changes.
     described.
 - **Server instructions** add the `analyzing-access` hint. They also ask the model to
   name filtered fields in `fields=`, and to read a 403 as "not assessable".
+  - The skill line now says to read the skill "before your first tool call on a task
+    below" (it was "before multi-step ITSM or CMDB work").
+  - In fresh Claude Code sessions (2.1.296, Sonnet), the old wording plus the new text
+    read the skill first in 1 of 8 runs of "what's on fire", against 5 of 7 for 0.8.0.
+  - The new wording read it in 7 of 7. On an access question it read it in 5 of 5,
+    against 1 of 4 before. It still skipped the skill for "which user am I?" (3 of 3).
 
 ## [0.8.0] - 2026-10-11
 
