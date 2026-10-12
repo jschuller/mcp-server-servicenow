@@ -18,7 +18,7 @@ Two jobs: review role and group hygiene across users, and explain why a call was
 | Table | What it answers | Readable with |
 |-------|-----------------|---------------|
 | `sys_user_has_role` | Which user holds which role, directly or inherited | `itil` (all users' rows); `snc_read_only` alone gets 403 |
-| `sys_user_grmember` | Group membership | `itil` |
+| `sys_user_grmember` | Group membership; group names come from `sys_user_group` through `group.name` | `itil` |
 | `sys_group_has_role` | Which roles a group grants | `itil` |
 | `sys_user` | `active`, `last_login_time` | `snc_read_only` |
 | `sys_security_acl` | The ACL rules themselves | `admin` / `security_admin` only: 403 for least-privilege identities |
