@@ -12,7 +12,7 @@
 | Mocks from | mcp-server-servicenow 0.9.0 |
 | Cost (list-price estimate) | $0.89 |
 | Started | 2026-10-12T20:20:16.982Z |
-| Commit | 7621fcaa8df5 |
+| Commit | 906f116c985c |
 | Kind | self-reported |
 
 | Case | Score | Tools only | Δ vs tools | Δ vs no plugin |
@@ -24,4 +24,6 @@
 - **Δ vs no plugin:** what `claude plugin eval` reports. The mocked tools are absent without the plugin, so it overstates what the skills add.
 
 Reproduce from this commit: `claude plugin eval . --ablation with-without --model claude-sonnet-5-5 --judge-model claude-haiku-5-5 --runs 3`
+
+Tools-only baseline: `mcp-server-servicenow --eval-baseline . ../tools-only && claude plugin eval ../tools-only --ablation none --model claude-sonnet-5-5 --judge-model claude-haiku-5-5 --runs 3`
 
