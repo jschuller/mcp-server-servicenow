@@ -63,3 +63,56 @@ def test_list_records_sends_descending_order_clause(
             "sysparm_fields": "number,sys_updated_on",
         },
     )
+
+
+def _list_with_rows(
+    monkeypatch: pytest.MonkeyPatch, rows: list, fields: str | None
+) -> dict:
+    response = Mock()
+    response.text = "{}"
+    response.headers = {"Content-Type": "application/json"}
+    response.json.return_value = {"result": rows}
+    monkeypatch.setattr(
+        table_tools,
+        "get_config",
+        lambda: SimpleNamespace(
+            api_url="https://test.service-now.com/api/now", timeout=30
+        ),
+    )
+    monkeypatch.setattr(table_tools, "make_sn_request", Mock(return_value=response))
+    return table_tools.list_records(table_name="incident", fields=fields)
+
+
+def test_list_records_warns_when_a_requested_field_is_in_no_row(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    rows = [{"number": "INC1"}, {"number": "INC2"}]
+    result = _list_with_rows(monkeypatch, rows, "number, caused_by,rfc,number")
+    assert result["count"] == 2
+    assert result["warning"].startswith(
+        "Fields missing from every row: caused_by, rfc."
+    )
+    assert "incident" in result["warning"]
+    assert "ACL" in result["warning"]
+
+
+@pytest.mark.parametrize(
+    ("rows", "fields"),
+    [
+        ([{"number": "INC1", "caused_by": ""}], "number,caused_by"),
+        # Present in one row is enough: the field exists and is readable.
+        ([{"number": "INC1"}, {"number": "INC2", "rfc": "x"}], "number,rfc"),
+        # Dot-walked fields come back under their dotted name.
+        ([{"caller_id.name": "Abel"}], "caller_id.name"),
+        # No rows: nothing to compare against.
+        ([], "number,caused_by"),
+        # No fields requested: the whole readable row comes back.
+        ([{"number": "INC1"}], None),
+    ],
+)
+def test_list_records_no_warning(
+    monkeypatch: pytest.MonkeyPatch, rows: list, fields: str | None
+) -> None:
+    result = _list_with_rows(monkeypatch, rows, fields)
+    assert "warning" not in result
+    assert result == {"count": len(rows), "records": rows}

@@ -4,7 +4,7 @@ Provides CRUD operations on any ServiceNow table via /api/now/table/{table_name}
 """
 
 import logging
-from typing import Annotated, Any, Dict, Optional
+from typing import Annotated, Any, Dict, List, Optional
 
 from pydantic import Field
 
@@ -23,6 +23,34 @@ def _add_order_clause(query: str, order_by: str) -> str:
         order_clause = f"ORDERBY{order_by}"
 
     return f"{query}^{order_clause}".lstrip("^")
+
+
+def _missing_fields_warning(
+    table_name: str, fields: str, records: List[Any]
+) -> Optional[str]:
+    """Name the requested fields that no returned row carries, or None.
+
+    The Table API drops a field from every row both when the table has no such
+    field and when an ACL hides it from the caller, and it silently ignores
+    query conditions on hidden fields. The two cases look the same here, so the
+    warning names both.
+    """
+    rows = [row for row in records if isinstance(row, dict)]
+    if not rows:
+        return None
+    requested = [name.strip() for name in fields.split(",") if name.strip()]
+    missing = [
+        name
+        for name in dict.fromkeys(requested)
+        if not any(name in row for row in rows)
+    ]
+    if not missing:
+        return None
+    return (
+        f"Fields missing from every row: {', '.join(missing)}. They don't exist on "
+        f"{table_name} or an ACL hides them from this identity; query conditions "
+        "on them may have been ignored."
+    )
 
 
 @mcp.tool(tags={"read", "table"}, annotations=annotations.READ)
@@ -69,7 +97,12 @@ def list_records(
     response = make_sn_request("GET", url, config.timeout, params=query_params)
     data = parse_json_response(response, url)
     result = data.get("result", [])
-    return {"count": len(result), "records": result}
+    payload: Dict[str, Any] = {"count": len(result), "records": result}
+    if fields:
+        warning = _missing_fields_warning(table_name, fields, result)
+        if warning:
+            payload["warning"] = warning
+    return payload
 
 
 @mcp.tool(tags={"read", "table"}, annotations=annotations.READ)
