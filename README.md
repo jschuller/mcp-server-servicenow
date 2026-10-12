@@ -170,7 +170,11 @@ Everything else: run `--check` ([above](#4-check-it-works)), then [TROUBLESHOOTI
 - `reviewing-update-sets`: risk categories and a pre-promotion checklist;
 - `servicenow-cmdb`: CMDB data quality and CSDM conformance.
 
-Skills for applications such as ITSM, and for your own conventions, live in your own repository: see [EXTENDING.md](https://github.com/jschuller/mcp-server-servicenow/blob/main/EXTENDING.md). The incident triage skill that shipped here until 0.9.0 is now an [example](https://github.com/jschuller/mcp-server-servicenow/tree/main/examples/incident-triage).
+**Community skills:** skills for applications such as ITSM, and for your own conventions, live in their authors' repositories, each with its own eval results:
+- [EXTENDING.md](https://github.com/jschuller/mcp-server-servicenow/blob/main/EXTENDING.md) covers writing, validating, testing with mocked tools, and sharing them;
+- to find them, browse the [`servicenow-mcp-skill`](https://github.com/topics/servicenow-mcp-skill) topic and [Discussions › Skills](https://github.com/jschuller/mcp-server-servicenow/discussions/categories/skills). This project doesn't vet them.
+
+The incident triage skill that shipped here until 0.9.0 is now an [example](https://github.com/jschuller/mcp-server-servicenow/tree/main/examples/incident-triage).
 
 ## Roles
 

@@ -1,0 +1,958 @@
+{
+  "tools": [
+    {
+      "name": "aggregate_records",
+      "title": "Aggregate Records",
+      "description": "Aggregate records using COUNT, AVG, MIN, MAX, SUM with optional GROUP BY via the Stats API",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "table_name": {
+            "description": "The ServiceNow table name (e.g., 'sys_user_group', 'cmdb_ci', 'incident')",
+            "type": "string"
+          },
+          "count": {
+            "default": true,
+            "description": "Include record count in results",
+            "type": "boolean"
+          },
+          "avg_fields": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Comma-separated fields to average (e.g., 'reassignment_count,reopen_count')"
+          },
+          "min_fields": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Comma-separated fields to find minimum values"
+          },
+          "max_fields": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Comma-separated fields to find maximum values"
+          },
+          "sum_fields": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Comma-separated fields to sum"
+          },
+          "group_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Comma-separated fields to group results by (e.g., 'priority,state')"
+          },
+          "query": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Encoded query string to filter records before aggregation"
+          },
+          "having": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Post-aggregation filter (e.g., 'COUNT>5')"
+          }
+        },
+        "required": [
+          "table_name"
+        ],
+        "type": "object"
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "_meta": {
+        "fastmcp": {
+          "tags": [
+            "read",
+            "table"
+          ]
+        }
+      }
+    },
+    {
+      "name": "create_ci",
+      "title": "Create Ci",
+      "description": "Create a new CMDB configuration item",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "additionalProperties": true,
+            "description": "CI attributes as key-value pairs (must include 'name')",
+            "type": "object"
+          },
+          "class_name": {
+            "default": "cmdb_ci",
+            "description": "CMDB class name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "data"
+        ],
+        "type": "object"
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      },
+      "_meta": {
+        "fastmcp": {
+          "tags": [
+            "cmdb",
+            "write"
+          ]
+        }
+      }
+    },
+    {
+      "name": "create_record",
+      "title": "Create Record",
+      "description": "Create a new record in any ServiceNow table",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "table_name": {
+            "description": "The ServiceNow table name",
+            "type": "string"
+          },
+          "data": {
+            "additionalProperties": true,
+            "description": "Record field values as key-value pairs",
+            "type": "object"
+          }
+        },
+        "required": [
+          "table_name",
+          "data"
+        ],
+        "type": "object"
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      },
+      "_meta": {
+        "fastmcp": {
+          "tags": [
+            "table",
+            "write"
+          ]
+        }
+      }
+    },
+    {
+      "name": "create_update_set",
+      "title": "Create Update Set",
+      "description": "Create a new update set for tracking customizations",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "description": "Name of the update set",
+            "type": "string"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Description of the update set"
+          },
+          "parent": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Parent update set sys_id (for batch sets)"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "type": "object"
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      },
+      "_meta": {
+        "fastmcp": {
+          "tags": [
+            "updateset",
+            "write"
+          ]
+        }
+      }
+    },
+    {
+      "name": "delete_record",
+      "title": "Delete Record",
+      "description": "Delete a record from a ServiceNow table by sys_id",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "table_name": {
+            "description": "The ServiceNow table name",
+            "type": "string"
+          },
+          "sys_id": {
+            "description": "The sys_id of the record to delete",
+            "type": "string"
+          }
+        },
+        "required": [
+          "table_name",
+          "sys_id"
+        ],
+        "type": "object"
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "_meta": {
+        "fastmcp": {
+          "tags": [
+            "table",
+            "write"
+          ]
+        }
+      }
+    },
+    {
+      "name": "get_ci",
+      "title": "Get Ci",
+      "description": "Get a single CMDB configuration item by sys_id",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "sys_id": {
+            "description": "The sys_id of the CI",
+            "type": "string"
+          },
+          "class_name": {
+            "default": "cmdb_ci",
+            "description": "CMDB class name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sys_id"
+        ],
+        "type": "object"
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "_meta": {
+        "fastmcp": {
+          "tags": [
+            "cmdb",
+            "read"
+          ]
+        }
+      }
+    },
+    {
+      "name": "get_ci_relationships",
+      "title": "Get Ci Relationships",
+      "description": "Get relationships for a CMDB configuration item (parent and child)",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "sys_id": {
+            "description": "The sys_id of the CI",
+            "type": "string"
+          },
+          "relation_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Filter by relationship type sys_id"
+          },
+          "limit": {
+            "default": 100,
+            "description": "Maximum number of relationships to return",
+            "maximum": 1000,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "offset": {
+            "default": 0,
+            "description": "Number of relationships to skip",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "sys_id"
+        ],
+        "type": "object"
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "_meta": {
+        "fastmcp": {
+          "tags": [
+            "cmdb",
+            "read"
+          ]
+        }
+      }
+    },
+    {
+      "name": "get_current_user",
+      "title": "Get Current User",
+      "description": "Get the authenticated user's identity and directly assigned, active roles",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "fields": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Extra sys_user fields to return besides user_name, user_display_name, user_email, user_sys_id and roles"
+          }
+        },
+        "type": "object"
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "_meta": {
+        "fastmcp": {
+          "tags": [
+            "admin",
+            "read"
+          ]
+        }
+      }
+    },
+    {
+      "name": "get_record",
+      "title": "Get Record",
+      "description": "Get a single record from a ServiceNow table by sys_id",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "table_name": {
+            "description": "The ServiceNow table name",
+            "type": "string"
+          },
+          "sys_id": {
+            "description": "The sys_id of the record",
+            "type": "string"
+          },
+          "fields": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Comma-separated list of fields to return"
+          }
+        },
+        "required": [
+          "table_name",
+          "sys_id"
+        ],
+        "type": "object"
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "_meta": {
+        "fastmcp": {
+          "tags": [
+            "read",
+            "table"
+          ]
+        }
+      }
+    },
+    {
+      "name": "get_system_properties",
+      "title": "Get System Properties",
+      "description": "Query ServiceNow system properties",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "query": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Filter query (e.g., 'name=glide.servlet.uri' or 'nameLIKEglide')"
+          },
+          "limit": {
+            "default": 20,
+            "description": "Maximum number of properties to return",
+            "maximum": 100,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "_meta": {
+        "fastmcp": {
+          "tags": [
+            "admin",
+            "read"
+          ]
+        }
+      }
+    },
+    {
+      "name": "get_table_schema",
+      "title": "Get Table Schema",
+      "description": "Get the data dictionary (field definitions) for a ServiceNow table, including inherited fields",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "table_name": {
+            "description": "The table name to get schema for",
+            "type": "string"
+          },
+          "limit": {
+            "default": 200,
+            "description": "Maximum number of fields to return (own fields first, then inherited)",
+            "maximum": 1000,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "include_inherited": {
+            "default": true,
+            "description": "Include fields inherited from parent tables (e.g. cmdb_ci fields on cmdb_ci_server)",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "table_name"
+        ],
+        "type": "object"
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "_meta": {
+        "fastmcp": {
+          "tags": [
+            "admin",
+            "read"
+          ]
+        }
+      }
+    },
+    {
+      "name": "get_update_set",
+      "title": "Get Update Set",
+      "description": "Get details of a specific update set by sys_id",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "sys_id": {
+            "description": "The sys_id of the update set",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sys_id"
+        ],
+        "type": "object"
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "_meta": {
+        "fastmcp": {
+          "tags": [
+            "read",
+            "updateset"
+          ]
+        }
+      }
+    },
+    {
+      "name": "list_ci",
+      "title": "List Ci",
+      "description": "List CMDB configuration items with optional class and query filtering",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "class_name": {
+            "default": "cmdb_ci",
+            "description": "CMDB class name (e.g., 'cmdb_ci', 'cmdb_ci_server', 'cmdb_ci_computer')",
+            "type": "string"
+          },
+          "query": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Encoded query string (e.g., 'operational_status=1')"
+          },
+          "fields": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Comma-separated list of fields to return"
+          },
+          "limit": {
+            "default": 20,
+            "description": "Maximum number of CIs to return",
+            "maximum": 1000,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "offset": {
+            "default": 0,
+            "description": "Number of records to skip",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "_meta": {
+        "fastmcp": {
+          "tags": [
+            "cmdb",
+            "read"
+          ]
+        }
+      }
+    },
+    {
+      "name": "list_records",
+      "title": "List Records",
+      "description": "List records from any ServiceNow table with optional filtering, field selection, and pagination",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "table_name": {
+            "description": "The ServiceNow table name (e.g., 'sys_user', 'cmdb_ci_server', 'incident')",
+            "type": "string"
+          },
+          "query": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Encoded query string (e.g., 'active=true^priority=1')"
+          },
+          "fields": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Comma-separated list of fields to return"
+          },
+          "limit": {
+            "default": 20,
+            "description": "Maximum number of records to return",
+            "maximum": 1000,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "offset": {
+            "default": 0,
+            "description": "Number of records to skip",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "order_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Field to order results by (prefix with '-' for descending)"
+          }
+        },
+        "required": [
+          "table_name"
+        ],
+        "type": "object"
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "_meta": {
+        "fastmcp": {
+          "tags": [
+            "read",
+            "table"
+          ]
+        }
+      }
+    },
+    {
+      "name": "list_update_set_changes",
+      "title": "List Update Set Changes",
+      "description": "List all customer updates (changes) within an update set",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "update_set_sys_id": {
+            "description": "The sys_id of the update set",
+            "type": "string"
+          },
+          "limit": {
+            "default": 50,
+            "description": "Maximum number of changes to return",
+            "maximum": 500,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "update_set_sys_id"
+        ],
+        "type": "object"
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "_meta": {
+        "fastmcp": {
+          "tags": [
+            "read",
+            "updateset"
+          ]
+        }
+      }
+    },
+    {
+      "name": "list_update_sets",
+      "title": "List Update Sets",
+      "description": "List update sets with optional state and query filtering",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "query": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Filter query (e.g., 'state=in progress', 'nameLIKErelease')"
+          },
+          "state": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Filter by state: 'in progress', 'complete', 'ignore', or 'default'"
+          },
+          "limit": {
+            "default": 20,
+            "description": "Maximum number of update sets to return",
+            "maximum": 100,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "_meta": {
+        "fastmcp": {
+          "tags": [
+            "read",
+            "updateset"
+          ]
+        }
+      }
+    },
+    {
+      "name": "set_current_update_set",
+      "title": "Set Current Update Set",
+      "description": "Set an update set as the current active update set",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "sys_id": {
+            "description": "The sys_id of the update set to make current",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sys_id"
+        ],
+        "type": "object"
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "_meta": {
+        "fastmcp": {
+          "tags": [
+            "updateset",
+            "write"
+          ]
+        }
+      }
+    },
+    {
+      "name": "update_ci",
+      "title": "Update Ci",
+      "description": "Update a CMDB configuration item",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "sys_id": {
+            "description": "The sys_id of the CI to update",
+            "type": "string"
+          },
+          "data": {
+            "additionalProperties": true,
+            "description": "CI attributes to update",
+            "type": "object"
+          },
+          "class_name": {
+            "default": "cmdb_ci",
+            "description": "CMDB class name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sys_id",
+          "data"
+        ],
+        "type": "object"
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "_meta": {
+        "fastmcp": {
+          "tags": [
+            "cmdb",
+            "write"
+          ]
+        }
+      }
+    },
+    {
+      "name": "update_record",
+      "title": "Update Record",
+      "description": "Update an existing record in a ServiceNow table",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "table_name": {
+            "description": "The ServiceNow table name",
+            "type": "string"
+          },
+          "sys_id": {
+            "description": "The sys_id of the record to update",
+            "type": "string"
+          },
+          "data": {
+            "additionalProperties": true,
+            "description": "Fields to update as key-value pairs",
+            "type": "object"
+          }
+        },
+        "required": [
+          "table_name",
+          "sys_id",
+          "data"
+        ],
+        "type": "object"
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "_meta": {
+        "fastmcp": {
+          "tags": [
+            "table",
+            "write"
+          ]
+        }
+      }
+    }
+  ],
+  "_meta": {
+    "io.github.jschuller/server-version": "0.9.0"
+  }
+}

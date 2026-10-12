@@ -1,0 +1,87 @@
+name: Evals
+# Behaviour tests with mocked tools: no ServiceNow instance and no instance credentials.
+# Started by hand, because every run calls Claude with this repository's credential.
+on:
+  workflow_dispatch:
+    inputs:
+      runs:
+        description: Runs per case
+        default: "3"
+      threshold:
+        description: A case passes at or above this score (0-1)
+        default: "0.8"
+      model:
+        description: Model under test (pin it so results compare over time)
+        default: claude-sonnet-5-5
+      judge-model:
+        description: Model that judges llm graders
+        default: claude-haiku-5-5
+      max-cost-usd:
+        description: Stop when the list-price estimate reaches this
+        default: "5"
+permissions:
+  contents: read
+concurrency:
+  group: evals
+  cancel-in-progress: false
+jobs:
+  evals:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      # Pin both, and bump them together with the Action and plugin.json.
+      SERVER_VERSION: "0.9.0"
+      CLAUDE_CODE_VERSION: "2.1.280"
+      # One of these repository secrets: an Anthropic API key (billed per call), or a
+      # token from `claude setup-token` (counts against that Claude subscription).
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Check for a credential
+        run: |
+          if [ -z "${ANTHROPIC_API_KEY}${CLAUDE_CODE_OAUTH_TOKEN}" ]; then
+            echo "::error::Add an ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN repository secret"
+            exit 1
+          fi
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "22"
+      - run: npm install -g "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}"
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+      - name: Skills, wrapper and mocks match the pinned server
+        run: uvx "mcp-server-servicenow==${SERVER_VERSION}" --validate-skills . --strict
+      - name: Run the suite
+        id: run
+        env:
+          RUNS: ${{ inputs.runs }}
+          THRESHOLD: ${{ inputs.threshold }}
+          MODEL: ${{ inputs.model }}
+          JUDGE: ${{ inputs.judge-model }}
+          MAX_COST: ${{ inputs.max-cost-usd }}
+        run: |
+          set +e
+          claude plugin eval . --trust-plugin --json evals/results.json \
+            --runs "$RUNS" --threshold "$THRESHOLD" --model "$MODEL" --judge-model "$JUDGE" \
+            --ablation with-without --no-publish --max-cost-usd "$MAX_COST"
+          echo "code=$?" >> "$GITHUB_OUTPUT"
+      - name: Summary
+        if: always() && steps.run.outputs.code != ''
+        run: |
+          uvx "mcp-server-servicenow==${SERVER_VERSION}" --eval-summary evals/results.json \
+            --badge evals/badge.json > RESULTS.md && cat RESULTS.md >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: eval-results
+          path: |
+            RESULTS.md
+            evals/badge.json
+            evals/results.json
+            evals/results/
+          if-no-files-found: ignore
+      - name: Fail below the threshold
+        if: steps.run.outputs.code != '0'
+        env:
+          CODE: ${{ steps.run.outputs.code }}
+        run: exit "${CODE:-1}"

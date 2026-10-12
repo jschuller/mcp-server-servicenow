@@ -1,5 +1,6 @@
 """--validate-skills: the Agent Skills spec plus this server's skill profile, offline."""
 
+import json
 import os
 import subprocess
 import sys
@@ -348,3 +349,128 @@ def test_cli_exit_codes(tmp_path: Path, good: Path) -> None:
     assert "result: OK" in ok.stdout
     fail = subprocess.run([*cmd, str(bad)], capture_output=True, text=True, env=env)
     assert fail.returncode == 1 and "result: FAILED" in fail.stdout
+
+
+WRAPPER = {
+    "name": "my-skills",
+    "skills": "./skills/",
+    "mcpServers": {
+        "servicenow": {
+            "command": "uvx",
+            "args": ["mcp-server-servicenow==0.9.0", "--read-only"],
+            "env": {"SERVICENOW_PASSWORD": "${SERVICENOW_PASSWORD:-}"},
+        }
+    },
+}
+
+
+def make_wrapper(tmp_path: Path, manifest: Dict[str, object] = WRAPPER) -> Path:
+    plugin = tmp_path / "repo"
+    make_skill(plugin / "skills", {"SKILL.md": GOOD, "references/notes.md": ""})
+    (plugin / ".claude-plugin").mkdir()
+    (plugin / ".claude-plugin" / "plugin.json").write_text(json.dumps(manifest))
+    return plugin
+
+
+def plugin_messages(report: LintReport, level: str) -> List[str]:
+    return [f.message for p in report.plugins for f in p.findings if f.level == level]
+
+
+def test_a_skills_wrapper_passes(tmp_path: Path) -> None:
+    report = lint_skills([make_wrapper(tmp_path)])
+    assert len(report.plugins) == 1 and report.plugins[0].name == "plugin my-skills"
+    assert plugin_messages(report, "error") == []
+    assert plugin_messages(report, "warning") == []
+    text, code = render(report, "9.9.9", strict=True)
+    assert code == 0 and "1 skills, 1 plugins" in text
+
+
+@pytest.mark.parametrize(
+    ("change", "level", "expected"),
+    [
+        ({"hooks": "./hooks/hooks.json"}, "error", "adds code"),
+        ({"agents": ["./agents/x.md"]}, "error", "adds code"),
+        ({"homepage2": "x"}, "warning", "unknown key"),
+        ({"skills": "../elsewhere"}, "error", "not a folder inside"),
+        (
+            {"mcpServers": {**WRAPPER["mcpServers"], "other": {"command": "npx"}}},  # type: ignore[dict-item]
+            "error",
+            "exactly one server",
+        ),
+        (
+            {"mcpServers": {"servicenow": {"command": "npx", "args": ["x"]}}},
+            "error",
+            "uvx mcp-server-servicenow",
+        ),
+        (
+            {
+                "mcpServers": {
+                    "servicenow": {
+                        "command": "uvx",
+                        "args": ["mcp-server-servicenow", "rm"],
+                    }
+                }
+            },
+            "error",
+            "plus server flags",
+        ),
+        (
+            {
+                "mcpServers": {
+                    "servicenow": {
+                        "command": "uvx",
+                        "args": ["mcp-server-servicenow", "--allow-js-queries"],
+                    }
+                }
+            },
+            "warning",
+            "javascript: guard",
+        ),
+        (
+            {
+                "mcpServers": {
+                    "servicenow": {
+                        "command": "uvx",
+                        "args": ["mcp-server-servicenow"],
+                        "env": {"SERVICENOW_API_KEY": "abc123"},
+                    }
+                }
+            },
+            "error",
+            "literal value",
+        ),
+    ],
+)
+def test_wrapper_problems(
+    tmp_path: Path, change: Dict[str, object], level: str, expected: str
+) -> None:
+    report = lint_skills([make_wrapper(tmp_path, {**WRAPPER, **change})])
+    assert any(expected in m for m in plugin_messages(report, level)), report.plugins
+
+
+@pytest.mark.parametrize("rel", ["hooks/hooks.json", ".mcp.json", "bin/run"])
+def test_wrapper_code_locations_are_refused(tmp_path: Path, rel: str) -> None:
+    plugin = make_wrapper(tmp_path)
+    (plugin / rel).parent.mkdir(parents=True, exist_ok=True)
+    (plugin / rel).write_text("{}")
+    assert any(
+        "loads this location" in m
+        for m in plugin_messages(lint_skills([plugin]), "error")
+    )
+
+
+def test_tools_json_drift(tmp_path: Path) -> None:
+    from servicenow_mcp.eval_kit import write_eval_mocks
+
+    plugin = make_wrapper(tmp_path)
+    write_eval_mocks(plugin, "9.9.9")
+    assert plugin_messages(lint_skills([plugin]), "warning") == []
+    path = plugin / "evals/mocks/servicenow/_tools.json"
+    tools = json.loads(path.read_text())
+    tools["tools"] = [t for t in tools["tools"] if t["name"] != "get_ci"]
+    tools["tools"][0]["inputSchema"] = {}
+    tools["tools"].append({"name": "old_tool", "inputSchema": {}})
+    path.write_text(json.dumps(tools))
+    (warning,) = plugin_messages(lint_skills([plugin]), "warning")
+    assert "missing: get_ci" in warning and "unknown: old_tool" in warning
+    assert "changed: " in warning and "--eval-mocks" in warning

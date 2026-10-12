@@ -45,13 +45,30 @@ content and fixes prepared as 0.8.1, which was never released.
 
   It warns on undeclared write-tool calls, outside links and credential-like text, and
   prints a `sha256:` digest per skill for pinning, plus the write tools it declares.
+- **The validator checks plugin wrappers.** A folder with `.claude-plugin/plugin.json`
+  may declare only skills and one server that runs `uvx mcp-server-servicenow`: no
+  hooks, agents, commands, scripts or literal credentials. `claude plugin eval` runs a
+  plugin's code as the evaluator, so a passing wrapper is safe to re-run. It also warns
+  when a saved `_tools.json` no longer matches the server's tools.
+- **`--eval-mocks PLUGIN_DIR`** writes mocks for `claude plugin eval`:
+  - this version's tool list;
+  - default mocks modelled on a least-privilege identity, using the server's own 401
+    and 403 texts;
+  - an empty fixture for every declared table.
+
+  It keeps your edits.
+- **`--eval-summary RESULT_JSON [--badge FILE]`** turns a finished run into a
+  `RESULTS.md` table: score, Δ, models, versions, commit, "CI-run" or "self-reported",
+  and a command to reproduce it. `--badge` writes a shields.io badge. A partial run is
+  refused.
 - **`actions/validate-skills`**, a composite GitHub Action that runs the validator and a
   ServiceNowDocs citation check (blobless clone: an error when a cited page disappears,
   a warning when it changed). This repository's CI runs it with `--strict` on the
   shipped skills and the examples.
 - **`examples/`:**
-  - `template/`: a starting repository with a workflow, an optional Claude Code plugin
-    wrapper and an eval case;
+  - `template/`: the content of the template repository, with a validation workflow,
+    a hand-started eval workflow that writes `RESULTS.md`, a pinned plugin wrapper and an
+    eval case;
   - `incident-triage/`: the former core skill, with its eval cases;
   - `change-impact/`: two original example skills, `assessing-change-impact` and
     `reviewing-sla-definitions`, with mocked eval cases.

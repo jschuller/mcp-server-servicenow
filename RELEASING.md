@@ -29,6 +29,18 @@ the release (see Failure modes).
    `CHANGELOG.md` section (`## [X.Y.Z] - YYYY-MM-DD`), and the README
    version-history line.
 
+   The template pins the release too, and CI checks the pins. The places are:
+   - `examples/template/.claude-plugin/plugin.json` (`mcp-server-servicenow==X.Y.Z`);
+   - `examples/template/.github/workflows/validate-skills.yml` (`@vX.Y.Z` and
+     `server-version`);
+   - `examples/template/.github/workflows/evals.yml` (`SERVER_VERSION`);
+   - the template README.
+
+   After tool changes, refresh the eval mocks. CI's strict wrapper check fails on a
+   stale `_tools.json`. Run `--eval-mocks` on `.` and on each `examples/*` plugin.
+   After the release, copy `examples/template/` into the template repository and tag
+   it.
+
 2. **Verification gates** — all of these, no skips:
 
    ```sh

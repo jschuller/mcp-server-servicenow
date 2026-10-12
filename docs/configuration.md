@@ -200,5 +200,8 @@ These run, print a report and exit; they don't start the server.
 | `--check` | Read-only connection doctor: reach, identity, roles, table, schema and aggregate access |
 | `--validate-skills PATH [PATH ...]` | Check skill folders against the [skill profile](skill-profile.md), offline; exit 1 on errors |
 | `--strict` | With `--validate-skills`: warnings fail too |
+| `--eval-mocks PLUGIN_DIR` | Write `claude plugin eval` mocks of this server's tools into the plugin's `evals/mocks/<server>/` ([eval kit](skill-profile.md#the-eval-kit)); keeps your edits |
+| `--eval-summary RESULT_JSON` | Print a Markdown summary of a finished eval run for a `RESULTS.md`; exit 1 on a partial run |
+| `--badge FILE` | With `--eval-summary`: also write a shields.io endpoint badge |
 
 Boolean env vars accept `1`, `true`, `yes`, `on` (case-insensitive). Empty values and unexpanded `${VAR}` placeholders (as Claude Code passes for unset plugin env vars) are treated as unset.

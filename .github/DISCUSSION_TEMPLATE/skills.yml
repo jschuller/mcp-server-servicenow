@@ -4,7 +4,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        Share ServiceNow skills you wrote for mcp-server-servicenow. They stay in **your** repository under **your** licence; this project doesn't host, vet or endorse them beyond the validator. See [EXTENDING.md](https://github.com/jschuller/mcp-server-servicenow/blob/main/EXTENDING.md).
+        Share ServiceNow skills you wrote for mcp-server-servicenow. They stay in **your** repository under **your** licence; this project doesn't host, vet or endorse them beyond the validator, and eval results are the author's own. See [EXTENDING.md](https://github.com/jschuller/mcp-server-servicenow/blob/main/EXTENDING.md).
 
         **Don't paste credentials, instance names you don't own, or record data.**
   - type: input
@@ -63,6 +63,22 @@ body:
       render: text
     validations:
       required: true
+  - type: input
+    id: results
+    attributes:
+      label: Eval results (optional)
+      description: A link to the RESULTS.md that `mcp-server-servicenow --eval-summary` wrote, at the tag above.
+      placeholder: https://github.com/you/servicenow-skills/blob/v0.1.0/RESULTS.md
+  - type: dropdown
+    id: kind
+    attributes:
+      label: Kind of results
+      options:
+        - No eval results yet
+        - Self-reported (a local run)
+        - CI-run (a public GitHub Actions log is linked in RESULTS.md)
+    validations:
+      required: true
   - type: textarea
     id: what
     attributes:
@@ -74,4 +90,6 @@ body:
       label: Content
       options:
         - label: I have the right to publish this content. It is written in my own words, cites ServiceNow documentation by link, and contains no gated (Best Practices portal, KB, training, partner), customer or confidential material and no credentials.
+          required: true
+        - label: My `.claude-plugin/plugin.json`, if I have one, declares only skills and mcp-server-servicenow (no hooks, agents, commands or scripts), so others can run my evals safely.
           required: true

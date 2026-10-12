@@ -71,7 +71,26 @@ jobs:
           if len(set(versions.values())) != 1:
               print(f"::error::Version mismatch: {versions}")
               sys.exit(1)
-          print(f"All five version fields agree: {versions['pyproject.toml']}")
+          version = versions["pyproject.toml"]
+          print(f"All five version fields agree: {version}")
+
+          # The template pins the release it is copied from, in four places.
+          template = "examples/template"
+          pins = {
+              "plugin.json": " ".join(json.load(open(f"{template}/.claude-plugin/plugin.json"))["mcpServers"]["servicenow"]["args"]),
+              "validate-skills.yml": open(f"{template}/.github/workflows/validate-skills.yml").read(),
+              "evals.yml": open(f"{template}/.github/workflows/evals.yml").read(),
+              "README.md": open(f"{template}/README.md").read(),
+          }
+          stale = {
+              name: sorted(set(re.findall(r"(?:==|@v|SERVER_VERSION: \"|server-version: \")(\d+\.\d+\.\d+)", text)) - {version})
+              for name, text in pins.items()
+          }
+          stale = {name: found for name, found in stale.items() if found}
+          if stale:
+              print(f"::error::Template pins other versions than {version}: {stale}")
+              sys.exit(1)
+          print(f"Template pins agree: {version}")
           EOF
 
       # The test job installs via pip, so nothing else exercises uv.lock —
@@ -114,6 +133,13 @@ jobs:
           path: src/servicenow_mcp/skills
           from-source: "true"
           strict: "true"
+      - name: Validate this repository's plugin wrapper and its eval mocks (strict)
+        uses: ./actions/validate-skills
+        with:
+          path: .
+          from-source: "true"
+          strict: "true"
+          citations: "false"
       - name: Validate the examples (strict)
         uses: ./actions/validate-skills
         with:

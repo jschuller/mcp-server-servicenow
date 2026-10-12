@@ -1,0 +1,242 @@
+"""--eval-mocks and --eval-summary: the claude plugin eval kit, offline."""
+
+import json
+import os
+import subprocess
+import sys
+from pathlib import Path
+from typing import Any, Dict
+
+import pytest
+
+from servicenow_mcp.eval_kit import (
+    TOOLS_META_KEY,
+    EvalKitError,
+    summarize,
+    tools_list,
+    write_eval_mocks,
+)
+from servicenow_mcp.skill_lint import TABLES_KEY
+
+MANIFEST = {
+    "name": "my-skills",
+    "skills": "./skills/",
+    "mcpServers": {
+        "servicenow": {
+            "command": "uvx",
+            "args": ["mcp-server-servicenow==0.9.0"],
+            "env": {"SERVICENOW_INSTANCE_URL": "${SERVICENOW_INSTANCE_URL}"},
+        }
+    },
+}
+SKILL = f"""---
+name: my-skill
+description: x
+metadata:
+  {TABLES_KEY}: "task_sla contract_sla"
+---
+
+# My skill
+"""
+
+
+def make_plugin(root: Path, manifest: Dict[str, Any] = MANIFEST) -> Path:
+    (root / ".claude-plugin").mkdir(parents=True)
+    (root / ".claude-plugin" / "plugin.json").write_text(json.dumps(manifest))
+    (root / "skills" / "my-skill").mkdir(parents=True)
+    (root / "skills" / "my-skill" / "SKILL.md").write_text(SKILL)
+    return root
+
+
+RESULT: Dict[str, Any] = {
+    "schemaVersion": 1,
+    "claudeVersion": "2.1.296",
+    "startedAt": "2026-10-12T00:14:10.601Z",
+    "durationSeconds": 70,
+    "costUsd": 0.2531643,
+    "partial": False,
+    "suite": {
+        "root": "/Users/someone/private/path",
+        "ablation": "with-without",
+        "modelOverride": "sonnet",
+        "threshold": 0.8,
+    },
+    "cases": [
+        {
+            "name": "sla-overlap",
+            "runsPerCase": 3,
+            "aggregates": {"score": 1, "delta": 0.5},
+        },
+        {"name": "change-collision", "runsPerCase": 3, "aggregates": {"score": 0.5}},
+    ],
+    "aggregates": {
+        "casesTotal": 2,
+        "casesPassed": 1,
+        "overallScore": 0.75,
+        "meanDelta": 0.25,
+    },
+}
+
+
+def write_result(tmp_path: Path, result: Dict[str, Any]) -> Path:
+    path = tmp_path / "aggregate-result.json"
+    path.write_text(json.dumps(result))
+    return path
+
+
+@pytest.fixture(autouse=True)
+def _not_in_ci(monkeypatch: pytest.MonkeyPatch) -> None:
+    for var in ("GITHUB_ACTIONS", "GITHUB_SHA", "GITHUB_REPOSITORY", "GITHUB_RUN_ID"):
+        monkeypatch.delenv(var, raising=False)
+
+
+def test_tools_list_is_the_wire_shape() -> None:
+    listed = tools_list("9.9.9")
+    names = [t["name"] for t in listed["tools"]]
+    assert names == sorted(names) and "list_records" in names and len(names) == 19
+    assert {"name", "description", "inputSchema"} <= set(listed["tools"][0])
+    assert listed["_meta"] == {TOOLS_META_KEY: "9.9.9"}
+
+
+def test_eval_mocks_writes_the_kit(tmp_path: Path) -> None:
+    plugin = make_plugin(tmp_path)
+    done = dict((path, action) for action, path in write_eval_mocks(plugin, "9.9.9"))
+    base = "evals/mocks/servicenow/"
+    assert done[base + "_tools.json"] == "wrote"
+    for mock in (
+        "list_records",
+        "aggregate_records",
+        "get_table_schema",
+        "get_current_user",
+    ):
+        assert done[f"{base}{mock}.md"] == "wrote"
+    for table in ("task_sla", "contract_sla"):
+        fixture = plugin / base / "fixtures" / f"{table}.json"
+        assert json.loads(fixture.read_text()) == {"count": 0, "records": []}
+    aggregate = (plugin / base / "aggregate_records.md").read_text()
+    assert "error: true" in aggregate and "Authentication failed (401)" in aggregate
+
+
+def test_eval_mocks_keeps_edits_and_refreshes_tools(tmp_path: Path) -> None:
+    plugin = make_plugin(tmp_path)
+    write_eval_mocks(plugin, "9.9.8")
+    mine = plugin / "evals/mocks/servicenow/list_records.md"
+    mine.write_text("my own mock")
+    done = dict((path, action) for action, path in write_eval_mocks(plugin, "9.9.9"))
+    assert mine.read_text() == "my own mock"
+    assert done["evals/mocks/servicenow/list_records.md"] == "kept"
+    tools = json.loads((plugin / "evals/mocks/servicenow/_tools.json").read_text())
+    assert tools["_meta"][TOOLS_META_KEY] == "9.9.9"
+
+
+def test_eval_mocks_uses_the_plugins_server_name(tmp_path: Path) -> None:
+    manifest = {
+        **MANIFEST,
+        "mcpServers": {"snow": MANIFEST["mcpServers"]["servicenow"]},
+    }
+    plugin = make_plugin(tmp_path, manifest)
+    write_eval_mocks(plugin, "9.9.9")
+    assert (plugin / "evals/mocks/snow/_tools.json").is_file()
+
+
+@pytest.mark.parametrize(
+    ("manifest", "expected"),
+    [
+        (None, "no .claude-plugin/plugin.json"),
+        (
+            {"name": "x", "mcpServers": {"other": {"command": "npx", "args": ["x"]}}},
+            "runs",
+        ),
+    ],
+)
+def test_eval_mocks_errors(tmp_path: Path, manifest: Any, expected: str) -> None:
+    if manifest is not None:
+        make_plugin(tmp_path, manifest)
+    with pytest.raises(EvalKitError, match=expected):
+        write_eval_mocks(tmp_path, "9.9.9")
+
+
+def test_summary_table_and_badge(tmp_path: Path) -> None:
+    text, badge = summarize(write_result(tmp_path, RESULT))
+    assert "| Cases passed | 1 / 2 (threshold 0.8) |" in text
+    assert "| Δ vs no plugin | +0.25 |" in text
+    assert "| Model / judge | sonnet / default |" in text
+    assert "| sla-overlap | 1.00 | +0.50 |" in text
+    assert "| change-collision | 0.50 | — |" in text
+    assert "| Kind | self-reported |" in text
+    assert (
+        "claude plugin eval . --ablation with-without --model sonnet --runs 3" in text
+    )
+    assert "/Users/someone" not in text  # the author's paths stay private
+    assert badge == {
+        "schemaVersion": 1,
+        "label": "evals",
+        "message": "1/2 cases, Δ +0.25",
+        "color": "red",
+    }
+
+
+def test_summary_in_ci_links_the_run(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("GITHUB_ACTIONS", "true")
+    monkeypatch.setenv("GITHUB_REPOSITORY", "someone/skills")
+    monkeypatch.setenv("GITHUB_RUN_ID", "42")
+    monkeypatch.setenv("GITHUB_SHA", "0123456789abcdef")
+    text, _ = summarize(write_result(tmp_path, RESULT))
+    assert (
+        "| Kind | CI-run: https://github.com/someone/skills/actions/runs/42 |" in text
+    )
+    assert "| Commit | 0123456789ab |" in text
+
+
+def test_summary_reads_the_mocks_version(tmp_path: Path) -> None:
+    plugin = make_plugin(tmp_path / "plugin")
+    write_eval_mocks(plugin, "9.9.9")
+    result = {**RESULT, "suite": {**RESULT["suite"], "root": str(plugin)}}
+    text, _ = summarize(write_result(tmp_path, result))
+    assert "| Mocks from | mcp-server-servicenow 9.9.9 |" in text
+
+
+@pytest.mark.parametrize(
+    ("change", "expected"),
+    [
+        ({"partial": True, "partialReason": "cost_ceiling"}, "partial run"),
+        ({"schemaVersion": 2}, "schemaVersion 1"),
+    ],
+)
+def test_summary_refuses(tmp_path: Path, change: Dict[str, Any], expected: str) -> None:
+    with pytest.raises(EvalKitError, match=expected):
+        summarize(write_result(tmp_path, {**RESULT, **change}))
+
+
+def test_cli(tmp_path: Path) -> None:
+    plugin = make_plugin(tmp_path / "plugin")
+    cmd = [sys.executable, "-m", "servicenow_mcp.cli"]
+    env = {**os.environ, "SERVICENOW_INSTANCE_URL": ""}
+    env.pop("GITHUB_ACTIONS", None)
+    out = subprocess.run(
+        [*cmd, "--eval-mocks", str(plugin)], capture_output=True, text=True, env=env
+    )
+    assert out.returncode == 0, out.stdout + out.stderr
+    assert "wrote   evals/mocks/servicenow/_tools.json" in out.stdout
+    badge = tmp_path / "badge.json"
+    out = subprocess.run(
+        [
+            *cmd,
+            "--eval-summary",
+            str(write_result(tmp_path, RESULT)),
+            "--badge",
+            str(badge),
+        ],
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+    assert out.returncode == 0 and "## Eval results" in out.stdout
+    assert json.loads(badge.read_text())["label"] == "evals"
+    partial = write_result(tmp_path, {**RESULT, "partial": True})
+    out = subprocess.run(
+        [*cmd, "--eval-summary", str(partial)], capture_output=True, text=True, env=env
+    )
+    assert out.returncode == 1 and "partial run" in out.stderr

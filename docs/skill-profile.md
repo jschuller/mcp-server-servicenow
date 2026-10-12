@@ -6,7 +6,7 @@ What a skill written for mcp-server-servicenow looks like, what the validator ch
 
 A skill is a folder holding a `SKILL.md` file, in the [Agent Skills](https://agentskills.io/specification) format that Claude Code, Claude, Codex, VS Code with Copilot, Cursor, opencode, Gemini CLI, pi and many other clients load natively. Nothing about it is specific to this server except the profile below. A skill that follows it still installs anywhere.
 
-This server ships five such skills inside the package (`src/servicenow_mcp/skills/`) and serves them over MCP as `skill://<name>/SKILL.md` (SEP-2640). Skills you write live in your own repository and install in your client like any other skill.
+This server ships four such skills inside the package (`src/servicenow_mcp/skills/`) and serves them over MCP as `skill://<name>/SKILL.md` (SEP-2640). Skills you write live in your own repository and install in your client like any other skill.
 
 ## The profile
 
@@ -79,6 +79,43 @@ A skill that declares its writes passes `--strict`, and its line in the output n
 
 The digest covers every file's path and content, so you can pin a skill: if anything changes, the digest changes.
 
+## The plugin wrapper
+
+`claude plugin eval` tests only plugins, so a skills repository that wants evals carries a minimal Claude Code plugin manifest, `.claude-plugin/plugin.json`. The validator checks every folder that holds one:
+
+| Errors | Warnings |
+|--------|----------|
+| Keys that add code that runs as the user: `hooks`, `agents`, `commands`, `monitors`, `lspServers`, `outputStyles`, `mods`, `settings` | An unknown key |
+| Files in the locations Claude Code loads as code: `hooks/`, `agents/`, `commands/`, `monitors/`, `output-styles/`, `bin/`, `.mcp.json`, `.lsp.json`, `settings.json` | A remote (`url`) server, which the validator can't confirm is this one |
+| `mcpServers` with anything other than one server running `uvx mcp-server-servicenow[==version]` plus server flags | `--allow-js-queries` in the server's arguments |
+| A literal value in a password, secret, key or token environment variable (use `${NAME}`) | `evals/mocks/<server>/_tools.json` that differs from this server's tools |
+| A `skills` path outside the plugin folder | |
+
+The reason is that `claude plugin eval` runs a plugin's hooks, agents and servers on the evaluator's machine, as the evaluator. A wrapper that passes declares nothing that runs except this server, so anyone can re-run its evals. Pin the server (`mcp-server-servicenow==0.9.0`) in the wrapper and in the Action.
+
+## The eval kit
+
+- **`mcp-server-servicenow --eval-mocks PLUGIN_DIR`** writes `evals/mocks/<server>/` for the wrapper's server:
+  - `_tools.json`: this version's `tools/list` response, with the version in `_meta`. It is rewritten on every run.
+  - Default mocks modelled on the start-here identity (`itil` + `snc_read_only` over an API key):
+    - `list_records` answers from `fixtures/<table>.json`;
+    - `aggregate_records` is refused with the server's 401 text;
+    - `get_table_schema` is refused with its 403 text;
+    - `get_current_user` returns a read-only user.
+  - An empty fixture, `{"count": 0, "records": []}`, for every table the skills declare.
+
+  Existing mocks and fixtures are kept. Tools without a mock, including every write tool, aren't available in a run.
+- **`mcp-server-servicenow --eval-summary RESULT_JSON [--badge FILE]`** reads a finished `aggregate-result.json` (`schemaVersion` 1) and prints a Markdown summary. It records:
+  - cases passed, the suite score and Δ;
+  - the model and judge;
+  - runs per case and the Claude Code version;
+  - the server version that generated the mocks;
+  - the list-price cost, the start time and the commit;
+  - the kind of result, "CI-run" (with the GitHub Actions run URL) or "self-reported";
+  - a per-case table and a command to reproduce the run.
+
+  It never prints the run's local paths. It refuses a partial run. `--badge` writes a [shields.io endpoint](https://shields.io/badges/endpoint-badge) JSON file.
+
 ## The citation check
 
 `actions/validate-skills/check_citations.py PATH [...]` finds every `github.com/ServiceNow/ServiceNowDocs/blob/<commit>/<path>` link and checks it against a blobless clone of ServiceNowDocs (about two seconds). The release branch comes from the `servicenow.com/docs/r/<release>/` link on the same line, and defaults to `brazil`.
@@ -96,7 +133,7 @@ It never checks servicenow.com by HTTP, because the docs site answers 200 for pa
 ```yaml
 - uses: jschuller/mcp-server-servicenow/actions/validate-skills@v0.9.0
   with:
-    path: skills            # space-separated folders
+    path: .                 # space-separated folders; . also checks the plugin wrapper
     server-version: "0.9.0" # pin it; empty means the latest release
     strict: "true"
     citations: "true"
@@ -134,8 +171,26 @@ The action needs a release of mcp-server-servicenow that has `--validate-skills`
   - a check DSL or a `run_check` tool;
   - signing, dependencies, hot reload.
 
+**AD-6, 2026-10-12: the server's skills cover the Now Platform; application skills and their eval results live with their authors.**
+
+- **Context.**
+  - ServiceNow ships its own ITSM, CMDB and other MCP servers.
+  - Its documentation files CMDB and CSDM, users, groups and roles, ACLs, dictionary and choice lists, and update sets under the platform, and incident, problem and change under IT Service Management.
+  - The owner wants community skills kept separate from the server, tailored to each organisation, with evals they can share.
+- **Decision.**
+  - `triaging-incidents` moves to `examples/incident-triage`.
+  - `servicenow-cmdb` keeps the data model, health, data quality and CSDM, which ServiceNow's CMDB server doesn't cover.
+  - The unreleased 0.8.1 ships inside 0.9.0, because removing a skill is a breaking change.
+  - We add the plugin-wrapper check, `--eval-mocks` and `--eval-summary`, and a template repository with validation and eval workflows.
+  - Eval results live in the author's repository: `RESULTS.md` plus the committed mocks, at a tag, in the style of Hugging Face's `.eval_results`.
+  - Discovery is the GitHub topic `servicenow-mcp-skill` and Discussions › Skills.
+- **Rejected:**
+  - a results index or leaderboard in this repository (hosting, review load, implied endorsement);
+  - verifying anyone's results.
+
 ## Open questions
 
 - **Prompts and the Skills extension.** Prompts move to 0.10. The server will declare `io.modelcontextprotocol/skills` once FastMCP implements `skills/list` (FastMCP issue #5016).
-- **Behaviour evals in CI.** The examples carry `claude plugin eval` cases with mocked tools. Running them in this repository's CI would need a credential and a usage budget, which has not been decided.
+- **Behaviour evals in CI.** The template's `evals.yml` runs an author's suite with the author's own credential. Running this repository's suites in its CI would need a credential and a usage budget, which has not been decided.
+- **Δ against the bare tools.** The eval tool's Δ compares a plugin with no plugin at all. A fairer baseline for a skill is the same server without the skill. Running the same cases against a tools-only wrapper is still to be tried.
 - **Tables declared but used through dot-walks.** The validator only flags a declared table the skill never mentions. A finer rule would need to parse dot-walks.

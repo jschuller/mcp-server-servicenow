@@ -17,6 +17,11 @@ The profile (docs/skill-profile.md) adds to the Agent Skills specification:
 - files are text only (``.md``, ``.txt``, ``.csv``), with no symlinks, within the
   SEP-2640 per-skill limits, and relative links stay inside the skill.
 
+A folder holding ``.claude-plugin/plugin.json`` is checked as a plugin wrapper too: it may
+declare only skills and one ``mcpServers`` entry that runs ``uvx mcp-server-servicenow``,
+because ``claude plugin eval`` runs a plugin's hooks, agents and servers as the person
+evaluating it. Its ``evals/mocks/<server>/_tools.json`` must match this server's tools.
+
 Errors make a skill unusable or unsafe; warnings are things a reviewer should look
 at (undeclared write-tool calls, links outside ServiceNow's documentation,
 credential-like text).
@@ -27,12 +32,13 @@ from __future__ import annotations
 import ast
 import asyncio
 import hashlib
+import json
 import os
 import re
 from dataclasses import dataclass, field
 from importlib.resources import files
 from pathlib import Path
-from typing import Dict, Iterable, Iterator, List, Optional, Sequence, Set, Tuple
+from typing import Any, Dict, Iterable, Iterator, List, Optional, Sequence, Set, Tuple
 
 import yaml
 
@@ -75,6 +81,43 @@ CREDENTIAL_RES = (
 )
 URL_RE = re.compile(r"https?://\S+")
 
+PACKAGE_RE = re.compile(r"^mcp-server-servicenow(==\d+\.\d+\.\d+)?$")
+PLUGIN_METADATA_KEYS = {
+    "$schema",
+    "name",
+    "version",
+    "description",
+    "author",
+    "homepage",
+    "repository",
+    "license",
+    "keywords",
+}
+# Manifest keys and default locations that add hooks, agents, commands or other code.
+PLUGIN_CODE_KEYS = {
+    "hooks",
+    "agents",
+    "commands",
+    "monitors",
+    "lspServers",
+    "outputStyles",
+    "mods",
+    "settings",
+}
+PLUGIN_CODE_PATHS = (
+    "hooks",
+    "agents",
+    "commands",
+    "monitors",
+    "output-styles",
+    "bin",
+    ".mcp.json",
+    ".lsp.json",
+    "settings.json",
+)
+SECRET_ENV_RE = re.compile(r"(?i)(password|secret|api_?key|token)")
+ENV_REF_RE = re.compile(r"^\$\{[A-Za-z_][A-Za-z0-9_]*(:-[^}]*)?\}$")
+
 
 @dataclass
 class Finding:
@@ -111,15 +154,20 @@ class SkillReport:
 @dataclass
 class LintReport:
     skills: List[SkillReport] = field(default_factory=list)
+    plugins: List[SkillReport] = field(default_factory=list)  # plugin wrappers
     problems: List[str] = field(default_factory=list)  # e.g. a path with no skills
 
     @property
     def error_count(self) -> int:
-        return len(self.problems) + sum(len(s.errors) for s in self.skills)
+        return len(self.problems) + sum(len(s.errors) for s in self.checked)
 
     @property
     def warning_count(self) -> int:
-        return sum(len(s.warnings) for s in self.skills)
+        return sum(len(s.warnings) for s in self.checked)
+
+    @property
+    def checked(self) -> List[SkillReport]:
+        return self.skills + self.plugins
 
 
 @dataclass(frozen=True)
@@ -134,8 +182,8 @@ class ToolCatalog:
         return self.read | self.write
 
 
-def tool_catalog() -> ToolCatalog:
-    """Read the registered tools offline (no instance, no configuration)."""
+async def registered_tools() -> List[Any]:
+    """This server's tools, read offline (no instance, no configuration)."""
     from servicenow_mcp.server import mcp
     from servicenow_mcp.tools import (  # noqa: F401 — registers the tools
         cmdb_tools,
@@ -144,7 +192,12 @@ def tool_catalog() -> ToolCatalog:
         update_set_tools,
     )
 
-    tools = asyncio.run(mcp.list_tools())
+    return list(await mcp.list_tools())
+
+
+def tool_catalog() -> ToolCatalog:
+    """Read the registered tools offline (no instance, no configuration)."""
+    tools = asyncio.run(registered_tools())
     read: Set[str] = set()
     write: Set[str] = set()
     for tool in tools:
@@ -582,11 +635,200 @@ def lint_skill(
     return report
 
 
+def servicenow_server(manifest: Dict[str, Any]) -> Optional[str]:
+    """The name of the plugin's mcpServers entry that runs this server, if any."""
+    servers = manifest.get("mcpServers")
+    if not isinstance(servers, dict):
+        return None
+    for name, spec in servers.items():
+        args = spec.get("args") if isinstance(spec, dict) else None
+        if isinstance(args, list) and any(
+            isinstance(a, str) and PACKAGE_RE.match(a) for a in args
+        ):
+            return str(name)
+    return None
+
+
+def find_plugin_dirs(root: Path) -> List[Path]:
+    """Every folder at or below ``root`` holding .claude-plugin/plugin.json (hidden skipped)."""
+    found: List[Path] = []
+    for dirpath, dirnames, _ in os.walk(root):
+        dirnames[:] = sorted(d for d in dirnames if not d.startswith("."))
+        if (Path(dirpath) / ".claude-plugin" / "plugin.json").is_file():
+            found.append(Path(dirpath))
+    return found
+
+
+def _check_server(name: str, spec: object, report: SkillReport) -> None:
+    where = ".claude-plugin/plugin.json"
+    if not isinstance(spec, dict):
+        report.add("error", where, None, f"mcpServers.{name} must be an object")
+        return
+    if "url" in spec:
+        report.add(
+            "warning",
+            where,
+            None,
+            f"mcpServers.{name} is a remote server; check that it is mcp-server-servicenow",
+        )
+        return
+    args = spec.get("args") or []
+    if spec.get("command") != "uvx" or not isinstance(args, list):
+        report.add(
+            "error",
+            where,
+            None,
+            f"mcpServers.{name} must run `uvx mcp-server-servicenow[==version]`",
+        )
+        return
+    packages = [a for a in args if isinstance(a, str) and PACKAGE_RE.match(a)]
+    others = [a for a in args if a not in packages]
+    if len(packages) != 1 or any(
+        not isinstance(a, str) or not a.startswith("--") for a in others
+    ):
+        report.add(
+            "error",
+            where,
+            None,
+            f"mcpServers.{name} args must be mcp-server-servicenow[==version] "
+            "plus server flags",
+        )
+    if "--allow-js-queries" in others:
+        report.add(
+            "warning",
+            where,
+            None,
+            f"mcpServers.{name} passes --allow-js-queries, which lifts the javascript: guard",
+        )
+    env = spec.get("env") or {}
+    if not isinstance(env, dict):
+        report.add("error", where, None, f"mcpServers.{name}.env must be an object")
+        return
+    for key, value in env.items():
+        if (
+            SECRET_ENV_RE.search(str(key))
+            and isinstance(value, str)
+            and value
+            and not ENV_REF_RE.match(value)
+        ):
+            report.add(
+                "error",
+                where,
+                None,
+                f"mcpServers.{name}.env.{key} holds a literal value: use ${{{key}}}",
+            )
+
+
+def _check_tools_json(
+    plugin: Path, server: str, catalog_tools: List[Dict[str, Any]], report: SkillReport
+) -> None:
+    path = plugin / "evals" / "mocks" / server / "_tools.json"
+    if not path.is_file():
+        return
+    rel = path.relative_to(plugin).as_posix()
+    try:
+        saved = json.loads(path.read_text(encoding="utf-8")).get("tools") or []
+    except (OSError, ValueError, AttributeError):
+        report.add("error", rel, None, "not a tools/list response")
+        return
+    want = {t["name"]: t.get("inputSchema") for t in catalog_tools}
+    have = {t.get("name"): t.get("inputSchema") for t in saved if isinstance(t, dict)}
+    added = sorted(set(want) - set(have))
+    removed = sorted(n for n in set(have) - set(want) if isinstance(n, str))
+    changed = sorted(n for n in set(want) & set(have) if want[n] != have[n])
+    if added or removed or changed:
+        parts = [
+            f"{label}: {' '.join(names)}"
+            for label, names in (
+                ("missing", added),
+                ("unknown", removed),
+                ("changed", changed),
+            )
+            if names
+        ]
+        report.add(
+            "warning",
+            rel,
+            None,
+            "differs from this server's tools ("
+            + "; ".join(parts)
+            + "): regenerate it with --eval-mocks",
+        )
+
+
+def lint_plugin(plugin: Path, catalog_tools: List[Dict[str, Any]]) -> SkillReport:
+    """Check a plugin wrapper: skills plus this server, nothing that runs other code."""
+    manifest_path = plugin / ".claude-plugin" / "plugin.json"
+    where = ".claude-plugin/plugin.json"
+    report = SkillReport(name=f"plugin {plugin.name}", path=plugin)
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        report.add("error", where, None, f"not valid JSON: {exc}")
+        return report
+    if not isinstance(manifest, dict):
+        report.add("error", where, None, "must be a JSON object")
+        return report
+    if isinstance(manifest.get("name"), str):
+        report.name = f"plugin {manifest['name']}"
+    report.digest = "sha256:" + hashlib.sha256(manifest_path.read_bytes()).hexdigest()
+    for key in manifest:
+        if key in PLUGIN_CODE_KEYS:
+            report.add(
+                "error",
+                where,
+                None,
+                f"{key!r} adds code that runs as the user; a skills wrapper declares "
+                "only skills and the servicenow server",
+            )
+        elif key not in PLUGIN_METADATA_KEYS | {"skills", "mcpServers"}:
+            report.add("warning", where, None, f"unknown key {key!r}: review it")
+    for rel in PLUGIN_CODE_PATHS:
+        if (plugin / rel).exists():
+            report.add(
+                "error",
+                rel,
+                None,
+                "Claude Code loads this location as plugin code; remove it",
+            )
+    skills = manifest.get("skills", "./skills/")
+    for entry in skills if isinstance(skills, list) else [skills]:
+        if not isinstance(entry, str):
+            report.add("error", where, None, "skills must be a path or a list of paths")
+            continue
+        target = (plugin / entry).resolve()
+        if not target.is_relative_to(plugin.resolve()) or not target.exists():
+            report.add(
+                "error", where, None, f"skills path {entry!r} is not a folder inside"
+            )
+    servers = manifest.get("mcpServers")
+    if servers is None:
+        report.add("warning", where, None, "no mcpServers: the skills have no tools")
+        return report
+    if not isinstance(servers, dict) or len(servers) != 1:
+        report.add(
+            "error", where, None, "mcpServers must hold exactly one server: this one"
+        )
+        return report
+    name, spec = next(iter(servers.items()))
+    _check_server(name, spec, report)
+    _check_tools_json(plugin, name, catalog_tools, report)
+    return report
+
+
+def _catalog_tools() -> List[Dict[str, Any]]:
+    return [
+        t.to_mcp_tool().model_dump(mode="json", by_alias=True, exclude_none=True)
+        for t in asyncio.run(registered_tools())
+    ]
+
+
 def lint_skills(paths: Sequence[Path]) -> LintReport:
     report = LintReport()
     catalog = tool_catalog()
     core_names = core_skill_names()
     core_root = Path(str(files("servicenow_mcp").joinpath("skills"))).resolve()
+    catalog_tools: Optional[List[Dict[str, Any]]] = None
     for root in paths:
         if not root.exists():
             report.problems.append(f"{root}: no such file or folder")
@@ -596,6 +838,11 @@ def lint_skills(paths: Sequence[Path]) -> LintReport:
             report.problems.append(f"{root}: no SKILL.md found")
         for skill in skills:
             report.skills.append(lint_skill(skill, catalog, core_names, core_root))
+        plugins = find_plugin_dirs(root) if root.is_dir() else []
+        if plugins and catalog_tools is None:
+            catalog_tools = _catalog_tools()
+        for plugin in plugins:
+            report.plugins.append(lint_plugin(plugin, catalog_tools or []))
     return report
 
 
@@ -607,13 +854,16 @@ def render(report: LintReport, version: str, strict: bool) -> Tuple[str, int]:
     ]
     for problem in report.problems:
         out.append(f"error   {problem}")
-    for skill in report.skills:
+    for skill in report.checked:
         state = "FAIL" if skill.errors else ("warn" if skill.warnings else "ok")
         writes = f"  writes: {' '.join(skill.writes)}" if skill.writes else ""
         out.append(f"{state:<7} {skill.name}  {skill.digest}  ({skill.path}){writes}")
         out.extend(f.render() for f in skill.findings)
     errors, warnings = report.error_count, report.warning_count
     failed = errors > 0 or (strict and warnings > 0)
-    summary = f"{len(report.skills)} skills, {errors} errors, {warnings} warnings"
+    summary = f"{len(report.skills)} skills"
+    if report.plugins:
+        summary += f", {len(report.plugins)} plugins"
+    summary += f", {errors} errors, {warnings} warnings"
     out.append(f"result: {'FAILED' if failed else 'OK'} ({summary})")
     return "\n".join(out), 1 if failed else 0

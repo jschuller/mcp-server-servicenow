@@ -2,11 +2,26 @@
 
 mcp-server-servicenow gives an AI assistant tools to read your instance (tables, CMDB, update sets, schema) and ships four skills for Now Platform jobs (tables, access, update sets, CMDB data quality). Your organisation knows things those skills don't: your conventions, your CMDB classes, how you run change. Write them down as skills of your own.
 
-A skill is a folder with a `SKILL.md` file, in the open [Agent Skills](https://agentskills.io) format. Claude Code, Claude, Codex, VS Code with Copilot, Cursor, opencode, Gemini CLI and pi all load skill folders natively. This project adds a short profile for ServiceNow skills, a validator, a GitHub Action, a template and an example. It doesn't host your skills.
+A skill is a folder with a `SKILL.md` file, in the open [Agent Skills](https://agentskills.io) format. Claude Code, Claude, Codex, VS Code with Copilot, Cursor, opencode, Gemini CLI and pi all load skill folders natively. This project adds what you need to write, check, test and share ServiceNow skills:
+- a short profile;
+- a validator and a GitHub Action;
+- eval mocks of the server's tools and a results summary;
+- a template and examples.
+
+It doesn't host your skills or vet them.
+
+## What to write
+
+The skills shipped in the server cover the Now Platform. Everything else is yours to write, and the most useful skills are the ones only your organisation could write:
+- **Applications:** IT service management beyond the [incident triage example](examples/incident-triage/), change and problem, HR service delivery, customer service, security operations, risk and compliance, portfolio management. ServiceNow ships MCP servers for some of these. A skill on this server suits teams without those servers, and work that needs raw table access.
+- **Your conventions:** naming, assignment rules, required fields, your CMDB classes and data owners, your promotion checklist.
+- **Your audits:** the checks your platform team runs every release.
+
+Ideas and requests go in [Discussions › Ideas](https://github.com/jschuller/mcp-server-servicenow/discussions/categories/ideas).
 
 ## Start from the template
 
-1. Copy [`examples/template/`](examples/template/) into a new repository, or into a private one for your organisation.
+1. Create a repository from the [template](examples/template/) (with GitHub's "Use this template" button once the template repository exists, or by copying the folder). A private repository works the same way.
 2. Rename `skills/my-servicenow-skill/` and the `name` in its `SKILL.md` together.
 3. Write the skill:
    - **The description:** what the skill does, then the words a user would type when they need it. Agents choose skills by their description.
@@ -23,12 +38,12 @@ A skill is a folder with a `SKILL.md` file, in the open [Agent Skills](https://a
    - **Denials:** what a 403 means ("not assessable with this identity"), and what 0 rows or missing fields mean ("possibly hidden by an ACL").
    - **References:** long material goes in `references/*.md`.
 
-[`examples/change-impact/`](examples/change-impact/) shows two complete skills. The precise rules are in the [skill profile](docs/skill-profile.md). The official [skill-creator](https://github.com/anthropics/claude-plugins-official/tree/main/plugins/skill-creator) plugin for Claude Code helps with drafting and with tuning the description.
+[`examples/incident-triage/`](examples/incident-triage/) and [`examples/change-impact/`](examples/change-impact/) show complete skills, each with evals. The precise rules are in the [skill profile](docs/skill-profile.md). The official [skill-creator](https://github.com/anthropics/claude-plugins-official/tree/main/plugins/skill-creator) plugin for Claude Code helps with drafting and with tuning the description.
 
 ## Check it
 
 ```bash
-uvx mcp-server-servicenow --validate-skills skills --strict
+uvx mcp-server-servicenow==0.9.0 --validate-skills . --strict
 ```
 
 The command runs offline. It prints each skill's `sha256:` digest and every finding. Errors cover anything that makes a skill broken or unsafe:
@@ -42,20 +57,39 @@ Warnings cover what a reviewer should look at:
 - links outside ServiceNow's documentation;
 - anything that looks like a credential.
 
+It also checks the plugin wrapper (`.claude-plugin/plugin.json`). The wrapper may declare only the skills and one server that runs `uvx mcp-server-servicenow`: no hooks, agents, commands or scripts, and no literal credentials. It also warns when `evals/mocks/<server>/_tools.json` no longer matches the server's tools.
+
 In GitHub, the template's workflow runs the same check and a citation check on every push, using the Action:
 
 ```yaml
 - uses: jschuller/mcp-server-servicenow/actions/validate-skills@v0.9.0
   with:
-    path: skills
+    path: .
     server-version: "0.9.0"
     strict: "true"
 ```
 
-## Test it on a developer instance
+## Test it
 
-- **Live instance.** Point mcp-server-servicenow at a personal developer instance, with an identity that holds exactly the roles you declared, and ask the questions your skill is for. Anything that needs more access shows up as a 403, which the skill should report as "not assessable", not as an empty answer.
-- **Mocked tools (Claude Code only, optional).** The template is also a Claude Code plugin with one example case: `claude plugin eval .` runs your skill against invented sample data, with no instance and no credentials. These runs count against your Claude plan's usage or your API bill.
+### On a developer instance
+
+Point mcp-server-servicenow at a personal developer instance, with an identity that holds exactly the roles you declared, and ask the questions your skill is for. Anything that needs more access shows up as a 403, which the skill should report as "not assessable", not as an empty answer.
+
+### With mocked tools
+
+[`claude plugin eval`](https://code.claude.com/docs/en/plugin-evals) runs your skill in Claude Code against mocked tools. It needs no instance and no instance credentials, so anyone can re-run your results.
+
+1. **Generate the mocks:** `uvx mcp-server-servicenow==0.9.0 --eval-mocks .` writes `evals/mocks/servicenow/`:
+   - `_tools.json`: the server's real tool list for that version;
+   - default mocks modelled on a least-privilege identity: rows from `fixtures/<table>.json`, aggregates refused with a 401, the schema with a 403;
+   - an empty fixture for every table your skills declare.
+
+   Re-running it refreshes `_tools.json` and keeps everything you edited.
+2. **Fill the fixtures** with invented rows that exercise the skill, including the awkward cases: a hidden field, an empty table, a denial. A case can override any mock in its own `mocks/` folder.
+3. **Write cases:** `evals/<case>/prompt.md` (what a user would ask) plus `graders/`. Prefer deterministic graders (`tool_used`, `regex`), and keep `llm` graders to short, concrete PASS/FAIL rules. Add one case where the skill must not fire.
+4. **Run:** `claude plugin eval . --runs 3 --ablation with-without`. Runs count against your Claude plan's usage or your API bill.
+
+Read the score with Δ, not on its own. Δ compares your plugin with no plugin at all, and the mocked tools are absent in the run without the plugin, so it overstates what the skills add over the bare tools. A study of agent skills (SkillsBench) found that skills authors write for themselves often add nothing.
 
 ## Install it
 
@@ -73,14 +107,24 @@ Two shortcuts:
 ## Share it
 
 - **Your repository, your licence.** Publish the skills in your own repository, under the licence you choose. This project doesn't host or republish them.
+- **Results live with the skill.** Write `RESULTS.md` from a finished run, then commit it with the mocks and cases and tag the commit:
+  ```bash
+  uvx mcp-server-servicenow==0.9.0 --eval-summary evals/results/<run>/aggregate-result.json --badge evals/badge.json > RESULTS.md
+  ```
+  The summary records the models, the Claude Code version, the server version the mocks came from, the commit, and a command to reproduce the run. It refuses a partial run. There are two kinds of results:
+  - **CI-run:** produced by the template's `evals.yml` in GitHub Actions; it links the public log.
+  - **Self-reported:** run anywhere else.
+
+  Nobody verifies either; the committed mocks make both reproducible.
+- **Be findable:** add the GitHub topic `servicenow-mcp-skill` to your repository.
 - **Tell people about it** in [Discussions › Skills](https://github.com/jschuller/mcp-server-servicenow/discussions/categories/skills). The form asks for:
-  - the repository;
-  - a version or tag;
+  - the repository and a tag;
   - the licence;
   - the roles and tables;
   - the ServiceNow releases you tested;
-  - the validator's output.
-- **No endorsement.** We don't vet or endorse shared skills beyond what the validator checks.
+  - the validator's output;
+  - optionally, your `RESULTS.md`.
+- **No endorsement.** We don't vet or endorse shared skills or their results beyond what the validator checks.
 - **Keep private skills private.** Skills that describe your organisation's instance can stay in a private repository and still use the Action.
 
 ## Your content, your responsibility
@@ -96,5 +140,7 @@ A skill is instructions your agent will follow, so treat skills from others like
 - read them before installing;
 - pin them by tag or by the validator's digest;
 - prefer read-only skills.
+
+To re-run someone else's evals, run the validator on their repository first. `claude plugin eval` runs a plugin's hooks, agents and servers as you, and a wrapper that passes the validator has none of those. Never pass `--scaffold`, `--allow-real-servers` or `--mocks off` to a suite you didn't write. If you're unsure, run it in a container or a CI runner.
 
 Hosts treat skills served over MCP as untrusted input (SEP-2640). Keep skills that write to an instance explicit about it, and keep the identity they run with to the least roles that do the job.

@@ -1,6 +1,7 @@
 """CLI entry point for the ServiceNow MCP server."""
 
 import argparse
+import json
 import logging
 import os
 import sys
@@ -119,6 +120,28 @@ def parse_args() -> argparse.Namespace:
         "--strict",
         action="store_true",
         help="With --validate-skills: warnings fail too",
+    )
+    parser.add_argument(
+        "--eval-mocks",
+        metavar="PLUGIN_DIR",
+        help=(
+            "Write claude plugin eval mocks of this server's tools into PLUGIN_DIR/evals/"
+            "mocks/<server>/ (tools list, default mocks, a fixture per declared table) "
+            "and exit; existing mocks and fixtures are kept"
+        ),
+    )
+    parser.add_argument(
+        "--eval-summary",
+        metavar="RESULT_JSON",
+        help=(
+            "Print a Markdown summary of a finished claude plugin eval run "
+            "(aggregate-result.json) for a RESULTS.md, and exit"
+        ),
+    )
+    parser.add_argument(
+        "--badge",
+        metavar="FILE",
+        help="With --eval-summary: also write a shields.io endpoint badge to FILE",
     )
     parser.add_argument(
         "--transport",
@@ -356,6 +379,39 @@ def run_validate_skills(paths: List[str], *, strict: bool) -> int:
     return code
 
 
+def run_eval_mocks(plugin_dir: str) -> int:
+    """``--eval-mocks``: write the mock kit for a skills plugin."""
+    from servicenow_mcp import __version__
+    from servicenow_mcp.eval_kit import EvalKitError, write_eval_mocks
+
+    logging.getLogger().setLevel(logging.WARNING)
+    try:
+        done = write_eval_mocks(Path(plugin_dir), __version__)
+    except EvalKitError as exc:
+        print(f"error   {exc}")
+        return 1
+    print(f"mcp-server-servicenow {__version__} --eval-mocks")
+    for action, path in done:
+        print(f"{action:<7} {path}")
+    return 0
+
+
+def run_eval_summary(result: str, badge: Optional[str]) -> int:
+    """``--eval-summary``: print a run's summary, optionally write its badge."""
+    from servicenow_mcp.eval_kit import EvalKitError, summarize
+
+    logging.getLogger().setLevel(logging.WARNING)
+    try:
+        text, badge_json = summarize(Path(result))
+    except EvalKitError as exc:
+        print(f"error   {exc}", file=sys.stderr)
+        return 1
+    print(text)
+    if badge:
+        Path(badge).write_text(json.dumps(badge_json) + "\n", encoding="utf-8")
+    return 0
+
+
 def main() -> None:
     """Main entry point."""
     load_dotenv()
@@ -365,6 +421,12 @@ def main() -> None:
 
         if args.debug:
             logging.getLogger().setLevel(logging.DEBUG)
+
+        if getattr(args, "eval_mocks", None):
+            sys.exit(run_eval_mocks(args.eval_mocks))
+
+        if getattr(args, "eval_summary", None):
+            sys.exit(run_eval_summary(args.eval_summary, args.badge))
 
         if getattr(args, "validate_skills", None):
             sys.exit(run_validate_skills(args.validate_skills, strict=args.strict))
