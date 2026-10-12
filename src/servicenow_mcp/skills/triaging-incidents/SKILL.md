@@ -6,7 +6,7 @@ metadata:
   author: jschuller
   version: "2.0.0"
   io.github.jschuller/servicenow-roles: "itil snc_read_only"
-  io.github.jschuller/servicenow-tables: "incident problem change_request sys_user_group cmdb_ci"
+  io.github.jschuller/servicenow-tables: "incident problem change_request sys_user_group cmdb_ci cmdb_rel_ci"
 
 ---
 
@@ -19,7 +19,7 @@ Create, triage, investigate, and analyze incidents. See `references/incident-fie
 | Tables | Readable with |
 |--------|---------------|
 | `incident`, `problem`, `change_request`, `sys_user_group` | `itil` (+ `snc_read_only` for a read-only identity) |
-| `cmdb_ci` (affected CIs) | `itil`; `snc_read_only` alone gets 403 |
+| `cmdb_ci` (affected CIs), `cmdb_rel_ci` (their dependencies) | `itil`; `snc_read_only` alone gets 403 on `cmdb_ci` |
 
 Some incident fields stay hidden even from `itil`. For example, the change links `rfc` and `caused_by` can be ACL-protected. `list_records` then warns that they are missing from every row, and conditions on them are ignored.
 
