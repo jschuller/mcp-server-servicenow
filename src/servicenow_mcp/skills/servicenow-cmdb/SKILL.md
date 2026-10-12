@@ -5,12 +5,28 @@ license: MIT
 metadata:
   author: jschuller
   version: "2.0.0"
+  io.github.jschuller/servicenow-roles: "itil snc_read_only"
+  io.github.jschuller/servicenow-tables: "cmdb_ci cmdb_rel_ci sys_db_object service_offering dl_definition cmdb_health_scorecard cmdb_health_result cmdb_health_metric cmdb_health_staleness_rule cmdb_health_orphan_rule sn_getwell_csdm_score"
 
 ---
 
 # ServiceNow CMDB Data Foundations
 
-Explore CI classes, map dependencies, assess CMDB health, investigate data quality, and review CSDM service taxonomy. See `references/cmdb-tables.md` for CI classes, health KPIs, CSDM mappings, and encoded query syntax.
+Explore CI classes, map dependencies, assess CMDB health, investigate data quality, review the CSDM service taxonomy, and score CSDM conformance by stage. See `references/cmdb-tables.md` for CI classes, health KPIs, CSDM mappings and encoded query syntax, and `references/csdm5.md` for CSDM 5 stages and the conformance scores.
+
+## Tables and roles
+
+| Tables | Readable with |
+|--------|---------------|
+| `cmdb_ci` and most CI classes, `cmdb_rel_ci`, `cmdb_health_*`, `sn_getwell_csdm_score` | `itil` + `snc_read_only` (`snc_read_only` alone gets 403 on `cmdb_ci` and the scores) |
+| Service classes such as `cmdb_ci_service_business` and `cmdb_ci_service_technical` | Often a service or CMDB role beyond `itil`: expect 403 |
+| `sys_db_object` (class hierarchy) | Usually readable; `servicenow://cmdb/classes` reads it for you |
+
+## When access is denied
+
+- A **403** on a class or table means not assessable with this identity. Name it in the report as a gap, and keep going with the classes you can read.
+- **0 rows** from a class can mean the class is empty or that ACLs hide its rows. Don't report "no services" when the read might be filtered.
+- Health and score tables stay empty until their scheduled jobs have run. Empty is not the same as healthy.
 
 ## Workflows
 
@@ -162,7 +178,7 @@ Explore the Common Service Data Model service hierarchy.
    ```
    list_ci(class_name="cmdb_ci_service_technical", limit=20)
    ```
-3. List Application Services:
+3. List Application Services. CSDM 5 calls them Service Instances (`cmdb_ci_service_auto` and its subclasses):
    ```
    list_ci(class_name="cmdb_ci_service", query="sys_class_nameLIKEservice", limit=20)
    ```
@@ -176,9 +192,34 @@ Explore the Common Service Data Model service hierarchy.
    ```
 6. Present the service taxonomy: business -> technical -> application services, with supporting CIs.
 
+### 6. CSDM 5 Conformance by Stage
+
+Score how far the instance has adopted CSDM, using the scores ServiceNow's CSDM Data Foundations dashboard computes. Read `references/csdm5.md` first.
+
+**Progress checklist:**
+```
+- [ ] Read the active CSDM scores
+- [ ] Group them by stage: Foundation, Crawl, Walk, Run, Fly
+- [ ] List the failing metrics per stage, highest priority first
+- [ ] Recommend the next stage's work
+```
+
+1. Read every active score:
+   ```
+   list_records(table_name="sn_getwell_csdm_score", query="active=true", fields="name,csdm_stage,result,count,priority", limit=100, order_by="csdm_stage")
+   ```
+2. `csdm_stage` is stored as a number: 5 Foundation, 1 Crawl, 2 Walk, 3 Run, 4 Fly. `result` is a percentage, where 100 means the data is complete for that metric, and `count` is the number of records the metric looked at.
+3. Metrics that are not yet complete:
+   ```
+   list_records(table_name="sn_getwell_csdm_score", query="active=true^result<100", fields="name,csdm_stage,result,count,priority", limit=100, order_by="priority")
+   ```
+4. Report stage by stage, starting with Foundation: how many metrics are complete, which are not, and with what counts. A stage is only worth building on when the one before it is in good shape.
+5. If the table is empty, the daily "CSDM Get Well Metric Collection" job has not run yet. If it returns 403, say the scores are not readable with this identity.
+
 ## Tips
 
 - Use `fields` parameter on `list_ci` and `list_records` to limit returned data to relevant columns.
 - CMDB health tables may not exist on all instances — if a table returns 404, the Health Dashboard module may not be activated.
+- Metric names on the instance can lag the CSDM version: a CSDM 5 instance may still show "Consumes::Consumed By" where CSDM 5 says "Uses::Used By".
 - CSDM class names vary by SN version. If a class returns no results, try `get_table_schema` to confirm it exists.
 - See `references/cmdb-tables.md` for encoded query syntax, CI class reference, and health KPI definitions.

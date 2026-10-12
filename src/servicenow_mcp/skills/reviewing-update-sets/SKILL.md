@@ -5,12 +5,31 @@ license: MIT
 metadata:
   author: jschuller
   version: "2.0.0"
+  io.github.jschuller/servicenow-roles: "admin"
+  io.github.jschuller/servicenow-tables: "sys_update_set sys_update_xml sys_remote_update_set sys_update_preview_problem sys_update_version"
 
 ---
 
 # Reviewing ServiceNow Update Sets
 
-Review, analyze, and compare update sets before promotion. See `references/update-set-fields.md` for update types, risk categories, and pre-promotion checklist fields.
+Review, analyze, and compare update sets before promotion, and read the preview problems of retrieved (remote) update sets. See `references/update-set-fields.md` for update types, risk categories, preview problem types and pre-promotion checklist fields.
+
+## Tables and roles
+
+This skill needs an **admin-level identity**. Every table it reads returns 403 or no rows for `itil` + `snc_read_only`.
+
+| Table | What it holds |
+|-------|---------------|
+| `sys_update_set` | Local update sets |
+| `sys_update_xml` | One row per captured change |
+| `sys_remote_update_set` | Update sets retrieved from another instance, with a `state` and a `collisions` count |
+| `sys_update_preview_problem` | Problems a preview found for a retrieved set |
+| `sys_update_version` | Version history of each customised record |
+
+## When access is denied
+
+- **403** on `sys_update_set` (or `list_update_sets` fails): the review is not assessable with this identity. Say an admin-level identity is needed, and stop rather than guess.
+- **0 rows** from `sys_update_preview_problem`: either nothing was found or the rows are hidden. Check the set's `collisions` count and state before calling a set clean.
 
 ## Workflows
 
@@ -122,9 +141,42 @@ Validate an update set is safe to promote using a structured checklist.
    - **Incomplete references:** Changes that reference records not in the same set
 4. Generate a promotion readiness report: pass/fail for each check, overall recommendation.
 
+### 5. Preview Problems and Collisions (retrieved update sets)
+
+Read what a preview already found, without running one. Previewing, accepting, skipping and committing all write to the instance, so leave them to the user.
+
+**Progress checklist:**
+```
+- [ ] List retrieved update sets and their states
+- [ ] Read the preview problems of the set under review
+- [ ] Group problems by type and resolution status
+- [ ] For collisions, compare record versions
+- [ ] Recommend accept, skip or fix for each open problem
+```
+
+1. List retrieved sets, newest first:
+   ```
+   list_records(table_name="sys_remote_update_set", query="stateINloaded,previewed", fields="name,state,collisions,commit_date,application,update_source", limit=20, order_by="-sys_created_on")
+   ```
+   `loaded` means the set was retrieved but not previewed. `previewed` means a preview ran and its problems are recorded.
+2. Read the problems for one set:
+   ```
+   list_records(table_name="sys_update_preview_problem", query="remote_update_set=<remote_update_set_sys_id>", fields="type,status,description,missing_item,missing_item_table,remote_update", limit=200)
+   ```
+   - `type` is `error` or `warning`.
+   - `status` stays empty until someone resolves the problem, then it reads `ignored`, `skipped` or `skip_collision`.
+   - Unresolved errors block the commit.
+3. Classify each open problem with `references/update-set-fields.md` (missing object, collision, uncommitted update ...).
+4. For a collision, compare the versions of the record on this instance:
+   ```
+   list_records(table_name="sys_update_version", query="name=<update_name>", fields="name,state,source_table,source,sys_recorded_at", limit=10, order_by="-sys_recorded_at")
+   ```
+   Never request `payload`: it holds the full record XML and can contain credentials.
+5. Report: open errors first, then warnings. For each one, give a recommendation (accept the remote update, skip it, or fix the missing dependency first) and say who should act.
+
 ## Tips
 
 - Update sets in `ignore` state are intentionally excluded from promotion — don't flag them.
-- The `sys_update_xml` table stores the actual XML payload of each change. Query it for detailed diffs.
+- The `sys_update_xml` table stores the actual XML payload of each change. Query it for detailed diffs only when needed, with small limits: payloads can contain credentials and script bodies.
 - Use `order_by="-sys_created_on"` to see the most recent update sets first.
 - See `references/update-set-fields.md` for the full list of change types and risk categories.

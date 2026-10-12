@@ -83,7 +83,7 @@ the release (see Failure modes).
      a read and a scratch update work.
    - Plugin: `claude --plugin-dir .` with only `SERVICENOW_INSTANCE_URL/USERNAME/PASSWORD`
      set must start (the `${VAR:-default}` passthrough check).
-   - the four `skill://…/SKILL.md` resources list and read (Claude Code `/mcp` → resources).
+   - the five `skill://…/SKILL.md` resources list and read (Claude Code `/mcp` → resources).
    - Run Claude Code as `command claude …` if your shell aliases `claude`
      (e.g. to `--dangerously-skip-permissions`), or the permission checks
      are skipped.
@@ -92,7 +92,7 @@ the release (see Failure modes).
      a skill is readable via `read_mcp_resource`, a write tool is refused by
      `codex exec`; in the TUI a write tool shows Codex's approval prompt.
    - pi (1.0+): `pi mcp add … --exposure direct -- uv run --directory . mcp-server-servicenow`,
-     `pi mcp list` must report 12/19 tools and 15 resources.
+     `pi mcp list` must report 12/19 tools and 21 resources.
 
 4. Push to main and wait for CI green — the test matrix (3.11–3.14)
    plus the `package` job (version consistency, `uv lock --check`,

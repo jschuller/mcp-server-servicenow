@@ -1,13 +1,13 @@
 # Tools, resources and skills
 
-19 tools, 5 resources and 4 Agent Skills. Every tool carries MCP annotations (`readOnlyHint`, `destructiveHint`, `idempotentHint`, `openWorldHint`), so your client decides which calls need your approval. `--read-only` hides the 7 write tools, and so does an identity with `snc_read_only`.
+19 tools, 5 resources and 5 Agent Skills. Every tool carries MCP annotations (`readOnlyHint`, `destructiveHint`, `idempotentHint`, `openWorldHint`), so your client decides which calls need your approval. `--read-only` hides the 7 write tools, and so does an identity with `snc_read_only`.
 
 ## Tools
 
 ### Table API (6)
 | Tool | Description |
 |------|-------------|
-| `list_records` | List records from any table with filtering, field selection and pagination |
+| `list_records` | List records from any table with filtering, field selection and pagination; adds a `warning` when a requested field is missing from every row (it doesn't exist or an ACL hides it) |
 | `get_record` | Get a single record by sys_id |
 | `create_record` | Create a record in any table |
 | `update_record` | Update a record |
@@ -75,7 +75,7 @@ Read-only context a client can fetch without a tool call.
 | `servicenow://instance` | Instance URL, platform version, logged-in user, timezone |
 | `servicenow://update-set/current` | Current update set name, sys_id, state |
 | `servicenow://cmdb/classes` | CMDB CI class hierarchy (names, labels, parent classes) |
-| `servicenow://help/query-syntax` | Encoded query operators (prevents hallucinated syntax) |
+| `servicenow://help/query-syntax` | Encoded query operators, including date ranges (the same file as `skill://exploring-tables/references/query-syntax.md`) |
 
 ## Skills (served over MCP)
 
@@ -83,10 +83,13 @@ Four [Agent Skills](https://agentskills.io) — guided, multi-step workflows tha
 
 | Skill | URI | What it guides |
 |-------|-----|----------------|
-| **triaging-incidents** | `skill://triaging-incidents/SKILL.md` | List, triage, investigate and create incidents; 30-day trend reports; SLA breaches |
-| **servicenow-cmdb** | `skill://servicenow-cmdb/SKILL.md` | CI class hierarchy, dependency maps, CMDB health and full audits, data quality, CSDM taxonomy |
-| **reviewing-update-sets** | `skill://reviewing-update-sets/SKILL.md` | Deep review, batch review, comparison and pre-promotion checks for update sets |
-| **exploring-tables** | `skill://exploring-tables/SKILL.md` | Schema discovery, field types, data profiling, table search and comparison |
+| **triaging-incidents** | `skill://triaging-incidents/SKILL.md` | List, triage, investigate and create incidents; trend reports that fall back to counting rows when aggregates are refused; SLA breaches |
+| **servicenow-cmdb** | `skill://servicenow-cmdb/SKILL.md` | CI class hierarchy, dependency maps, CMDB health and full audits, data quality, CSDM taxonomy, CSDM 5 conformance by stage |
+| **reviewing-update-sets** | `skill://reviewing-update-sets/SKILL.md` | Deep review, batch review, comparison and pre-promotion checks for update sets; preview problems and collisions of retrieved sets (admin) |
+| **exploring-tables** | `skill://exploring-tables/SKILL.md` | Schema discovery (with a sampling fallback when the schema is refused), choice lists, data profiling, table search and comparison, the encoded-query reference |
+| **analyzing-access** | `skill://analyzing-access/SKILL.md` | Who holds admin and security_admin, roles granted outside groups or left on inactive users, and what a 401, 403, empty result or missing field means |
+
+Each skill states the tables it reads and the roles they need, in its text and in two frontmatter metadata keys (`io.github.jschuller/servicenow-roles`, `io.github.jschuller/servicenow-tables`). A 403 is reported as "not assessable with this identity"; 0 rows or missing fields as "possibly hidden by an ACL".
 
 Each skill also exposes `skill://<name>/_manifest` (a JSON file list with SHA-256 digests, so a host can verify what it loaded) and its reference material as sibling resources, e.g. `skill://triaging-incidents/references/incident-fields.md`. Every read is an audit line. The server's `instructions` tell the model which skill matches which request; how each client picks them up is in [clients.md](clients.md#how-clients-use-the-skills).
 

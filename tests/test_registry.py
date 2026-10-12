@@ -1,6 +1,6 @@
 """Registry regression tests for tools, resources, and skills.
 
-Safety net: 19 tools, 15 static resources (4 hand-written + 11 skill:// entries)
+Safety net: 19 tools, 21 static resources (4 hand-written + 17 skill:// entries)
 and 1 resource template must stay registered exactly.
 """
 
@@ -43,6 +43,7 @@ EXPECTED_TOOLS = {
 }
 
 SKILLS = (
+    "analyzing-access",
     "exploring-tables",
     "reviewing-update-sets",
     "servicenow-cmdb",
@@ -55,8 +56,12 @@ EXPECTED_RESOURCES = {
     "servicenow://help/query-syntax",
     *(f"skill://{n}/SKILL.md" for n in SKILLS),
     *(f"skill://{n}/_manifest" for n in SKILLS),
+    "skill://analyzing-access/references/access-errors.md",
+    "skill://analyzing-access/references/acl-evaluation.md",
+    "skill://exploring-tables/references/query-syntax.md",
     "skill://reviewing-update-sets/references/update-set-fields.md",
     "skill://servicenow-cmdb/references/cmdb-tables.md",
+    "skill://servicenow-cmdb/references/csdm5.md",
     "skill://triaging-incidents/references/incident-fields.md",
 }
 EXPECTED_TEMPLATES = {"servicenow://schema/{table_name}"}
@@ -122,7 +127,7 @@ class TestToolRegistry:
 class TestResourceRegistry:
     @pytest.mark.asyncio
     async def test_exact_resource_set(self) -> None:
-        """Exactly the 15 static resources — no extras, none missing."""
+        """Exactly the 21 static resources — no extras, none missing."""
         async with Client(mcp) as client:
             registered = {str(r.uri) for r in await client.list_resources()}
         assert registered == EXPECTED_RESOURCES, (

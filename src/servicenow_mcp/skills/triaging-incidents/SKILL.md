@@ -5,12 +5,29 @@ license: MIT
 metadata:
   author: jschuller
   version: "2.0.0"
+  io.github.jschuller/servicenow-roles: "itil snc_read_only"
+  io.github.jschuller/servicenow-tables: "incident problem change_request sys_user_group cmdb_ci"
 
 ---
 
 # Triaging ServiceNow Incidents
 
 Create, triage, investigate, and analyze incidents. See `references/incident-fields.md` for the priority matrix, states, categories, and encoded query patterns.
+
+## Tables and roles
+
+| Tables | Readable with |
+|--------|---------------|
+| `incident`, `problem`, `change_request`, `sys_user_group` | `itil` (+ `snc_read_only` for a read-only identity) |
+| `cmdb_ci` (affected CIs) | `itil`; `snc_read_only` alone gets 403 |
+
+Some incident fields stay hidden even from `itil`. For example, the change links `rfc` and `caused_by` can be ACL-protected. `list_records` then warns that they are missing from every row, and conditions on them are ignored.
+
+## When access is denied
+
+- **403** on a table: not assessable with this identity. Say which table, and report what you could read.
+- **0 rows** or missing fields: possibly hidden by an ACL. Don't report "no incidents" from a read that may be filtered.
+- `aggregate_records` refused (401 under API-key auth, or 403): use the `list_records` fallback in workflow 5.
 
 ## Workflows
 
@@ -131,38 +148,52 @@ Create a new incident with validated fields and appropriate defaults.
 
 If `create_record` is not among your tools, the identity is read-only: give the user the field values to enter instead.
 
-### 5. Bulk Analysis
+### 5. Trends and Bulk Analysis
 
-Analyze incident trends — top categories, repeat offenders, SLA status.
+Analyze incident trends: volumes over time, top categories, repeat-offender CIs, SLA status.
 
 **Progress checklist:**
 ```
-- [ ] Pull recent incidents (7-30 day window)
-- [ ] Group by category
+- [ ] Count by category, priority and group (aggregate, or the fallback)
+- [ ] Compare this period with the previous one
 - [ ] Identify repeat CIs (frequent flyers)
 - [ ] Check SLA breaches
 - [ ] Present trends and recommendations
 ```
 
-1. Pull recent incidents:
+1. Count first, without pulling rows. RELATIVE operators express "in the last N days" without script:
    ```
-   list_records(table_name="incident", query="sys_created_on>=javascript:gs.daysAgoStart(30)^active=true", fields="number,category,cmdb_ci,priority,state,assignment_group,sla_due", limit=100, order_by="-sys_created_on")
+   aggregate_records(table_name="incident", query="opened_atRELATIVEGT@dayofweek@ago@30", group_by="category")
+   aggregate_records(table_name="incident", query="opened_atRELATIVEGT@dayofweek@ago@30", group_by="priority")
    ```
-2. Group by category, priority, and assignment group — which generate the most incidents? `aggregate_records(table_name="incident", query="sys_created_on>=javascript:gs.daysAgoStart(30)", group_by="category")` avoids pulling every row.
+   For the previous period, use a range. The list UI writes ranges with `@` between the two ends:
+   ```
+   aggregate_records(table_name="incident", query="opened_atBETWEENjavascript:gs.daysAgoStart(60)@javascript:gs.daysAgoEnd(31)", group_by="category")
+   ```
+2. **If `aggregate_records` is refused** (401 under API-key auth, where the Aggregate API needs its own access policy, or 403), count from rows instead:
+   - Pull only the fields you group by, with the same query:
+     ```
+     list_records(table_name="incident", query="opened_atRELATIVEGT@dayofweek@ago@30", fields="number,category,priority,assignment_group,cmdb_ci", limit=500)
+     ```
+   - Keep paging with `offset` until a page comes back empty. A short page doesn't mean the end, because the limit is applied before ACLs remove rows.
+   - Count the rows yourself.
+   - Say that the numbers come from the rows this identity can read.
 3. Identify repeat CIs — which CIs appear in multiple incidents?
    ```
-   list_records(table_name="incident", query="cmdb_ci=<frequent_ci_sys_id>^sys_created_on>=javascript:gs.daysAgoStart(30)", fields="number,short_description,priority,state", limit=20)
+   list_records(table_name="incident", query="cmdb_ci=<frequent_ci_sys_id>^opened_atRELATIVEGT@dayofweek@ago@30", fields="number,short_description,priority,state", limit=20)
    ```
 4. Check for SLA breaches:
    ```
    list_records(table_name="incident", query="active=true^sla_due<javascript:gs.daysAgoEnd(0)", fields="number,short_description,priority,sla_due,assignment_group", limit=20)
    ```
 5. Find resolution patterns: which categories resolve fastest and slowest (`resolved_at` minus `opened_at` on closed incidents, `state=7`, same window).
-6. Present as a trend report: top incident categories, repeat-offender CIs, SLA breach count, resolution patterns, and recommendations for reducing incident volume. Separate facts from recommendations.
+6. Present as a trend report: volume against the previous period, top categories, repeat-offender CIs, SLA breach count, resolution patterns, and recommendations for reducing incident volume. Separate facts from recommendations, and say which counts came from the fallback.
 
 ## Tips
 
 - The priority matrix is `impact x urgency` — see `references/incident-fields.md` for the full mapping.
+- RELATIVE operators: `RELATIVEGT`, `RELATIVEGE`, `RELATIVELT`, `RELATIVELE` and `RELATIVEEE`, written `field<OP>@<unit>@ago@<n>`. Units include `minute`, `hour`, `dayofweek` (days), `month` and `year`. Use `dayofweek` for days: `@day@` silently matched nothing on a Brazil instance.
+- Before trusting a filtered count, compare it with the unfiltered one. A condition on a hidden field is ignored, not rejected.
 - Use `active=true` to filter out resolved/closed incidents. Closed incidents have `state=7`.
 - SLA fields (`sla_due`, `made_sla`) track whether response/resolution targets are met.
 - Assignment groups can be looked up: `list_records(table_name="sys_user_group", query="nameLIKE<keyword>", fields="name,sys_id")`.

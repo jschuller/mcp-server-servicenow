@@ -153,7 +153,7 @@ Everything else: run `--check` ([above](#4-check-it-works)), then [TROUBLESHOOTI
 
 ## Tools
 
-19 tools, 5 resources and 4 skills. Full reference: [tools, resources and skills](https://github.com/jschuller/mcp-server-servicenow/blob/main/docs/tools.md).
+19 tools, 5 resources and 5 skills. Full reference: [tools, resources and skills](https://github.com/jschuller/mcp-server-servicenow/blob/main/docs/tools.md).
 
 | Group | Tools |
 |---|---|

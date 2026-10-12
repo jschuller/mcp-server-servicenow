@@ -55,6 +55,7 @@ async def test_rendered_uris_are_the_mounted_ones(parent: FastMCP) -> None:
         "skill://snow/servicenow-cmdb/SKILL.md",
         "skill://snow/reviewing-update-sets/SKILL.md",
         "skill://snow/exploring-tables/SKILL.md",
+        "skill://snow/analyzing-access/SKILL.md",
         "servicenow://snow/help/query-syntax",
     }
     assert named <= served

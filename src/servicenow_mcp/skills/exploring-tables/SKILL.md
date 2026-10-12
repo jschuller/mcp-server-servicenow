@@ -5,12 +5,29 @@ license: MIT
 metadata:
   author: jschuller
   version: "2.0.0"
+  io.github.jschuller/servicenow-roles: "personalize_dictionary itil snc_read_only"
+  io.github.jschuller/servicenow-tables: "sys_db_object sys_dictionary sys_choice"
 
 ---
 
 # Exploring ServiceNow Tables
 
-General-purpose table exploration — schema discovery, data profiling, and table comparison.
+General-purpose table exploration — schema discovery, data profiling, choice lists and table comparison. See `references/query-syntax.md` for encoded-query operators, including date ranges.
+
+## Tables and roles
+
+| Table or tool | What it gives | Readable with |
+|---------------|---------------|---------------|
+| `get_table_schema`, `sys_dictionary` | Field names, types, references, mandatory flags | `personalize_dictionary` (or `admin`). A least-privilege identity usually gets 403. |
+| `sys_db_object` | Table names, labels and parents | Usually readable |
+| `sys_choice` | Choice values and labels | Often needs more than `itil`: querying its `name`/`element` fields gets 403 for `itil` + `snc_read_only` |
+| The table itself | Sample rows | Whatever role reads that table |
+
+## When access is denied
+
+- **403** on the schema: use the sampling fallback in workflow 1. Say that types and mandatory flags are not assessable with this identity.
+- **Fields missing** from sampled rows: a field ACL may hide them, so the sample shows only what this identity can read.
+- **0 rows**: the table may be empty, or its rows may be hidden. Check with `aggregate_records` where it is allowed.
 
 ## Workflows
 
@@ -33,6 +50,7 @@ Get the full picture of any ServiceNow table.
    ```
    list_records(table_name="<table_name>", limit=5)
    ```
+   **If the schema returned 403**, this sample is the schema you have. With no `fields=`, each row carries every field this identity can read. Report the field names, guess types from the values (and say they are guesses), and note that hidden fields don't appear.
 3. Summarize:
    - Total field count and types (string, integer, reference, boolean, etc.)
    - Mandatory fields (the ones users must populate)
@@ -112,9 +130,25 @@ Sample records and assess data quality for a table.
    - Reference fields that point to empty/missing records
    - Recommendations for data cleanup
 
+### 5. Choice Lists
+
+Find the allowed values of a choice field (state, priority, category ...).
+
+1. Read the choice definitions:
+   ```
+   list_records(table_name="sys_choice", query="name=<table_name>^element=<field>^language=en^inactive=false", fields="value,label,sequence,dependent_value", limit=100, order_by="sequence")
+   ```
+   Choices can be defined on a parent table (task fields such as `state` on `task`). If the table has no rows, repeat with the parent.
+2. **If `sys_choice` returns 403** ("Field(s) present in the query do not have permission to be read"), list the values actually in use instead:
+   ```
+   aggregate_records(table_name="<table_name>", group_by="<field>")
+   ```
+   If aggregates are refused too, sample the field with `list_records(table_name="<table_name>", fields="<field>", limit=500)` and collect the distinct values. These are stored values, not labels, and values never used won't appear: say so.
+
 ## Tips
 
 - Use `fields` parameter to limit returned data: `fields="sys_id,name,state"`.
 - The `sys_db_object` table contains all table definitions. Use it to discover tables by keyword.
 - The `sys_dictionary` table contains field-level metadata. Query it for advanced schema details: `list_records(table_name="sys_dictionary", query="name=<table_name>")`.
-- Encoded query cheat sheet: `=` (equals), `LIKE` (contains), `ISEMPTY` (null), `^` (AND), `^OR` (OR).
+- Encoded query cheat sheet: `=` (equals), `LIKE` (contains), `ISEMPTY` (null), `^` (AND), `^OR` (OR). The full list, with date ranges, is in `references/query-syntax.md`.
+- Request every field you filter on in `fields=`. If an ACL hides it, `list_records` warns that the field is missing from every row, and the filter may have been ignored.

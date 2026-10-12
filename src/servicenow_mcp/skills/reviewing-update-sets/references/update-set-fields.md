@@ -3,6 +3,8 @@
 ## Table of Contents
 
 - [Update Set States](#update-set-states)
+- [Retrieved (Remote) Update Set States](#retrieved-remote-update-set-states)
+- [Preview Problem Types](#preview-problem-types)
 - [Customer Update Types](#customer-update-types)
 - [Risk Categories](#risk-categories)
 - [Pre-Promotion Checklist Fields](#pre-promotion-checklist-fields)
@@ -19,6 +21,34 @@
 | Ignore | `ignore` | Excluded from promotion pipeline |
 
 Only update sets in `complete` state should be promoted.
+
+## Retrieved (Remote) Update Set States
+
+`sys_remote_update_set.state` takes the values below, read from a Brazil instance's choice list. The batch and stash variants of each state are left out.
+
+| Value | Meaning |
+|-------|---------|
+| `loading` / `loaded` | Being retrieved / retrieved, not previewed |
+| `previewing` / `previewed` | Preview running / preview done, problems recorded |
+| `committing` / `committed` / `partial` | Commit running / done / only part of it committed |
+| `backedout` | The commit was backed out |
+
+## Preview Problem Types
+
+A preview records one problem per update that can't be applied cleanly. In our own words:
+
+| Problem | What it means | Usual resolution |
+|---------|---------------|------------------|
+| Missing object | The update refers to a record that doesn't exist on this instance | Bring the missing record over first (another update set), or skip if it is not needed |
+| Collision | This instance has a newer local change to the same record | Compare versions; accept the remote update to overwrite, or skip it to keep the local change |
+| Uncommitted update | The same record is in another retrieved set that isn't committed yet | Commit the sets in order |
+| Table to be deleted has data | The update deletes a table that still holds rows | Decide whether the data can go before committing |
+| Application scope problem | The update doesn't fit the target application's scope | Fix the scope in the source instance |
+| Conflict within a batch | Two sets in the same batch change the same record differently | Resolve in the source, then retrieve again |
+
+`sys_update_preview_problem.status` is empty while a problem is open, and `ignored`, `skipped` or `skip_collision` once it has been dealt with. Previewing writes preview records, so this skill only reads the results of a preview someone else ran.
+
+`sys_update_version.state` is `current`, `previous`, `history`, `history_collision` or `backedout`. The current version is the one live on the instance.
 
 ## Customer Update Types
 
@@ -95,3 +125,7 @@ update_set=<update_set_sys_id>
 # Update sets with "release" in the name
 nameLIKErelease
 ```
+
+## Sources
+- [Preview a remote update set](https://www.servicenow.com/docs/r/brazil/application-development/system-update-sets/t_PreviewARemoteUpdateSet.html) · [source](https://github.com/ServiceNow/ServiceNowDocs/blob/753a7f0e8fac/markdown/application-development/system-update-sets/t_PreviewARemoteUpdateSet.md)
+- [Version records](https://www.servicenow.com/docs/r/brazil/application-development/team-development/r_VersionRecords.html) · [source](https://github.com/ServiceNow/ServiceNowDocs/blob/753a7f0e8fac/markdown/application-development/team-development/r_VersionRecords.md)

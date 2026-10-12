@@ -39,6 +39,7 @@ from fastmcp.exceptions import ToolError
 
 REPO = str(Path(__file__).resolve().parents[1])
 SKILLS = (
+    "analyzing-access",
     "exploring-tables",
     "reviewing-update-sets",
     "servicenow-cmdb",
@@ -94,9 +95,9 @@ async def section_a(results):
         res = await c.list_resources()
         results.append(
             ok(
-                "read-only: 15 resources incl. 11 skill://",
-                len(res) == 15
-                and sum(str(r.uri).startswith("skill://") for r in res) == 11,
+                "read-only: 21 resources incl. 17 skill://",
+                len(res) == 21
+                and sum(str(r.uri).startswith("skill://") for r in res) == 17,
                 str(len(res)),
             )
         )
@@ -296,7 +297,7 @@ async def section_d(results, skills_audit):
             }
             results.append(
                 ok(
-                    f"skills[{mode}]: 4 SKILL.md listed",
+                    f"skills[{mode}]: {len(SKILLS)} SKILL.md listed",
                     listed == {f"skill://{n}/SKILL.md" for n in SKILLS},
                 )
             )
@@ -333,6 +334,14 @@ async def section_d(results, skills_audit):
             )
             qs = (await c.read_resource("servicenow://help/query-syntax"))[0].text
             results.append(ok(f"skills[{mode}]: query-syntax help", "STARTSWITH" in qs))
+            ref = (
+                await c.read_resource(
+                    "skill://exploring-tables/references/query-syntax.md"
+                )
+            )[0].text
+            results.append(
+                ok(f"skills[{mode}]: query-syntax alias = skill reference", ref == qs)
+            )
             results.append(
                 ok(
                     f"skills[{mode}]: instructions on wire",

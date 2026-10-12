@@ -22,8 +22,8 @@ async def test_disable_write_tag_hides_only_tools() -> None:
             for t in tools
         )
         assert (
-            len(await client.list_resources()) == 15
-        )  # 4 static + 11 skill:// entries
+            len(await client.list_resources()) == 21
+        )  # 4 static + 17 skill:// entries
         assert len(await client.list_resource_templates()) == 1
         with pytest.raises(ToolError, match="Unknown tool"):
             await client.call_tool(

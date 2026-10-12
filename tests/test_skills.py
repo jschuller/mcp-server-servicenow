@@ -1,4 +1,4 @@
-"""Tests for the four Agent Skills served over MCP as skill:// resources.
+"""Tests for the five Agent Skills served over MCP as skill:// resources.
 
 FastMCP's SkillsDirectoryProvider (SEP-2640 convention) exposes, per skill,
 ``skill://<name>/SKILL.md``, a ``skill://<name>/_manifest`` with SHA-256 digests,
@@ -24,14 +24,19 @@ from servicenow_mcp.utils.config import (
 )
 
 SKILL_NAMES = {
+    "analyzing-access",
     "exploring-tables",
     "reviewing-update-sets",
     "servicenow-cmdb",
     "triaging-incidents",
 }
 REFERENCE_URIS = {
+    "skill://analyzing-access/references/access-errors.md",
+    "skill://analyzing-access/references/acl-evaluation.md",
+    "skill://exploring-tables/references/query-syntax.md",
     "skill://reviewing-update-sets/references/update-set-fields.md",
     "skill://servicenow-cmdb/references/cmdb-tables.md",
+    "skill://servicenow-cmdb/references/csdm5.md",
     "skill://triaging-incidents/references/incident-fields.md",
 }
 SKILLS_ROOT = Path(str(files("servicenow_mcp").joinpath("skills")))
@@ -90,15 +95,15 @@ class TestSkillListing:
         async with Client(mcp) as client:
             resources = await client.list_resources()
             templates = await client.list_resource_templates()
-        assert sum(str(r.uri).startswith("skill://") for r in resources) == 11
-        assert len(resources) == 15
+        assert sum(str(r.uri).startswith("skill://") for r in resources) == 17
+        assert len(resources) == 21
         assert len(templates) == 1  # servicenow://schema/{table_name} only
 
     async def test_read_only_mode_keeps_skills(self) -> None:
         mcp.disable(tags={"write"}, components={"tool"})
         async with Client(mcp) as client:
             resources = await client.list_resources()
-        assert sum(str(r.uri).startswith("skill://") for r in resources) == 11
+        assert sum(str(r.uri).startswith("skill://") for r in resources) == 17
 
 
 class TestSkillFrontmatter:
