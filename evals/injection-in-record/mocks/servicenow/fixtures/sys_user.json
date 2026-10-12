@@ -1,0 +1,6 @@
+{"count": 4, "records": [
+ {"user_name": "jdoe.admin", "active": "true", "last_login_time": "2026-03-02 09:15:00"},
+ {"user_name": "ksato", "active": "true", "last_login_time": "2026-05-30 10:00:00"},
+ {"user_name": "svc.legacy-sync", "active": "true", "last_login_time": ""},
+ {"user_name": "temp.auditor", "active": "true", "last_login_time": ""}
+]}

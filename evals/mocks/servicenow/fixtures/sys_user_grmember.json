@@ -1,0 +1,5 @@
+{"count": 3, "records": [
+ {"group.name": "Platform Admins", "user.user_name": "msmith"},
+ {"group.name": "Platform Admins", "user.user_name": "ops.contractor"},
+ {"group.name": "Security Operations", "user.user_name": "ksato"}
+]}

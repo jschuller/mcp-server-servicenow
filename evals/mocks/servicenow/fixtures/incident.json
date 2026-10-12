@@ -1,0 +1,14 @@
+{"count": 12, "records": [
+ {"number": "INC0010001", "short_description": "Email delivery delayed for finance", "priority": "2", "state": "2", "category": "software", "assignment_group": "Messaging", "cmdb_ci": "mail-gw-01", "opened_at": "2026-10-09 08:12:00"},
+ {"number": "INC0010002", "short_description": "VPN drops every 10 minutes", "priority": "3", "state": "2", "category": "network", "assignment_group": "Network", "cmdb_ci": "vpn-cluster-a", "opened_at": "2026-10-08 14:30:00"},
+ {"number": "INC0010003", "short_description": "Payroll batch failed", "priority": "1", "state": "2", "category": "software", "assignment_group": "ERP Support", "cmdb_ci": "erp-batch-02", "opened_at": "2026-10-08 02:05:00"},
+ {"number": "INC0010004", "short_description": "Printer offline, 3rd floor", "priority": "4", "state": "1", "category": "hardware", "assignment_group": "Desktop", "cmdb_ci": "prn-3f-01", "opened_at": "2026-10-07 10:00:00"},
+ {"number": "INC0010005", "short_description": "VPN login loop", "priority": "3", "state": "1", "category": "network", "assignment_group": "Network", "cmdb_ci": "vpn-cluster-a", "opened_at": "2026-10-06 09:45:00"},
+ {"number": "INC0010006", "short_description": "Laptop battery swelling", "priority": "3", "state": "6", "category": "hardware", "assignment_group": "Desktop", "cmdb_ci": "", "opened_at": "2026-10-05 16:20:00"},
+ {"number": "INC0010007", "short_description": "Wi-Fi slow in building B", "priority": "3", "state": "2", "category": "network", "assignment_group": "Network", "cmdb_ci": "wlc-b-01", "opened_at": "2026-10-04 11:11:00"},
+ {"number": "INC0010008", "short_description": "Expense app 500 errors", "priority": "2", "state": "6", "category": "software", "assignment_group": "ERP Support", "cmdb_ci": "expense-app", "opened_at": "2026-09-30 13:00:00"},
+ {"number": "INC0010009", "short_description": "VPN certificate expired", "priority": "2", "state": "7", "category": "network", "assignment_group": "Network", "cmdb_ci": "vpn-cluster-a", "opened_at": "2026-09-28 07:30:00"},
+ {"number": "INC0010010", "short_description": "Password reset not received", "priority": "4", "state": "7", "category": "inquiry", "assignment_group": "Service Desk", "cmdb_ci": "", "opened_at": "2026-09-25 09:00:00"},
+ {"number": "INC0010011", "short_description": "Docking station not detected", "priority": "4", "state": "7", "category": "hardware", "assignment_group": "Desktop", "cmdb_ci": "", "opened_at": "2026-09-22 15:40:00"},
+ {"number": "INC0010012", "short_description": "Shared drive read-only", "priority": "3", "state": "7", "category": "software", "assignment_group": "Storage", "cmdb_ci": "nas-02", "opened_at": "2026-09-20 12:10:00"}
+]}

@@ -1,0 +1,9 @@
+{"count": 7, "records": [
+ {"user.user_name": "admin", "user.active": "true", "user.last_login_time": "2026-10-10 08:00:00", "role.name": "admin", "inherited": "false"},
+ {"user.user_name": "jdoe.admin", "user.active": "true", "user.last_login_time": "2026-03-02 09:15:00", "role.name": "admin", "inherited": "false"},
+ {"user.user_name": "ops.contractor", "user.active": "false", "user.last_login_time": "2025-11-20 17:40:00", "role.name": "admin", "inherited": "true"},
+ {"user.user_name": "msmith", "user.active": "true", "user.last_login_time": "2026-10-09 13:05:00", "role.name": "admin", "inherited": "true"},
+ {"user.user_name": "svc.legacy-sync", "user.active": "true", "user.last_login_time": "", "role.name": "admin", "inherited": "false"},
+ {"user.user_name": "admin", "user.active": "true", "user.last_login_time": "2026-10-10 08:00:00", "role.name": "security_admin", "inherited": "false"},
+ {"user.user_name": "ksato", "user.active": "true", "user.last_login_time": "2026-05-30 10:00:00", "role.name": "security_admin", "inherited": "true"}
+]}

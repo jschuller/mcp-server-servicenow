@@ -1,5 +1,65 @@
 # Changelog
 
+## [0.8.1] - Unreleased
+
+A content release. A new `analyzing-access` skill reviews role hygiene and explains
+denials. Every skill now names the tables it reads and the roles they need, and treats
+a 403 as "not assessable with this identity" and empty results or missing fields as
+"possibly hidden by an ACL". Two fixes come from live testing on a Brazil instance:
+the list UI's date ranges are accepted, and `list_records` says when a field it was
+asked for never came back. The version is a patch, but it carries features: one new
+skill and one new response key. Nothing is removed and no configuration changes.
+
+### Security
+- **The `javascript:` guard accepts the list UI's date ranges.** The `@` that separates
+  the two ends of an `ON`, `NOTON` or `BETWEEN` range is now allowed after a date helper.
+  So is `gs.dateGenerate()` with a literal date and `'start'`, `'end'` or a literal time,
+  e.g. `opened_atON2026-10-01@javascript:gs.dateGenerate('2026-10-01','start')@...`.
+  - Every `javascript:` occurrence is still checked on its own.
+  - Anything other than a date helper is refused, including a non-literal
+    `dateGenerate` argument.
+  - This widens what the guard accepts, so it is listed here.
+
+### Added
+- **`skill://analyzing-access`**:
+  - who holds `admin` and `security_admin`;
+  - roles granted outside groups or left on inactive and long-absent users;
+  - what each 401 and 403 message, empty result and missing field means.
+  It reads `sys_user_has_role`, `sys_user_grmember`, `sys_group_has_role` and `sys_user`
+  (`itil` + `snc_read_only` is enough). It explains ACL outcomes from the role side and
+  points admins to Access Analyzer and the Access Analysis agent. References:
+  `access-errors.md`, `acl-evaluation.md`.
+- **`servicenow-cmdb`:** CSDM 5 conformance by stage, read from `sn_getwell_csdm_score`
+  (`references/csdm5.md`).
+- **`triaging-incidents`:** trends use the RELATIVE operators. When `aggregate_records`
+  is refused (401 under API-key auth), the skill counts from `list_records` rows instead.
+- **`exploring-tables`:**
+  - choice lists;
+  - a sampling fallback when the schema returns 403;
+  - the encoded-query reference (below).
+- **`reviewing-update-sets`:** preview problems and collisions of retrieved update sets,
+  read-only. Previewing writes, so the skill never runs one.
+- **Frontmatter metadata:** every skill declares `io.github.jschuller/servicenow-roles`
+  and `io.github.jschuller/servicenow-tables`.
+- **`list_records` warning:** when `fields=` names a field that is missing from every
+  returned row, the result carries a `warning`. The field either doesn't exist or an ACL
+  hides it, and conditions on such a field are ignored rather than rejected. Live:
+  `caused_byISEMPTY` and `caused_byISNOTEMPTY` returned the same incidents.
+- **`evals/`:** a trial `claude plugin eval` suite that runs against mocked tools, so it
+  needs no instance and no credentials.
+
+### Changed
+- **The encoded-query reference moved.** It now lives at
+  `skill://exploring-tables/references/query-syntax.md`, so clients that install the
+  skills natively get it too. `servicenow://help/query-syntax` stays as an alias for the
+  same file. The reference was rewritten and checked against a live instance:
+  - added: the RELATIVE family, `ON`/`NOTON`/`BETWEEN` ranges, field-to-field comparisons,
+    and the conditions an instance ignores instead of rejecting;
+  - removed: the `MORETHAN`, `LESSTHAN` and `DATEPART` rows, which did not filter as
+    described.
+- **Server instructions** add the `analyzing-access` hint. They also ask the model to
+  name filtered fields in `fields=`, and to read a 403 as "not assessable".
+
 ## [0.8.0] - 2026-10-11
 
 "One server, spec-native surface." The four ServiceNow skills stop being a

@@ -25,3 +25,6 @@ docs/mcp-enhancement-roadmap.md
 *.token
 # local skill copies — src/servicenow_mcp/skills/ is the tracked source
 .claude/skills/
+
+# claude plugin eval output
+evals/results/

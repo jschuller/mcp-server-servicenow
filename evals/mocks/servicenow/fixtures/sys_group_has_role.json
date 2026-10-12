@@ -1,0 +1,4 @@
+{"count": 2, "records": [
+ {"group.name": "Platform Admins", "role.name": "admin", "inherits": "true"},
+ {"group.name": "Security Operations", "role.name": "security_admin", "inherits": "true"}
+]}

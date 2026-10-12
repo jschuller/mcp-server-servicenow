@@ -93,6 +93,12 @@ the release (see Failure modes).
      `codex exec`; in the TUI a write tool shows Codex's approval prompt.
    - pi (1.0+): `pi mcp add … --exposure direct -- uv run --directory . mcp-server-servicenow`,
      `pi mcp list` must report 12/19 tools and 21 resources.
+   - Behaviour evals (Claude Code only, mocked tools, no instance):
+     `command claude plugin eval . --trust-plugin --runs 1 --ablation none --model sonnet --no-publish --max-cost-usd 5`.
+     Runs draw on the signed-in plan's usage. Hitting a usage limit mid-suite scores
+     the rest 0, so read the `NOTES` column before treating a low score as a
+     regression. Not a gate yet: the owner decides the suite's size and cadence after
+     the 0.8.1 trial.
 
 4. Push to main and wait for CI green — the test matrix (3.11–3.14)
    plus the `package` job (version consistency, `uv lock --check`,
