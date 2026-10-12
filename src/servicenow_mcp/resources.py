@@ -15,6 +15,7 @@ SkillsDirectoryProvider as skill://<name>/SKILL.md, skill://<name>/_manifest
 
 import json
 import logging
+from functools import lru_cache
 from importlib.resources import files
 from pathlib import Path
 from typing import Any, Dict
@@ -227,9 +228,15 @@ _QUERY_SYNTAX_PATH = ("skills", "exploring-tables", "references", "query-syntax.
     mime_type="text/markdown",
     tags={"read"},
 )
+@lru_cache(maxsize=1)
+def _query_syntax_text() -> str:
+    """The packaged reference, read once: it can't change while the server runs."""
+    return files("servicenow_mcp").joinpath(*_QUERY_SYNTAX_PATH).read_text("utf-8")
+
+
 def query_syntax_help() -> str:
     """Return the encoded query syntax reference."""
-    return files("servicenow_mcp").joinpath(*_QUERY_SYNTAX_PATH).read_text("utf-8")
+    return _query_syntax_text()
 
 
 # ---------------------------------------------------------------------------

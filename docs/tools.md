@@ -79,7 +79,7 @@ Read-only context a client can fetch without a tool call.
 
 ## Skills (served over MCP)
 
-Four [Agent Skills](https://agentskills.io) — guided, multi-step workflows that chain the tools above — ship inside the package and are served over MCP as resources, in the URI shape the MCP Skills Over MCP working group standardised in [SEP-2640](https://github.com/modelcontextprotocol/modelcontextprotocol/pull/2640). Every install gets them, on every client, with no plugin.
+Five [Agent Skills](https://agentskills.io) — guided, multi-step workflows that chain the tools above — ship inside the package and are served over MCP as resources, in the URI shape the MCP Skills Over MCP working group standardised in [SEP-2640](https://github.com/modelcontextprotocol/modelcontextprotocol/pull/2640). Every install gets them, on every client, with no plugin.
 
 | Skill | URI | What it guides |
 |-------|-----|----------------|

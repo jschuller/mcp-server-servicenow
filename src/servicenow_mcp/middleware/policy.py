@@ -135,8 +135,9 @@ def check_query(name: str, value: Any, config: ServerConfig) -> None:
             f"Query rejected: unsafe javascript: expression in {name} "
             f"({offending!r}). Only GlideSystem date helpers such as "
             "javascript:gs.daysAgo(7), javascript:gs.beginningOfToday() or "
-            "javascript:gs.dateGenerate('2026-10-01','start') are allowed; use RELATIVE*/MORETHAN/LESSTHAN operators instead, or start "
-            "the server with --allow-js-queries (SERVICENOW_ALLOW_JS_QUERIES=true)."
+            "javascript:gs.dateGenerate('2026-10-01','start') are allowed; use the "
+            "RELATIVE* operators or ON/BETWEEN ranges instead (servicenow://help/query-syntax), "
+            "or start the server with --allow-js-queries (SERVICENOW_ALLOW_JS_QUERIES=true)."
         )
 
 
