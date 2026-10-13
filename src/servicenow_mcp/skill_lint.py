@@ -1207,6 +1207,15 @@ def lint_marketplace(market: Path) -> SkillReport:
                 None,
                 f"{key!r} is not allowed in a skills marketplace: it may add behaviour",
             )
+    metadata = data.get("metadata")
+    if isinstance(metadata, dict) and "pluginRoot" in metadata:
+        report.add(
+            "error",
+            where,
+            None,
+            "metadata.pluginRoot moves where sources resolve; give each source's "
+            "full path instead",
+        )
     plugins = data.get("plugins")
     if not isinstance(plugins, list):
         report.add("error", where, None, "plugins must be a list")

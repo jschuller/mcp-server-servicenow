@@ -784,6 +784,21 @@ def test_marketplace_entries_only_point_at_local_plugins(
     assert any(expected in m for m in errors), errors
 
 
+def test_marketplace_plugin_root_is_refused(tmp_path: Path) -> None:
+    plugin = make_wrapper(tmp_path)
+    (plugin / ".claude-plugin" / "marketplace.json").write_text(
+        json.dumps(
+            {
+                "name": "market",
+                "metadata": {"pluginRoot": "./node_modules"},
+                "plugins": [MARKETPLACE_ENTRY],
+            }
+        )
+    )
+    errors = plugin_messages(lint_skills([plugin]), "error")
+    assert any("pluginRoot" in m for m in errors), errors
+
+
 def test_marketplace_plugins_in_skipped_folders_are_checked(tmp_path: Path) -> None:
     root = make_wrapper(tmp_path)
     evil = make_wrapper(tmp_path / "elsewhere", {**WRAPPER, "hooks": {}})
