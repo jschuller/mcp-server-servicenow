@@ -44,7 +44,7 @@ Ideas and requests go in [Discussions › Ideas](https://github.com/jschuller/mc
 ## Check it
 
 ```bash
-uvx mcp-server-servicenow==0.9.0 --validate-skills . --strict
+uvx mcp-server-servicenow==0.9.1 --validate-skills . --strict
 ```
 
 The command runs offline. It prints each skill's `sha256:` digest and every finding. Errors cover anything that makes a skill broken or unsafe:
@@ -73,7 +73,7 @@ In GitHub, the template's workflow runs the same check and a citation check on p
 - uses: jschuller/mcp-server-servicenow/actions/validate-skills@66ba9254971e36dad67d3c0f609d9161d29d0d1c # v0.9.0
   with:
     path: .
-    server-version: "0.9.0"
+    server-version: "0.9.1"
     strict: "true"
 ```
 
@@ -87,7 +87,7 @@ Point mcp-server-servicenow at a personal developer instance, with an identity t
 
 [`claude plugin eval`](https://code.claude.com/docs/en/plugin-evals) runs your skill in Claude Code against mocked tools. It needs no instance and no instance credentials, so anyone can re-run your results.
 
-1. **Generate the mocks:** `uvx mcp-server-servicenow==0.9.0 --eval-mocks .` writes `evals/mocks/servicenow/`:
+1. **Generate the mocks:** `uvx mcp-server-servicenow==0.9.1 --eval-mocks .` writes `evals/mocks/servicenow/`:
    - `_tools.json`: the server's real tool list for that version;
    - default mocks modelled on a least-privilege identity: rows from `fixtures/<table>.json`, aggregates refused with a 401, the schema with a 403;
    - an empty fixture for every table your skills declare.
@@ -98,7 +98,7 @@ Point mcp-server-servicenow at a personal developer instance, with an identity t
 4. **Commit, then run the cases with your skills and with the bare tools:**
    ```bash
    claude plugin eval . --trust-plugin --runs 3 --ablation none --json evals/results.json
-   uvx mcp-server-servicenow==0.9.0 --eval-baseline . ../tools-only
+   uvx mcp-server-servicenow==0.9.1 --eval-baseline . ../tools-only
    claude plugin eval ../tools-only --trust-plugin --runs 3 --ablation none --json evals/baseline.json
    ```
    - `--eval-baseline` copies your plugin without its skills: same name, same server, same cases and mocks. It replaces the copy an earlier run wrote, so re-run it whenever a case changes.
@@ -127,7 +127,7 @@ Two shortcuts:
 - **Your repository, your licence.** Publish the skills in your own repository, under the licence you choose. This project doesn't host or republish them.
 - **Results live with the skill.** Write `RESULTS.md` from a finished run, then commit it with the mocks and cases and tag the commit:
   ```bash
-  uvx mcp-server-servicenow==0.9.0 --eval-summary evals/results.json --baseline evals/baseline.json --badge evals/badge.json > RESULTS.md
+  uvx mcp-server-servicenow==0.9.1 --eval-summary evals/results.json --baseline evals/baseline.json --badge evals/badge.json > RESULTS.md
   ```
   The summary records what the skills add over the bare tools, case by case, and the models, the Claude Code version, the server version the mocks came from, the commit, and a command to reproduce the run. It refuses a partial run, a run where some runs ended in an error (a usage limit scores 0), and a baseline made with other models. Commit before the run: the summary marks a commit with uncommitted edits. There are two kinds of results:
   - **CI-run:** produced by the template's `evals.yml` in GitHub Actions; it links the public log. Commit the `RESULTS.md` and badge from the run's `eval-results` artifact.

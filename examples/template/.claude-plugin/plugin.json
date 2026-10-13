@@ -8,7 +8,7 @@
     "servicenow": {
       "command": "uvx",
       "args": [
-        "mcp-server-servicenow==0.9.0"
+        "mcp-server-servicenow==0.9.1"
       ],
       "env": {
         "SERVICENOW_INSTANCE_URL": "${SERVICENOW_INSTANCE_URL}",

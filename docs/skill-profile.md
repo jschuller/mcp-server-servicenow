@@ -156,7 +156,7 @@ It never checks servicenow.com by HTTP, because the docs site answers 200 for pa
 - uses: jschuller/mcp-server-servicenow/actions/validate-skills@66ba9254971e36dad67d3c0f609d9161d29d0d1c # v0.9.0
   with:
     path: .                 # space-separated folders; . also checks the plugin wrapper
-    server-version: "0.9.0" # pin it; empty means the latest release
+    server-version: "0.9.1" # pin it; empty means the latest release
     strict: "true"
     citations: "true"
 ```

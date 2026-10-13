@@ -30,7 +30,7 @@ jobs:
     timeout-minutes: 60
     env:
       # Pin both, and bump them together with the Action and plugin.json.
-      SERVER_VERSION: "0.9.0"
+      SERVER_VERSION: "0.9.1"
       CLAUDE_CODE_VERSION: "2.1.296"
     # One of two repository secrets: an Anthropic API key (billed per call), or a token
     # from `claude setup-token` (counts against that Claude subscription). Only the steps

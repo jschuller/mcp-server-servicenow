@@ -1,6 +1,6 @@
 {
   "name": "servicenow",
-  "version": "0.9.0",
+  "version": "0.9.1",
   "description": "ServiceNow developer data plane for the Now Platform — tables and schema, CMDB data quality, update sets, access reviews. 19 MCP tools, 5 resources, 4 Agent Skills served over MCP, read-only mode, OAuth client credentials, audit log.",
   "author": {
     "name": "Josh Schuller"
