@@ -642,6 +642,11 @@ def _check_frontmatter_layout(text: str, report: SkillReport) -> bool:
 
 def _yaml_error(exc: Exception) -> str:
     """PyYAML's error on one line, with the line number counted in the whole file."""
+    if not isinstance(exc, yaml.YAMLError):
+        return (
+            f"a value PyYAML can't build ({type(exc).__name__}); check tags (!!) and "
+            "dates, or put the value in quotes"
+        )
     problem = getattr(exc, "problem", None) or str(exc).splitlines()[0]
     mark = getattr(exc, "problem_mark", None)
     hint = ""
