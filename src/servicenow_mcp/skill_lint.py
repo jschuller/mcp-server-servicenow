@@ -201,6 +201,8 @@ SKILL_KEYS = (
 # text alone fixes the keys, whichever reader parses it.
 FRONTMATTER_FENCE_RE = re.compile(r"---[ \t]*")
 FRONTMATTER_KEY_RE = re.compile(r"([A-Za-z_][A-Za-z0-9_.-]*):(?: .*)?")
+# A line meant as a key that isn't written as a plain one ("description":, 1st-owner:).
+LOOSE_KEY_RE = re.compile(r"""(["']?)([^\s"'#:\-][^:]*?)\1\s*:(?:\s.*)?""")
 # \uD800-\uDFFF is half of a surrogate pair: Bun refuses it, and Claude Code then
 # reads no frontmatter at all.
 SURROGATE_ESCAPE_RE = re.compile(r"\\(?:u[dD][89a-fA-F]|U0000[dD][89a-fA-F])")
@@ -509,6 +511,9 @@ def _check_frontmatter_layout(text: str, report: SkillReport) -> bool:
                 n,
                 "a tab: use spaces"
                 if char == "\t"
+                else "a carriage return without a line feed (U+000D): save the file "
+                "with LF or CRLF line endings"
+                if char == "\r"
                 else f"character U+{ord(char):04X}, which YAML readers treat differently "
                 "or which hides text: delete it or use a space",
             )
@@ -516,11 +521,19 @@ def _check_frontmatter_layout(text: str, report: SkillReport) -> bool:
         return False
 
     keys: Dict[str, int] = {}  # top-level key -> line, from the text alone
+    refused: Set[int] = set()  # lines with an error already: one message per line
     for n, line in enumerate(block, 2):
         if not line or line == "-" or line.startswith((" ", "#", "- ")):
             continue
         key = FRONTMATTER_KEY_RE.fullmatch(line)
-        if not key:
+        loose = None if key else LOOSE_KEY_RE.fullmatch(line)
+        if loose:
+            refuse(
+                n,
+                f"key {loose.group(2).strip()!r} must be a plain name: start it with a "
+                "letter or _, no quotes, no space before the colon",
+            )
+        elif not key:
             refuse(
                 n,
                 "a line in column 0 must be `name: value`, `- item` or a # comment; "
@@ -532,6 +545,8 @@ def _check_frontmatter_layout(text: str, report: SkillReport) -> bool:
             refuse(n, f"duplicate key {key.group(1)!r} (line {keys[key.group(1)]})")
         else:
             keys[key.group(1)] = n
+            continue
+        refused.add(n)
 
     source = "\n".join(block)
     try:
@@ -558,7 +573,9 @@ def _check_frontmatter_layout(text: str, report: SkillReport) -> bool:
             last = stop.line if stop.column else stop.line - 1
             for i in range(start.line + 1, last + 1):
                 if block[i].strip() and not block[i].startswith(" "):
-                    refuse(i + 2, "a value goes on in column 0: indent it")
+                    if i + 2 not in refused:
+                        refuse(i + 2, "a value goes on in column 0: indent it")
+                    refused.add(i + 2)
 
     odd = False
     for name, n in keys.items():
@@ -573,7 +590,7 @@ def _check_frontmatter_layout(text: str, report: SkillReport) -> bool:
                 "string in YAML 1.2 (Claude Code): use another name",
             )
             odd = True
-    if not odd and list(data) != list(keys):
+    if not odd and not refused and list(data) != list(keys):
         refuse(
             None,
             "write each top-level key as a plain name at the start of its own line "
@@ -587,9 +604,19 @@ def _yaml_error(exc: Exception) -> str:
     """PyYAML's error on one line, with the line number counted in the whole file."""
     problem = getattr(exc, "problem", None) or str(exc).splitlines()[0]
     mark = getattr(exc, "problem_mark", None)
+    hint = ""
+    if any(
+        text in str(problem)
+        for text in (
+            "mapping values are not allowed",
+            "expected alphabetic or numeric character",
+            "cannot start any token",
+        )
+    ):
+        hint = "; put the value in quotes"
     if mark is None:
-        return str(problem)
-    return f"{problem} (line {mark.line + 2}, column {mark.column + 1})"
+        return f"{problem}{hint}"
+    return f"{problem} (line {mark.line + 2}, column {mark.column + 1}){hint}"
 
 
 def _split_words(value: object) -> Optional[List[str]]:
@@ -658,7 +685,7 @@ def _check_frontmatter(
                 None,
                 f"{key!r} runs the skill in another context: review it",
             )
-        elif key not in SKILL_KEYS:
+        elif key not in SKILL_KEYS and readable:
             report.add(
                 "warning",
                 "SKILL.md",
@@ -981,10 +1008,13 @@ def lint_skill(
     writes: Set[str] = set()
     readable = False  # the metadata can be trusted for the profile checks below
     if data is None:
-        report.add("error", "SKILL.md", None, problem)
+        # Claude Code may still read YAML this check can't, by its own rules: say what
+        # differs, and give PyYAML's error only when that says nothing.
+        before = len(report.errors)
         if problem.startswith("frontmatter is not valid YAML"):
-            # Claude Code may still read it, by its own rules: say what differs.
             _check_frontmatter_layout(texts[main], report)
+        if len(report.errors) == before:
+            report.add("error", "SKILL.md", None, problem)
     else:
         readable = _check_frontmatter_layout(texts[main], report)
         tables, writes = _check_frontmatter(
@@ -1035,6 +1065,10 @@ def lint_skill(
                 None,
                 f"declared but not read by any tool call: {' '.join(unused)}",
             )
+    if main.name != "SKILL.md":  # findings name the file as it is spelled
+        for finding in report.findings:
+            if finding.path == "SKILL.md":
+                finding.path = main.name
     return report
 
 

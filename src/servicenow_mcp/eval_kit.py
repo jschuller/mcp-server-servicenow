@@ -513,6 +513,11 @@ def _check_baseline(
         if not isinstance(case, dict) or case.get("name") not in finished:
             continue
         mine, theirs = len(_with_runs(case)), finished[case.get("name")]
+        if mine and not theirs:
+            raise EvalKitError(
+                f"{path}: case {case.get('name')} has no per-run results in the baseline; "
+                "give the aggregate-result.json of a finished tools-only run"
+            )
         if mine != theirs:
             raise EvalKitError(
                 f"{path}: case {case.get('name')} has {theirs} finished run(s) in the "

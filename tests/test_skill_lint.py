@@ -187,13 +187,13 @@ DIFFERENTLY = "Claude Code could read this frontmatter differently"
         ("description: x\nmetadata:\n\tk: v", "a tab"),
         ("description: x\rhooks: {}", "U+000D"),
         ("description: a---b", "first ---"),
-        ('description: x\n"hooks": {}', "must be `name: value`"),
+        ('description: x\n"hooks": {}', "key 'hooks' must be a plain name"),
         ("description: x\n? hooks\n: {}", "must be `name: value`"),
         ("description: x\non: y", "reads as True"),
         ("description: x\nname: again", "duplicate key 'name' (line 2)"),
         ("description: &a x\nx: *a", "anchors, aliases and tags"),
         ("description: !!str x", "anchors, aliases and tags"),
-        ("description: x\n1e3: y", "must be `name: value`"),
+        ("description: x\n1e3: y", "key '1e3' must be a plain name"),
         ("description: x\n__proto__: {}", "special in JavaScript"),
         ('description: "a \\uD800 b"', "surrogate pair"),
     ],
@@ -250,6 +250,41 @@ def test_unreadable_frontmatter_gets_no_profile_findings(
     assert not [m for m in found if "declare" in m or "license" in m], found
 
 
+@pytest.mark.parametrize(
+    ("block", "expected", "unwanted"),
+    [
+        ("description: x\n1st-owner: Jane", "key '1st-owner' must be", "plain name at"),
+        ("description: x\non: y", "reads as True", "not an Agent Skills"),
+        ("description: Checks.\nUse when asked.", "indent a value", "not valid YAML"),
+        (
+            'description: "Checks.\nUse when asked."',
+            "indent a value",
+            "goes on in column",
+        ),
+        ("description: x\rUse when asked.", "without a line feed", "not valid YAML"),
+    ],
+)
+def test_one_mistake_gets_one_message(
+    tmp_path: Path, block: str, expected: str, unwanted: str
+) -> None:
+    skill = tmp_path / "my-skill"
+    skill.mkdir()
+    text = f"---\nname: my-skill\nlicense: MIT\n{block}\n---\n\n# Body\n"
+    (skill / "SKILL.md").write_bytes(text.encode("utf-8"))
+    report = lint_skills([skill])
+    found = messages(report, "error") + messages(report, "warning")
+    assert any(expected in m for m in found), found
+    assert not any(unwanted in m for m in found), found
+
+
+def test_a_yaml_error_gets_a_hint(tmp_path: Path) -> None:
+    skill = make_skill(
+        tmp_path, {"SKILL.md": "---\nname: my-skill\ndescription: a: b, c\n---\n"}
+    )
+    errors = messages(lint_skills([skill]), "error")
+    assert any("put the value in quotes" in m for m in errors), errors
+
+
 def test_yaml_errors_are_one_line_with_file_lines(tmp_path: Path) -> None:
     skill = make_skill(
         tmp_path, {"SKILL.md": "---\nname: my-skill\ndescription: [\n---\n"}
@@ -284,6 +319,8 @@ def test_a_skill_md_in_another_case_is_a_skill(tmp_path: Path) -> None:
     assert [s.name for s in report.skills] == ["lower-case"]
     assert any("name it SKILL.md exactly" in m for m in errors), errors
     assert any("registers hooks" in m for m in errors), errors
+    paths = {f.path for f in report.skills[0].findings}
+    assert "skill.md" in paths and "SKILL.md" not in paths, paths
 
 
 def test_a_byte_order_mark_is_named(tmp_path: Path) -> None:

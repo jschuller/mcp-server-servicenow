@@ -151,7 +151,7 @@ It never checks servicenow.com by HTTP, because the docs site answers 200 for pa
 
 ## The GitHub Action
 
-`jschuller/mcp-server-servicenow/actions/validate-skills` runs both checks in your own repository. Pin it to a full commit SHA, with its release in a comment, as GitHub recommends for third-party actions: a tag can be moved, a commit can't. The Action only runs the validator; `server-version` picks the release that validates, so the Action's release can trail it.
+`jschuller/mcp-server-servicenow/actions/validate-skills` runs both checks in your own repository. Pin it to a full commit SHA, with its release in a comment, as GitHub recommends for third-party actions: a tag can be moved, a commit can't. The Action runs the validator from `server-version` and its own citation check, so its pinned release can trail the server's; the citation check follows the pin.
 
 ```yaml
 - uses: jschuller/mcp-server-servicenow/actions/validate-skills@66ba9254971e36dad67d3c0f609d9161d29d0d1c # v0.9.0

@@ -217,7 +217,7 @@ def test_summary_compares_runs_case_by_case(tmp_path: Path) -> None:
         summarize(write_result(tmp_path, with_skills), base)
     empty = {**RESULT, "cases": [_case("a", []), _case("b", [])]}
     base.write_text(json.dumps(empty))
-    with pytest.raises(EvalKitError, match="0 in the baseline|has 0 finished"):
+    with pytest.raises(EvalKitError, match="no per-run results in the baseline"):
         summarize(write_result(tmp_path, with_skills), base)
 
 
