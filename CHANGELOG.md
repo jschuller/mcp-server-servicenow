@@ -35,18 +35,22 @@ content and fixes prepared as 0.8.1, which was never released.
 - **Skills and skills repositories are checked for code that would run as the user.**
   The validator refuses:
   - skill frontmatter that registers hooks, pre-approves tools or picks a shell
-    (`hooks`, `allowed-tools`, `shell`), and `` !`command` `` shell injection;
+    (`hooks`, `allowed-tools`, `shell`), and `` !`command` `` and ```` ```! ````
+    shell injection, matched the way Claude Code matches it;
   - plugin manifest keys other than metadata, `skills` and `mcpServers`, and the
     locations Claude Code loads as code (`hooks/`, `bin/`, `workflows/` and the rest),
     a `package.json`, and uv settings;
+  - a `marketplace.json` entry that carries components (`strict: false`, `hooks` and
+    the rest) or a source other than a plugin folder in the repository;
   - a server entry that isn't `uvx mcp-server-servicenow[==version]` first, with only
     `--read-only`, `--debug` or `--allow-js-queries` after it; `env` keys other than
     this server's settings (no `PYTHONPATH` or `UV_*`); credentials, the instance URL
-    or the token URL with a literal value or default, so a repository can't send the
-    user's credentials to a host it chooses;
+    or the token URL with a literal value, a default or another variable's name, so a
+    repository can't send the user's credentials to a host it chooses;
   - symlinked folders anywhere it searches. It now searches hidden folders such as
     `.claude/skills` too, because installers read them, and checks every skill a
-    plugin's `skills` paths declare, even in `node_modules` or `.venv`.
+    plugin's `skills` paths or a marketplace declare, even in `node_modules` or
+    `.venv`, and skill folders with those names.
 
   A pre-release review found each of these could pass `--strict` while running other
   code for whoever evaluated or installed the skills.

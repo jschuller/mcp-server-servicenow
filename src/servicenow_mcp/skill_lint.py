@@ -152,8 +152,6 @@ HOST_ENV = {"SERVICENOW_INSTANCE_URL", "SERVICENOW_TOKEN_URL"}
 SERVER_FLAGS = {"--read-only", "--debug", "--allow-js-queries"}
 SERVER_SPEC_KEYS = {"type", "command", "args", "env"}
 ENV_REF_RE = re.compile(r"^\$\{[A-Za-z_][A-Za-z0-9_]*(:-[^}]*)?\}$")
-# A secret may only come from the user's environment: ${NAME} or ${NAME:-}, no default.
-SECRET_REF_RE = re.compile(r"^\$\{[A-Za-z_][A-Za-z0-9_]*(:-)?\}$")
 # Settings whose literal or default value changes what the server does on the user's machine.
 SAFE_ENV_VALUES = {
     "SERVICENOW_ALLOW_JS_QUERIES": (
@@ -195,9 +193,9 @@ SKILL_KEYS = (
     | set(SKILL_CODE_KEYS)
     | SKILL_CONTEXT_KEYS
 )
-# Claude Code runs !`command` (after a line start or whitespace) and ```! blocks when a
-# skill loads.
-SHELL_INJECTION_RE = re.compile(r"(?:^|\s)!`")
+# Claude Code runs !`command` (after a line start or whitespace, in JavaScript's sense,
+# which includes U+FEFF) and ```! blocks (anywhere in the text) when a skill loads.
+SHELL_INJECTION_RE = re.compile(r"(?:^|[\s\ufeff])!`|```\s*!")
 # Folders that hold tooling, not skills, when searching a repository.
 SKIP_DIRS = {
     ".git",
@@ -235,6 +233,9 @@ class SkillReport:
     declared_skills: List[Path] = field(
         default_factory=list
     )  # a plugin's skill folders
+    declared_plugins: List[Path] = field(
+        default_factory=list
+    )  # a marketplace's plugin folders
 
     def add(self, level: str, path: str, line: Optional[int], message: str) -> None:
         self.findings.append(Finding(level, path, line, message))
@@ -310,11 +311,15 @@ def core_skill_names() -> Set[str]:
 
 def _walk(root: Path) -> Iterator[Tuple[Path, List[str], List[str]]]:
     """os.walk without links or tooling folders; hidden folders are searched too,
-    because skill installers read folders such as .claude/skills."""
+    because skill installers read folders such as .claude/skills. A tooling folder that
+    holds a SKILL.md is a skill: Claude Code loads skills/node_modules/SKILL.md."""
     for dirpath, dirnames, filenames in os.walk(root):
         here = Path(dirpath)
         dirnames[:] = sorted(
-            d for d in dirnames if d not in SKIP_DIRS and not (here / d).is_symlink()
+            d
+            for d in dirnames
+            if (d not in SKIP_DIRS or (here / d / "SKILL.md").is_file())
+            and not (here / d).is_symlink()
         )
         yield here, dirnames, filenames
 
@@ -910,7 +915,8 @@ def _check_server(name: str, spec: object, report: SkillReport) -> None:
                 "error", where, None, f"mcpServers.{name}.env.{key} must be a string"
             )
             continue
-        if key in HOST_ENV and value and not SECRET_REF_RE.match(value):
+        own_ref = value in (f"${{{key}}}", f"${{{key}:-}}")
+        if key in HOST_ENV and value and not own_ref:
             report.add(
                 "error",
                 where,
@@ -918,7 +924,7 @@ def _check_server(name: str, spec: object, report: SkillReport) -> None:
                 f"mcpServers.{name}.env.{key} sets a host or default: use ${{{key}}}, "
                 "so the user's credentials go only to the instance they choose",
             )
-        if key in SECRET_ENV and value and not SECRET_REF_RE.match(value):
+        if key in SECRET_ENV and value and not own_ref:
             report.add(
                 "error",
                 where,
@@ -1119,6 +1125,15 @@ def lint_plugin(plugin: Path, catalog_tools: List[Dict[str, Any]]) -> SkillRepor
                 "error", where, None, f"skills path {entry!r} is not a folder inside"
             )
         else:
+            for child in sorted(target.iterdir()):
+                if child.is_symlink():
+                    report.add(
+                        "error",
+                        where,
+                        None,
+                        f"skills path {entry!r} holds a symlink ({child.name}); "
+                        "Claude Code follows it, this check doesn't",
+                    )
             declared = find_skill_dirs(target)
             report.declared_skills.extend(declared)
             skill_names.update(p.name for p in declared)
@@ -1145,6 +1160,91 @@ def lint_plugin(plugin: Path, catalog_tools: List[Dict[str, Any]]) -> SkillRepor
     return report
 
 
+MARKETPLACE_KEYS = {
+    "$schema",
+    "name",
+    "owner",
+    "description",
+    "version",
+    "metadata",
+    "plugins",
+}
+MARKETPLACE_ENTRY_KEYS = PLUGIN_METADATA_KEYS | {"source", "category", "tags"}
+
+
+def find_marketplace_dirs(root: Path) -> List[Path]:
+    """Every folder at or below ``root`` holding .claude-plugin/marketplace.json."""
+    return [
+        here
+        for here, _, _ in _walk(root)
+        if (here / ".claude-plugin" / "marketplace.json").is_file()
+    ]
+
+
+def lint_marketplace(market: Path) -> SkillReport:
+    """Check a marketplace: it may only list plugin folders in this repository, which
+    are then checked as plugins. Claude Code installs whatever an entry describes,
+    including components written into the entry and plugins from other sources."""
+    path = market / ".claude-plugin" / "marketplace.json"
+    where = ".claude-plugin/marketplace.json"
+    report = SkillReport(name=f"marketplace {market.name}", path=market)
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        report.add("error", where, None, f"not valid JSON: {exc}")
+        return report
+    if not isinstance(data, dict):
+        report.add("error", where, None, "must be a JSON object")
+        return report
+    if isinstance(data.get("name"), str):
+        report.name = f"marketplace {data['name']}"
+    report.digest = "sha256:" + hashlib.sha256(path.read_bytes()).hexdigest()
+    for key in data:
+        if key not in MARKETPLACE_KEYS:
+            report.add(
+                "error",
+                where,
+                None,
+                f"{key!r} is not allowed in a skills marketplace: it may add behaviour",
+            )
+    plugins = data.get("plugins")
+    if not isinstance(plugins, list):
+        report.add("error", where, None, "plugins must be a list")
+        return report
+    for i, entry in enumerate(plugins):
+        if not isinstance(entry, dict):
+            report.add("error", where, None, f"plugins[{i}] must be an object")
+            continue
+        for key in entry:
+            if key not in MARKETPLACE_ENTRY_KEYS:
+                report.add(
+                    "error",
+                    where,
+                    None,
+                    f"plugins[{i}].{key} is not allowed: an entry only points at a "
+                    "plugin folder, whose plugin.json declares its skills and server",
+                )
+        source = entry.get("source")
+        target = (market / source).resolve() if isinstance(source, str) else None
+        if (
+            target is None
+            or (market / str(source)).is_symlink()
+            or not target.is_relative_to(market.resolve())
+            or not (target / ".claude-plugin" / "plugin.json").is_file()
+        ):
+            report.add(
+                "error",
+                where,
+                None,
+                f"plugins[{i}].source must be a folder in this repository holding "
+                ".claude-plugin/plugin.json; any other source installs code this "
+                "check never saw",
+            )
+        else:
+            report.declared_plugins.append(target)
+    return report
+
+
 def _catalog_tools() -> List[Dict[str, Any]]:
     return [
         t.to_mcp_tool().model_dump(mode="json", by_alias=True, exclude_none=True)
@@ -1158,6 +1258,7 @@ def lint_skills(paths: Sequence[Path]) -> LintReport:
     core_names = core_skill_names()
     core_root = Path(str(files("servicenow_mcp").joinpath("skills"))).resolve()
     catalog_tools: Optional[List[Dict[str, Any]]] = None
+    markets: List[SkillReport] = []
     for root in paths:
         if not root.exists():
             report.problems.append(f"{root}: no such file or folder")
@@ -1177,6 +1278,19 @@ def lint_skills(paths: Sequence[Path]) -> LintReport:
             catalog_tools = _catalog_tools()
         for plugin in plugins:
             report.plugins.append(lint_plugin(plugin, catalog_tools or []))
+        if root.is_dir():
+            markets.extend(lint_marketplace(m) for m in find_marketplace_dirs(root))
+    # A marketplace may list plugin folders the search skips; Claude Code installs them
+    # all the same, so check them too.
+    seen_plugins = {p.path.resolve() for p in report.plugins}
+    for market in markets:
+        for plugin in market.declared_plugins:
+            if plugin not in seen_plugins:
+                seen_plugins.add(plugin)
+                if catalog_tools is None:
+                    catalog_tools = _catalog_tools()
+                report.plugins.append(lint_plugin(plugin, catalog_tools))
+    report.plugins.extend(markets)
     # A plugin's skills paths may point where the search doesn't go (node_modules, .venv);
     # Claude Code loads those skills all the same, so check them too.
     seen = {s.path.resolve() for s in report.skills}

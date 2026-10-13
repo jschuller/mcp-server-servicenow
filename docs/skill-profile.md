@@ -61,13 +61,13 @@ These rules keep a skill safe to read and to serve: it is instructions and refer
 
 ## The validator
 
-`mcp-server-servicenow --validate-skills PATH [PATH ...] [--strict]` runs offline. A path is a skill folder or any folder above skills: every `SKILL.md` below it is checked, including hidden folders such as `.claude/skills` (installers read them) but not `.git`, virtual environments or `node_modules`. It prints one line per skill with a `sha256:` digest of its files, then each finding, then a result line. The exit code is 1 on any error, and with `--strict` on any warning too.
+`mcp-server-servicenow --validate-skills PATH [PATH ...] [--strict]` runs offline. A path is a skill folder or any folder above skills: every `SKILL.md` below it is checked, including hidden folders such as `.claude/skills` (installers read them) but not `.git`, virtual environments or `node_modules`, unless such a folder holds a `SKILL.md` itself (Claude Code loads `skills/node_modules/SKILL.md` as a skill). It prints one line per skill with a `sha256:` digest of its files, then each finding, then a result line. The exit code is 1 on any error, and with `--strict` on any warning too.
 
 | Errors | Warnings |
 |--------|----------|
 | Frontmatter missing, not YAML, or breaking the name/description rules | No `license` |
 | Frontmatter that runs code or pre-approves tools: `hooks`, `allowed-tools`, `shell` | `context`, `agent` or `background`, which run the skill elsewhere; a field that is neither Agent Skills nor Claude Code |
-| `` !`command` `` or a ```` ```! ```` block: Claude Code runs it when the skill loads | |
+| `` !`command` `` after a line start or whitespace, or ```` ```! ```` anywhere in the text: Claude Code runs it when the skill loads | |
 | A file that isn't `.md`/`.txt`/`.csv`, a hidden file or folder, a symlink, not UTF-8; a symlinked folder anywhere in the path | A call to a write tool that `servicenow-writes` doesn't declare, in code or prose |
 | More than 512 files or 16 MiB | A link outside servicenow.com/docs and ServiceNowDocs |
 | A relative link that leaves the skill or points nowhere | Text that looks like a credential or token |
@@ -91,8 +91,9 @@ The digest covers every file's path and content, so you can pin a skill: if anyt
 | Locations Claude Code loads without a key: `hooks/`, `agents/`, `commands/`, `monitors/`, `output-styles/`, `workflows/`, `themes/`, `bin/`, `.mcp.json`, `.lsp.json`, `settings.json`; a `package.json` (installed when the plugin loads); `uv.toml` or `[tool.uv]` settings (they can change which package `uvx` runs) | `--allow-js-queries`, or `SERVICENOW_ALLOW_JS_QUERIES` set to anything but false |
 | `mcpServers` with anything other than one server: `command` `uvx`, `args` starting with `mcp-server-servicenow[==version]` followed only by `--read-only`, `--debug` or `--allow-js-queries`, and no keys besides `command`, `args`, `env` | `SERVICENOW_AUDIT_LOG` naming a file on the evaluator's machine |
 | An `env` key that isn't one of this server's `SERVICENOW_*` settings (no `PYTHONPATH`, no `UV_*`) | `evals/mocks/<server>/_tools.json` that differs from this server's tools: names, descriptions, schemas or hints |
-| A password, client secret or API key, or the instance or token URL, that isn't `${NAME}` or `${NAME:-}` (no literal, no default): a repository mustn't choose where the user's credentials go | A `tool_used` grader that names no skill of this plugin, or tools of another plugin or server name |
-| A `skills` path outside the plugin folder, or a symlink. Skills a `skills` path declares are checked wherever they are, `node_modules` included | |
+| A password, client secret or API key, or the instance or token URL, that isn't `${NAME}` or `${NAME:-}` with the setting's own name (no literal, no default, no other variable): a repository mustn't choose where the user's credentials go | A `tool_used` grader that names no skill of this plugin, or tools of another plugin or server name |
+| A `skills` path outside the plugin folder, a symlink, or one that holds a symlink. Skills a `skills` path declares are checked wherever they are, `node_modules` included | |
+| A `.claude-plugin/marketplace.json` with keys other than `name`, `owner`, `description`, `version`, `metadata`, `plugins`, `$schema`; an entry with keys other than metadata, `source`, `category` and `tags` (no `strict`, no components); or a `source` that isn't a folder in the repository holding `.claude-plugin/plugin.json`. Plugins it lists are checked wherever they are | |
 | Eval case, grader or mock frontmatter that doesn't parse: `claude plugin eval` skips the file | |
 
 The reason is that `claude plugin eval` runs a plugin's hooks, agents and servers on the evaluator's machine, as the evaluator, and the skills' users run what the skills carry. A repository that passes with `--strict` declares nothing that runs except this server, and its skills are instructions only. The validator is a static check, not a sandbox: read what you run, and run unfamiliar suites in a container or CI runner. Pin the server (`mcp-server-servicenow==0.9.0`) in the wrapper and in the Action.
