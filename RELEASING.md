@@ -37,8 +37,7 @@ the release (see Failure modes).
 
    After tool changes, refresh the eval mocks. CI's strict wrapper check fails on a
    stale `_tools.json`. Run `--eval-mocks` on `.` and on each `examples/*` plugin.
-   After the release, copy `examples/template/` into the template repository and tag
-   it.
+   After the release, update the template repository (post-release step 5).
 
 2. **Verification gates** — all of these, no skips:
 
@@ -137,7 +136,17 @@ The tag must be exactly `v` + the pyproject version.
    `curl -s 'https://registry.modelcontextprotocol.io/v0/servers?search=io.github.jschuller/mcp-server-servicenow'`
    → newest entry `isLatest: true`.
 4. Fresh-install smoke test:
-   `uvx --no-cache mcp-server-servicenow==X.Y.Z --help`
+   `uvx --no-cache mcp-server-servicenow==X.Y.Z --help`. For a few minutes after
+   publishing, PyPI's CDN can still answer that the version doesn't exist (v0.9.0:
+   about 5 minutes); wait and retry.
+5. Template repository ([jschuller/servicenow-skills-template](https://github.com/jschuller/servicenow-skills-template)):
+   replace its files with the tagged `examples/template/`, commit, tag `vX.Y.Z` and push.
+   Its "Validate skills" run then exercises the released Action and package, and must
+   pass.
+
+   ```sh
+   git archive vX.Y.Z examples/template | tar -x -C /tmp/tpl   # copy /tmp/tpl/examples/template/ over a clone
+   ```
 
 ## Failure modes & recovery
 

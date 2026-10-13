@@ -21,7 +21,7 @@ Ideas and requests go in [Discussions › Ideas](https://github.com/jschuller/mc
 
 ## Start from the template
 
-1. Create a repository from the [template](examples/template/) (with GitHub's "Use this template" button once the template repository exists, or by copying the folder). A private repository works the same way.
+1. Create a repository from the [template repository](https://github.com/jschuller/servicenow-skills-template) with GitHub's "Use this template" button, or copy [`examples/template/`](examples/template/). A private repository works the same way.
 2. Rename `skills/my-servicenow-skill/`, the `name` in its `SKILL.md` and the skill name in `evals/my-first-case/graders/skill-fired.md` together. The validator warns when a grader names a skill that isn't there.
 3. Write the skill:
    - **The description:** what the skill does, then the words a user would type when they need it. Agents choose skills by their description.
