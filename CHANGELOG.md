@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.9.0] - Unreleased
+## [0.9.0] - 2026-10-13
 
 "A platform core, and your own skills." The skills shipped in the package now cover
 only the Now Platform: tables and schema, access, update sets, and CMDB data quality.
