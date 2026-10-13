@@ -439,6 +439,9 @@ def _check_frontmatter_layout(text: str, report: SkillReport) -> None:
         )
 
     lines = [line.removesuffix("\r") for line in text.split("\n")]
+    if "\r" in lines[0]:
+        refuse(1, "lines end in a bare carriage return (CR): use LF or CRLF")
+        return
     if not FRONTMATTER_FENCE_RE.fullmatch(lines[0]):
         refuse(1, "the first line must be --- alone")
         return
@@ -1235,12 +1238,22 @@ def lint_plugin(plugin: Path, catalog_tools: List[Dict[str, Any]]) -> SkillRepor
             report.add("error", where, None, "skills must be a path or a list of paths")
             continue
         path = plugin / entry
-        target = path.resolve()
+        try:
+            target = path.resolve()
+            is_link = path.is_symlink()
+        except (OSError, ValueError) as exc:
+            report.add(
+                "error",
+                where,
+                None,
+                f"skills path {entry[:80]!r} can't be read ({type(exc).__name__})",
+            )
+            continue
         # Outside by its spelling first: "/etc" is also a symlink on macOS.
         outside = not Path(os.path.abspath(path)).is_relative_to(
             os.path.abspath(plugin)
         )
-        if path.is_symlink() and not outside:
+        if is_link and not outside:
             report.add("error", where, None, f"skills path {entry!r} is a symlink")
         elif (
             outside

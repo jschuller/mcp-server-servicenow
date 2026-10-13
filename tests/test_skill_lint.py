@@ -213,6 +213,7 @@ def test_frontmatter_readers_could_disagree_on(
         ("---\n  name: my-skill\n  description: x\n---\n", "plain name"),
         ("---\nname: my-skill\ndescription: x\n----\n", "no closing ---"),
         ("---\r\nname: my-skill\rdescription: x\r---\r", "--- alone closes it"),
+        ("---\rname: my-skill\rdescription: x\r---\r", "bare carriage return"),
     ],
 )
 def test_frontmatter_fences_readers_could_disagree_on(
@@ -556,6 +557,8 @@ def test_a_skills_wrapper_passes(tmp_path: Path) -> None:
         ({"userConfig": {"k": {}}}, "error", "adds code"),
         ({"skills": "../elsewhere"}, "error", "not a folder inside"),
         ({"skills": "/etc"}, "error", "not a folder inside"),
+        ({"skills": "./ski\0lls"}, "error", "can't be read"),
+        ({"skills": "./" + "a" * 5000}, "error", "skills path"),
         ({"skills": ["./skills/", "/tmp"]}, "error", "not a folder inside"),
         (
             {"mcpServers": {**WRAPPER["mcpServers"], "other": {"command": "npx"}}},  # type: ignore[dict-item]

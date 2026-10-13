@@ -379,6 +379,11 @@ def _malformed(result: Dict[str, Any]) -> Optional[str]:
     for key in ("suite", "aggregates"):
         if not isinstance(result.get(key) or {}, dict):
             return f"{key} is not an object"
+    suite = result.get("suite") or {}
+    for key in ("model", "modelOverride", "judgeModel", "judgeModelOverride", "root"):
+        value = suite.get(key)
+        if value is not None and (not isinstance(value, str) or "\0" in value):
+            return f"suite.{key} is not a string"
     cases = result.get("cases") or []
     if not isinstance(cases, list):
         return "cases is not a list"
@@ -391,6 +396,7 @@ def _malformed(result: Dict[str, Any]) -> Optional[str]:
                 return (
                     f"{where}.{key} is not {'an object' if kind is dict else 'a list'}"
                 )
+        graders = [(f"{where}.graders", case.get("graders") or [])]
         for arm, runs in (case.get("arms") or {}).items():
             if not isinstance(runs or [], list):
                 return f"{where}.arms.{arm} is not a list"
@@ -399,6 +405,16 @@ def _malformed(result: Dict[str, Any]) -> Optional[str]:
                     run.get("graders") or [], list
                 ):
                     return f"{where}.arms.{arm}[{j}] is not a run with a graders list"
+                graders.append(
+                    (f"{where}.arms.{arm}[{j}].graders", run.get("graders") or [])
+                )
+        named = [(where, case)] + [
+            (f"{at}[{k}]", g) for at, gs in graders for k, g in enumerate(gs)
+        ]
+        for at, item in named:
+            name = item.get("name") if isinstance(item, dict) else None
+            if name is not None and not isinstance(name, str):
+                return f"{at}.name is not a string"
     return None
 
 
@@ -486,13 +502,20 @@ def _check_baseline(
                 f"{path}: the baseline ran with {label} {b or 'default'}, this run with "
                 f"{a or 'default'}; run both with the same --model and --judge-model"
             )
-    mine_runs, their_runs = _runs_per_case(result), _runs_per_case(baseline)
-    if mine_runs != their_runs:
-        raise EvalKitError(
-            f"{path}: the baseline ran {', '.join(map(str, their_runs)) or 'no'} run(s) per "
-            f"case, this run {', '.join(map(str, mine_runs)) or 'no'}; run both with the "
-            "same --runs"
-        )
+    finished = {
+        c.get("name"): len(_with_runs(c))
+        for c in baseline.get("cases") or []
+        if isinstance(c, dict)
+    }
+    for case in result.get("cases") or []:
+        if not isinstance(case, dict) or case.get("name") not in finished:
+            continue
+        mine, theirs = len(_with_runs(case)), finished[case.get("name")]
+        if mine != theirs:
+            raise EvalKitError(
+                f"{path}: case {case.get('name')} has {theirs} finished run(s) in the "
+                f"baseline and {mine} in this run; run both with the same --runs"
+            )
 
 
 def summarize(

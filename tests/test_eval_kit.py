@@ -199,6 +199,28 @@ def test_summary_reads_the_mocks_version(tmp_path: Path) -> None:
     assert "| Mocks from | mcp-server-servicenow 9.9.9 |" in text
 
 
+def test_summary_compares_runs_case_by_case(tmp_path: Path) -> None:
+    with_skills = {
+        **RESULT,
+        "cases": [
+            _case("a", [{"task": True}] * 2),
+            _case("b", [{"task": True}]),
+        ],
+    }
+    tools_only = {
+        **RESULT,
+        "cases": [_case("a", [{"task": True}]), _case("b", [{"task": True}] * 2)],
+    }
+    base = tmp_path / "baseline.json"
+    base.write_text(json.dumps(tools_only))
+    with pytest.raises(EvalKitError, match="case a has 1 finished run"):
+        summarize(write_result(tmp_path, with_skills), base)
+    empty = {**RESULT, "cases": [_case("a", []), _case("b", [])]}
+    base.write_text(json.dumps(empty))
+    with pytest.raises(EvalKitError, match="0 in the baseline|has 0 finished"):
+        summarize(write_result(tmp_path, with_skills), base)
+
+
 @pytest.mark.parametrize(
     ("change", "expected"),
     [
@@ -315,7 +337,9 @@ def test_summary_refuses_a_baseline_with_other_runs(tmp_path: Path) -> None:
     tools_only = {**RESULT, "cases": [_case("fallback", [{"task": False}])]}
     base = tmp_path / "baseline.json"
     base.write_text(json.dumps(tools_only))
-    with pytest.raises(EvalKitError, match="baseline ran 1 run.*this run 3"):
+    with pytest.raises(
+        EvalKitError, match="case fallback has 1 finished run.*3 in this run"
+    ):
         summarize(write_result(tmp_path, with_skills), base)
 
 
@@ -333,6 +357,17 @@ def test_summary_refuses_a_baseline_with_other_runs(tmp_path: Path) -> None:
         (
             {"cases": [{"name": "a", "arms": {"with": [{"graders": "x"}]}}]},
             r"arms.with\[0\] is not a run",
+        ),
+        ({"suite": {"modelOverride": 5}}, "suite.modelOverride is not a string"),
+        ({"suite": {"root": "/a\0b"}}, "suite.root is not a string"),
+        ({"cases": [{"name": ["a"]}]}, r"cases\[0\].name is not a string"),
+        (
+            {"cases": [{"name": "a", "graders": [{"name": ["g"]}]}]},
+            r"cases\[0\].graders\[0\].name",
+        ),
+        (
+            {"cases": [{"name": "a", "arms": {"with": [{"graders": [{"name": {}}]}]}}]},
+            r"arms.with\[0\].graders\[0\].name",
         ),
     ],
 )
