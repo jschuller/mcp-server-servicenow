@@ -22,8 +22,9 @@
 
 - **Δ vs tools only:** the same cases with this server's tools and no skills (`--eval-baseline`), scored without the graders that check a skill fired. It is what the skills add.
 - **Δ vs no plugin:** what `claude plugin eval` reports. The mocked tools are absent without the plugin, so it overstates what the skills add.
+- **Score** is `claude plugin eval`'s case score, which counts the graders that check a skill fired; **Tools only** and **Δ vs tools** leave those graders out.
 
-Reproduce from this commit: `claude plugin eval . --ablation with-without --model claude-sonnet-5-5 --judge-model claude-haiku-5-5 --runs 3`
+Reproduce from this commit: `claude plugin eval . --ablation with-without --model claude-sonnet-5-5 --judge-model claude-haiku-5-5 --runs 3 --threshold 1`
 
-Tools-only baseline: `mcp-server-servicenow --eval-baseline . ../tools-only && claude plugin eval ../tools-only --ablation none --model claude-sonnet-5-5 --judge-model claude-haiku-5-5 --runs 3`
+Tools-only baseline: `uvx mcp-server-servicenow==0.9.0 --eval-baseline . ../tools-only && claude plugin eval ../tools-only --ablation none --model claude-sonnet-5-5 --judge-model claude-haiku-5-5 --runs 3 --threshold 1`
 
