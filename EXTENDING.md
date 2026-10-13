@@ -70,7 +70,7 @@ With `--strict`, warnings fail too, such as a remote server, `--allow-js-queries
 In GitHub, the template's workflow runs the same check and a citation check on pull requests and pushes to main, using the Action:
 
 ```yaml
-- uses: jschuller/mcp-server-servicenow/actions/validate-skills@v0.9.0
+- uses: jschuller/mcp-server-servicenow/actions/validate-skills@66ba9254971e36dad67d3c0f609d9161d29d0d1c # v0.9.0
   with:
     path: .
     server-version: "0.9.0"

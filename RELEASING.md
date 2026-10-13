@@ -30,10 +30,18 @@ the release (see Failure modes).
 
    The template pins the release too, and CI checks the pins. The places are:
    - `examples/template/.claude-plugin/plugin.json` (`mcp-server-servicenow==X.Y.Z`);
-   - `examples/template/.github/workflows/validate-skills.yml` (`@vX.Y.Z` and
-     `server-version`);
+   - `examples/template/.github/workflows/validate-skills.yml` (`server-version`);
    - `examples/template/.github/workflows/evals.yml` (`SERVER_VERSION`);
    - the template README.
+
+   That workflow pins the Action by commit SHA, not by tag (the same SHA is shown in
+   `EXTENDING.md` and `docs/skill-profile.md`). CI requires the pinned commit to be in
+   main's history with the same `actions/validate-skills/` as the release. While the
+   Action is unchanged, keep the pin. When a release changes it, pin the commit that
+   changes it, with `# main` as the comment. After the release, re-pin to the tag's
+   commit (`git rev-parse vX.Y.Z^{commit}`, with `# vX.Y.Z` as the comment) in a
+   follow-up commit on main, and copy the template from that commit in post-release
+   step 5.
 
    After tool changes, refresh the eval mocks. CI's strict wrapper check fails on a
    stale `_tools.json`. Run `--eval-mocks` on `.` and on each `examples/*` plugin.

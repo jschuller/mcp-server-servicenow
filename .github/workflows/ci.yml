@@ -40,6 +40,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0  # the template's Action pin names an earlier commit
 
       - name: Set up Python
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
@@ -97,6 +99,23 @@ jobs:
               print(f"::error::Pins other than {version}: {stale}; no {version} pin in: {missing}")
               sys.exit(1)
           print(f"Template pins agree: {version}")
+
+          # The template pins the Action to a full commit SHA, which must be in this
+          # history and carry the same Action as this tree.
+          import subprocess
+          pin = re.search(r"actions/validate-skills@(\S+)", pins["validate-skills.yml"])
+          sha = pin.group(1) if pin else ""
+          if not re.fullmatch(r"[0-9a-f]{40}", sha):
+              print(f"::error::The template's Action pin {sha!r} is not a full commit SHA")
+              sys.exit(1)
+          git = lambda *a: subprocess.run(["git", *a], capture_output=True).returncode
+          if git("merge-base", "--is-ancestor", sha, "HEAD") or git(
+              "diff", "--quiet", sha, "HEAD", "--", "actions/validate-skills"
+          ):
+              print(f"::error::The template's Action pin {sha} is not an earlier commit "
+                    "with this tree's actions/validate-skills; pin one that is")
+              sys.exit(1)
+          print(f"Template Action pin {sha[:12]} carries this Action")
           EOF
 
       # The test job installs via pip, so nothing else exercises uv.lock —

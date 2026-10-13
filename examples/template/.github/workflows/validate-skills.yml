@@ -10,8 +10,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      # Pin the action and the server to a release you have tested, e.g. @v0.9.0 and "0.9.0".
-      - uses: jschuller/mcp-server-servicenow/actions/validate-skills@v0.9.0
+      # Pin the Action to a full commit SHA (a tag can be moved; the comment names its
+      # release) and the server to a release you have tested.
+      - uses: jschuller/mcp-server-servicenow/actions/validate-skills@66ba9254971e36dad67d3c0f609d9161d29d0d1c # v0.9.0
         with:
           path: .  # the skills, the plugin wrapper and its eval mocks
           server-version: "0.9.0"
