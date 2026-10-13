@@ -51,6 +51,7 @@ The command runs offline. It prints each skill's `sha256:` digest and every find
 - scripts, symlinks or binary files, and symlinked folders anywhere in the repository;
 - frontmatter that runs code or pre-approves tools (`hooks`, `allowed-tools`, `shell`), and `` !`command` `` shell injection;
 - frontmatter that Claude Code could read differently, such as a value continuing in column 0, a `---` inside the block, or a tab ([layout rules](docs/skill-profile.md#frontmatter-layout));
+- `SKILL.md` and the plugin's files spelled in another letter case (`skill.md`), which Claude Code loads on macOS and Windows;
 - links that leave the skill;
 - undeclared tables;
 - queries the server would refuse.

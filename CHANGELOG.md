@@ -34,6 +34,13 @@ A security fix for the skill validator, plus the small fixes the 0.9.0 review de
   frontmatters. In about 27,700 of them a code key was hidden from PyYAML, and all of
   those are refused. None of the frontmatters the validator accepts gives Claude Code
   a different set of keys. See [Frontmatter layout](docs/skill-profile.md#frontmatter-layout).
+- **A `skill.md` (any letter case but `SKILL.md`) is checked as the skill it is.** Claude
+  Code opens `SKILL.md` by name, so on a case-insensitive disk (macOS, Windows) it loads
+  `skill.md`; the validator, matching the exact name, skipped the folder, so its
+  frontmatter could carry `hooks` past the check and the digest. The same held for
+  `.claude-plugin/plugin.json`, `marketplace.json` and the locations Claude Code loads
+  as code (`Hooks/`, `Settings.json`). All are now found in any letter case, and a
+  spelling other than the exact one is an error. Present since 0.9.0.
 - **Identifier patterns end in `\Z`, not `$`.** `$` also matches before a final
   newline, so the server's own guard let `"incident\n"` through as a table name into the
   URL path. The same applied to `order_by`, an update-set state, a role name, a schema
@@ -49,7 +56,15 @@ A security fix for the skill validator, plus the small fixes the 0.9.0 review de
 - `--eval-summary` reports a result file with malformed fields (`"suite": "x"`) in
   one line that names the field, instead of a traceback.
 - `skills: "/etc"` in a plugin manifest is reported as outside the plugin, not as a
-  symlink (macOS makes `/etc` a symlink).
+  symlink (macOS makes `/etc` a symlink). A skills path the file system can't read is an
+  error, not a traceback.
+- Frontmatter PyYAML can't read at all (a `\U00110000` escape, deep nesting) is an
+  error for that skill instead of a crash of the whole run. YAML errors are one line,
+  with the file's line number; duplicate and YAML 1.1 boolean keys are named as such;
+  and frontmatter that fails these checks no longer also reports undeclared tables,
+  writes or a missing licence.
+- `--eval-summary` reports a malformed model, root or case or grader name in one line,
+  compares runs case by case, and says when a baseline has no per-run grader results.
 - The examples' `RESULTS.md` files use the current summary format. The runs and
   numbers are unchanged; the update adds the Score note, `--threshold`, and a pinned
   baseline command.

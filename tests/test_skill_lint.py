@@ -193,6 +193,9 @@ DIFFERENTLY = "Claude Code could read this frontmatter differently"
         ("description: x\nname: again", "duplicate key 'name' (line 2)"),
         ("description: &a x\nx: *a", "anchors, aliases and tags"),
         ("description: !!str x", "anchors, aliases and tags"),
+        ("description: x\n1e3: y", "must be `name: value`"),
+        ("description: x\n__proto__: {}", "special in JavaScript"),
+        ('description: "a \\uD800 b"', "surrogate pair"),
     ],
 )
 def test_frontmatter_readers_could_disagree_on(
@@ -254,6 +257,33 @@ def test_yaml_errors_are_one_line_with_file_lines(tmp_path: Path) -> None:
     errors = messages(lint_skills([skill]), "error")
     yaml_error = next(m for m in errors if "not valid YAML" in m)
     assert "\n" not in yaml_error and "(line 3," in yaml_error, yaml_error
+
+
+@pytest.mark.parametrize(
+    "block",
+    ['description: "a \\U00110000 b"', "description: x\nk: " + "[" * 5000 + "]" * 5000],
+    ids=["beyond-unicode", "deep-nesting"],
+)
+def test_frontmatter_pyyaml_cannot_read_is_an_error(tmp_path: Path, block: str) -> None:
+    skill = tmp_path / "my-skill"
+    skill.mkdir()
+    (skill / "SKILL.md").write_text(f"---\nname: my-skill\n{block}\n---\n")
+    assert any("not valid YAML" in m for m in messages(lint_skills([skill]), "error"))
+
+
+def test_a_skill_md_in_another_case_is_a_skill(tmp_path: Path) -> None:
+    # Claude Code opens SKILL.md by name: a case-insensitive disk finds skill.md.
+    skill = tmp_path / "lower-case"
+    skill.mkdir()
+    text = GOOD.replace("my-skill", "lower-case").replace(
+        "license: MIT\n", "license: MIT\nhooks: {}\n"
+    )
+    (skill / "skill.md").write_text(text)
+    report = lint_skills([tmp_path])
+    errors = messages(report, "error")
+    assert [s.name for s in report.skills] == ["lower-case"]
+    assert any("name it SKILL.md exactly" in m for m in errors), errors
+    assert any("registers hooks" in m for m in errors), errors
 
 
 def test_a_byte_order_mark_is_named(tmp_path: Path) -> None:
@@ -857,6 +887,21 @@ def test_skill_folders_named_like_skipped_folders_are_checked(
     )
     errors = messages(lint_skills([plugin]), "error")
     assert any("shell injection" in m for m in errors), errors
+
+
+def test_plugin_files_in_another_case_are_checked(tmp_path: Path) -> None:
+    plugin = make_wrapper(tmp_path)
+    (plugin / "Hooks").mkdir()
+    (plugin / "Settings.json").write_text("{}")
+    manifest = plugin / ".claude-plugin" / "plugin.json"
+    renamed = plugin / ".Claude-Plugin"
+    (plugin / ".claude-plugin").rename(renamed)
+    (renamed / "plugin.json").rename(renamed / "Plugin.json")
+    report = lint_skills([plugin])
+    errors = plugin_messages(report, "error")
+    assert not manifest.exists() or manifest.samefile(renamed / "Plugin.json")
+    assert any("name it .claude-plugin/plugin.json exactly" in m for m in errors)
+    assert sum("loads this location as plugin code" in m for m in errors) == 2, errors
 
 
 def test_a_symlinked_skills_path_is_refused(tmp_path: Path) -> None:

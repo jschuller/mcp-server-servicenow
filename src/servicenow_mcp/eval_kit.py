@@ -40,6 +40,7 @@ from servicenow_mcp import __version__
 from servicenow_mcp.middleware.policy import IDENTIFIER_RE
 from servicenow_mcp.skill_lint import (
     TABLES_KEY,
+    _entry,
     _frontmatter,
     find_skill_dirs,
     registered_tools,
@@ -142,7 +143,8 @@ def declared_tables(plugin_dir: Path, manifest: Dict[str, Any]) -> List[str]:
             continue
         for skill in find_skill_dirs(root):
             try:
-                text = (skill / "SKILL.md").read_text(encoding="utf-8")
+                main = _entry(skill, "SKILL.md") or skill / "SKILL.md"
+                text = main.read_text(encoding="utf-8")
             except (OSError, UnicodeDecodeError) as exc:
                 raise EvalKitError(
                     f"{skill / 'SKILL.md'}: cannot read ({exc})"

@@ -200,7 +200,10 @@ SKILL_KEYS = (
 # check uses PyYAML (YAML 1.1). A key is a plain name at the start of its own line, so the
 # text alone fixes the keys, whichever reader parses it.
 FRONTMATTER_FENCE_RE = re.compile(r"---[ \t]*")
-FRONTMATTER_KEY_RE = re.compile(r"([A-Za-z0-9_][A-Za-z0-9_.-]*):(?: .*)?")
+FRONTMATTER_KEY_RE = re.compile(r"([A-Za-z_][A-Za-z0-9_.-]*):(?: .*)?")
+# \uD800-\uDFFF is half of a surrogate pair: Bun refuses it, and Claude Code then
+# reads no frontmatter at all.
+SURROGATE_ESCAPE_RE = re.compile(r"\\(?:u[dD][89a-fA-F]|U0000[dD][89a-fA-F])")
 # Characters some YAML readers take as a line break or a space and others don't (tab, NEL,
 # U+2028/9), the byte-order mark, and the bidi controls that hide text from a reviewer.
 FRONTMATTER_UNSAFE_RE = re.compile(
@@ -322,6 +325,30 @@ def core_skill_names() -> Set[str]:
     return {p.name for p in root.iterdir() if (p / "SKILL.md").is_file()}
 
 
+def _entry(folder: Path, *parts: str) -> Optional[Path]:
+    """``folder/parts`` as a case-insensitive file system (macOS, Windows) finds it.
+
+    Claude Code opens SKILL.md, .claude-plugin/plugin.json and the code locations by
+    name, so there skill.md answers for SKILL.md. The exact spelling wins when both exist.
+    """
+    here = folder
+    for part in parts:
+        try:
+            names = os.listdir(here)
+        except OSError:
+            return None
+        matches = [n for n in names if n.casefold() == part.casefold()]
+        if not matches:
+            return None
+        here = here / (part if part in matches else sorted(matches)[0])
+    return here
+
+
+def _is_file(folder: Path, *parts: str) -> bool:
+    path = _entry(folder, *parts)
+    return path is not None and path.is_file()
+
+
 def _walk(root: Path) -> Iterator[Tuple[Path, List[str], List[str]]]:
     """os.walk without links or tooling folders; hidden folders are searched too,
     because skill installers read folders such as .claude/skills. A tooling folder that
@@ -331,7 +358,7 @@ def _walk(root: Path) -> Iterator[Tuple[Path, List[str], List[str]]]:
         dirnames[:] = sorted(
             d
             for d in dirnames
-            if (d not in SKIP_DIRS or (here / d / "SKILL.md").is_file())
+            if (d not in SKIP_DIRS or _is_file(here / d, "SKILL.md"))
             and not (here / d).is_symlink()
         )
         yield here, dirnames, filenames
@@ -339,11 +366,11 @@ def _walk(root: Path) -> Iterator[Tuple[Path, List[str], List[str]]]:
 
 def find_skill_dirs(root: Path) -> List[Path]:
     """Every folder at or below ``root`` that holds a SKILL.md."""
-    if (root / "SKILL.md").is_file():
+    if _is_file(root, "SKILL.md"):
         return [root]
     found: List[Path] = []
     for here, dirnames, filenames in _walk(root):
-        if "SKILL.md" in filenames:
+        if any(f.casefold() == "skill.md" for f in filenames):
             found.append(here)
             dirnames[:] = []  # a skill's own subfolders belong to it
     return found
@@ -351,7 +378,7 @@ def find_skill_dirs(root: Path) -> List[Path]:
 
 def find_linked_dirs(root: Path) -> List[Path]:
     """Symlinked folders below ``root``: installers may follow them, this check doesn't."""
-    if not root.is_dir() or (root / "SKILL.md").is_file():
+    if not root.is_dir() or _is_file(root, "SKILL.md"):
         return []  # a skill's own links are reported with the skill
     found: List[Path] = []
     for dirpath, dirnames, _ in os.walk(root):
@@ -375,7 +402,7 @@ def _skill_files(skill: Path, report: SkillReport) -> List[Path]:
             elif d.startswith("."):
                 report.add("error", rel, None, "hidden folders are not allowed")
                 dirnames.remove(d)
-            elif (sub / "SKILL.md").is_file():
+            elif _is_file(sub, "SKILL.md"):
                 dirnames.remove(d)  # a nested skill is checked on its own
         for name in sorted(filenames):
             path = here / name
@@ -392,6 +419,14 @@ def _skill_files(skill: Path, report: SkillReport) -> List[Path]:
                     "only .md, .txt and .csv files are allowed (no scripts or binaries)",
                 )
             else:
+                if name.casefold() == "skill.md" and name != "SKILL.md":
+                    report.add(
+                        "error",
+                        rel,
+                        None,
+                        "name it SKILL.md exactly: on a case-insensitive disk (macOS, "
+                        "Windows) Claude Code loads it as the skill",
+                    )
                 kept.append(path)
     return sorted(kept)
 
@@ -415,7 +450,7 @@ def _frontmatter(text: str) -> Tuple[Optional[dict], int, str]:
         if lines[i].strip() == "---":
             try:
                 data = yaml.safe_load("\n".join(lines[1:i])) or {}
-            except yaml.YAMLError as exc:
+            except (yaml.YAMLError, ValueError, RecursionError) as exc:
                 return None, i + 2, f"frontmatter is not valid YAML: {_yaml_error(exc)}"
             if not isinstance(data, dict):
                 return None, i + 2, "frontmatter must be a mapping"
@@ -461,6 +496,12 @@ def _check_frontmatter_layout(text: str, report: SkillReport) -> bool:
                 "Claude Code ends the frontmatter at the first ---, even inside a "
                 "value: write a dash or two",
             )
+        if SURROGATE_ESCAPE_RE.search(line):
+            refuse(
+                n,
+                "a \\uD800-\\uDFFF escape (half a surrogate pair): Claude Code then "
+                "reads no frontmatter; write the character itself",
+            )
         unsafe = FRONTMATTER_UNSAFE_RE.search(line)
         if unsafe:
             char = unsafe.group()
@@ -485,6 +526,8 @@ def _check_frontmatter_layout(text: str, report: SkillReport) -> bool:
                 "a line in column 0 must be `name: value`, `- item` or a # comment; "
                 "indent a value that goes on over several lines",
             )
+        elif key.group(1) == "__proto__":
+            refuse(n, "__proto__ is special in JavaScript: use another name")
         elif key.group(1) in keys:
             refuse(n, f"duplicate key {key.group(1)!r} (line {keys[key.group(1)]})")
         else:
@@ -494,7 +537,7 @@ def _check_frontmatter_layout(text: str, report: SkillReport) -> bool:
     try:
         data = yaml.safe_load(source) or {}
         tokens = list(yaml.scan(source, Loader=yaml.SafeLoader))
-    except yaml.YAMLError:
+    except (yaml.YAMLError, ValueError, RecursionError):
         return False  # reported as invalid YAML already
     if not isinstance(data, dict):
         return False
@@ -540,7 +583,7 @@ def _check_frontmatter_layout(text: str, report: SkillReport) -> bool:
     return len(report.errors) == before
 
 
-def _yaml_error(exc: yaml.YAMLError) -> str:
+def _yaml_error(exc: Exception) -> str:
     """PyYAML's error on one line, with the line number counted in the whole file."""
     problem = getattr(exc, "problem", None) or str(exc).splitlines()[0]
     mark = getattr(exc, "problem_mark", None)
@@ -932,7 +975,7 @@ def lint_skill(
                 "error", path.relative_to(skill).as_posix(), None, "not UTF-8 text"
             )
 
-    main = skill / "SKILL.md"
+    main = _entry(skill, "SKILL.md") or skill / "SKILL.md"
     data, body_line, problem = _frontmatter(texts.get(main, ""))
     tables: Optional[Set[str]] = None
     writes: Set[str] = set()
@@ -1014,8 +1057,21 @@ def find_plugin_dirs(root: Path) -> List[Path]:
     return [
         here
         for here, _, _ in _walk(root)
-        if (here / ".claude-plugin" / "plugin.json").is_file()
+        if _is_file(here, ".claude-plugin", "plugin.json")
     ]
+
+
+def _check_spelling(root: Path, path: Path, where: str, report: SkillReport) -> None:
+    """Claude Code on a case-insensitive disk finds other spellings; Linux CI doesn't."""
+    spelled = path.relative_to(root).as_posix()
+    if spelled != where:
+        report.add(
+            "error",
+            spelled,
+            None,
+            f"name it {where} exactly: on a case-insensitive disk (macOS, Windows) "
+            "Claude Code loads it, on Linux this check might not",
+        )
 
 
 def _check_server(name: str, spec: object, report: SkillReport) -> None:
@@ -1237,9 +1293,13 @@ def _check_eval_files(
 
 def lint_plugin(plugin: Path, catalog_tools: List[Dict[str, Any]]) -> SkillReport:
     """Check a plugin wrapper: skills plus this server, nothing that runs other code."""
-    manifest_path = plugin / ".claude-plugin" / "plugin.json"
+    manifest_path = (
+        _entry(plugin, ".claude-plugin", "plugin.json")
+        or plugin / ".claude-plugin" / "plugin.json"
+    )
     where = ".claude-plugin/plugin.json"
     report = SkillReport(name=f"plugin {plugin.name}", path=plugin)
+    _check_spelling(plugin, manifest_path, where, report)
     try:
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     except (OSError, ValueError) as exc:
@@ -1269,9 +1329,10 @@ def lint_plugin(plugin: Path, catalog_tools: List[Dict[str, Any]]) -> SkillRepor
                 "declare only metadata, skills and the servicenow server",
             )
     for rel, why in PLUGIN_CODE_PATHS.items():
-        if (plugin / rel).exists() or (plugin / rel).is_symlink():
-            report.add("error", rel, None, why)
-    pyproject = plugin / "pyproject.toml"
+        found = _entry(plugin, rel)
+        if found is not None:
+            report.add("error", found.name, None, why)
+    pyproject = _entry(plugin, "pyproject.toml") or plugin / "pyproject.toml"
     if pyproject.is_file() and UV_SETTINGS_RE.search(
         pyproject.read_text(encoding="utf-8", errors="replace")
     ):
@@ -1288,7 +1349,7 @@ def lint_plugin(plugin: Path, catalog_tools: List[Dict[str, Any]]) -> SkillRepor
         if isinstance(skills, list)
         else [skills]
         if skills is not None
-        else (["./skills/"] if (plugin / "skills").exists() else [])
+        else ([f"./{found.name}/"] if (found := _entry(plugin, "skills")) else [])
     )
     for entry in entries:
         if not isinstance(entry, str):
@@ -1373,7 +1434,7 @@ def find_marketplace_dirs(root: Path) -> List[Path]:
     return [
         here
         for here, _, _ in _walk(root)
-        if (here / ".claude-plugin" / "marketplace.json").is_file()
+        if _is_file(here, ".claude-plugin", "marketplace.json")
     ]
 
 
@@ -1381,9 +1442,13 @@ def lint_marketplace(market: Path) -> SkillReport:
     """Check a marketplace: it may only list plugin folders in this repository, which
     are then checked as plugins. Claude Code installs whatever an entry describes,
     including components written into the entry and plugins from other sources."""
-    path = market / ".claude-plugin" / "marketplace.json"
+    path = (
+        _entry(market, ".claude-plugin", "marketplace.json")
+        or market / ".claude-plugin" / "marketplace.json"
+    )
     where = ".claude-plugin/marketplace.json"
     report = SkillReport(name=f"marketplace {market.name}", path=market)
+    _check_spelling(market, path, where, report)
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError) as exc:
@@ -1435,7 +1500,7 @@ def lint_marketplace(market: Path) -> SkillReport:
             target is None
             or (market / str(source)).is_symlink()
             or not target.is_relative_to(market.resolve())
-            or not (target / ".claude-plugin" / "plugin.json").is_file()
+            or not _is_file(target, ".claude-plugin", "plugin.json")
         ):
             report.add(
                 "error",
