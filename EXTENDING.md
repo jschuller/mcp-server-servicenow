@@ -77,6 +77,8 @@ In GitHub, the template's workflow runs the same check and a citation check on p
     strict: "true"
 ```
 
+The Action only runs the validator, and `server-version` picks the release that validates, so the Action's pinned release can trail the server's.
+
 ## Test it
 
 ### On a developer instance

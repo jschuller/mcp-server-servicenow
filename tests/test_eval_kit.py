@@ -332,6 +332,13 @@ def test_summary_refuses_a_baseline_with_other_models(tmp_path: Path) -> None:
         summarize(write_result(tmp_path, RESULT), base)
 
 
+def test_summary_says_when_a_baseline_has_no_grader_results(tmp_path: Path) -> None:
+    base = tmp_path / "baseline.json"
+    base.write_text(json.dumps(RESULT))
+    text, _ = summarize(write_result(tmp_path, RESULT), base)
+    assert "the baseline has no per-run grader results" in text
+
+
 def test_summary_refuses_a_baseline_with_other_runs(tmp_path: Path) -> None:
     with_skills = {**RESULT, "cases": [_case("fallback", [{"task": True}] * 3)]}
     tools_only = {**RESULT, "cases": [_case("fallback", [{"task": False}])]}

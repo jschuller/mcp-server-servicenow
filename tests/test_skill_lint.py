@@ -155,7 +155,7 @@ def test_digest_changes_with_content(tmp_path: Path, good: Path) -> None:
         (f"---\nname: my-skill\ndescription: {'x' * 1025}\n---\n", "at most 1024"),
         (
             f"---\nname: my-skill\ndescription: x\nmetadata:\n  {TABLES_KEY}: [a, b]\n---\n",
-            "must be a string",
+            "must be one string",
         ),
         (
             f'---\nname: my-skill\ndescription: x\nmetadata:\n  {TABLES_KEY}: "incident sys/user"\n---\n',
@@ -189,8 +189,8 @@ DIFFERENTLY = "Claude Code could read this frontmatter differently"
         ("description: a---b", "first ---"),
         ('description: x\n"hooks": {}', "must be `name: value`"),
         ("description: x\n? hooks\n: {}", "must be `name: value`"),
-        ("description: x\non: y", "plain name"),
-        ("description: x\nname: again", "plain name"),
+        ("description: x\non: y", "reads as True"),
+        ("description: x\nname: again", "duplicate key 'name' (line 2)"),
         ("description: &a x\nx: *a", "anchors, aliases and tags"),
         ("description: !!str x", "anchors, aliases and tags"),
     ],
@@ -223,6 +223,37 @@ def test_frontmatter_fences_readers_could_disagree_on(
     skill.mkdir()
     (skill / "SKILL.md").write_bytes((text + "\n# Body\n").encode("utf-8"))
     assert any(expected in m for m in messages(lint_skills([skill]), "error"))
+
+
+@pytest.mark.parametrize(
+    "block",
+    [
+        "description: Checks a change.\nUse when asked about CAB.",
+        "description: x\nmetadata:\n\tk: v",
+        "description: a --- b",
+    ],
+)
+def test_unreadable_frontmatter_gets_no_profile_findings(
+    tmp_path: Path, block: str
+) -> None:
+    skill = tmp_path / "my-skill"
+    skill.mkdir()
+    body = GOOD.split("---\n", 2)[2] + "create_record(table_name='incident')\n"
+    text = f"---\nname: my-skill\n{block}\nlicense: MIT\n---\n{body}"
+    (skill / "SKILL.md").write_bytes(text.encode("utf-8"))
+    report = lint_skills([skill])
+    found = messages(report, "error") + messages(report, "warning")
+    assert any(DIFFERENTLY in m for m in found), found
+    assert not [m for m in found if "declare" in m or "license" in m], found
+
+
+def test_yaml_errors_are_one_line_with_file_lines(tmp_path: Path) -> None:
+    skill = make_skill(
+        tmp_path, {"SKILL.md": "---\nname: my-skill\ndescription: [\n---\n"}
+    )
+    errors = messages(lint_skills([skill]), "error")
+    yaml_error = next(m for m in errors if "not valid YAML" in m)
+    assert "\n" not in yaml_error and "(line 3," in yaml_error, yaml_error
 
 
 def test_a_byte_order_mark_is_named(tmp_path: Path) -> None:
@@ -396,7 +427,7 @@ def test_undeclared_writes_outside_parsed_calls_warn(tmp_path: Path, body: str) 
     [
         ('"list_records"', "", "error", "not write tools"),
         ('"update_record"', "", "warning", "declares tools no call uses"),
-        ("[update_record]", "", "error", "must be a string"),
+        ("[update_record]", "", "error", "must be one string"),
     ],
 )
 def test_declared_writes_problems(

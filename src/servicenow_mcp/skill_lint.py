@@ -416,19 +416,20 @@ def _frontmatter(text: str) -> Tuple[Optional[dict], int, str]:
             try:
                 data = yaml.safe_load("\n".join(lines[1:i])) or {}
             except yaml.YAMLError as exc:
-                return None, i + 2, f"frontmatter is not valid YAML: {exc}"
+                return None, i + 2, f"frontmatter is not valid YAML: {_yaml_error(exc)}"
             if not isinstance(data, dict):
                 return None, i + 2, "frontmatter must be a mapping"
             return data, i + 2, ""
     return None, 1, "frontmatter has no closing ---"
 
 
-def _check_frontmatter_layout(text: str, report: SkillReport) -> None:
+def _check_frontmatter_layout(text: str, report: SkillReport) -> bool:
     """Refuse SKILL.md frontmatter that Claude Code could read with other top-level keys.
 
     Claude Code acts on ``hooks``, ``allowed-tools`` and ``shell``; a layout two YAML
-    readers disagree on could hide them from this check.
+    readers disagree on could hide them from this check. Return True when it passes.
     """
+    before = len(report.errors)
 
     def refuse(line: Optional[int], why: str) -> None:
         report.add(
@@ -441,48 +442,62 @@ def _check_frontmatter_layout(text: str, report: SkillReport) -> None:
     lines = [line.removesuffix("\r") for line in text.split("\n")]
     if "\r" in lines[0]:
         refuse(1, "lines end in a bare carriage return (CR): use LF or CRLF")
-        return
+        return False
     if not FRONTMATTER_FENCE_RE.fullmatch(lines[0]):
         refuse(1, "the first line must be --- alone")
-        return
+        return False
     end = next(
         (i for i in range(1, len(lines)) if FRONTMATTER_FENCE_RE.fullmatch(lines[i])),
         None,
     )
     if end is None:
         refuse(None, "no line that is --- alone closes it")
-        return
+        return False
     block = lines[1:end]
-    clean = True
     for n, line in enumerate(block, 2):
         if "---" in line:
             refuse(
                 n,
-                "Claude Code ends the frontmatter at the first ---, even inside a value",
+                "Claude Code ends the frontmatter at the first ---, even inside a "
+                "value: write a dash or two",
             )
-            clean = False
         unsafe = FRONTMATTER_UNSAFE_RE.search(line)
         if unsafe:
             char = unsafe.group()
             refuse(
                 n,
-                "a tab: indent with spaces"
+                "a tab: use spaces"
                 if char == "\t"
                 else f"character U+{ord(char):04X}, which YAML readers treat differently "
-                "or which hides text",
+                "or which hides text: delete it or use a space",
             )
-            clean = False
-    if not clean:
-        return
+    if len(report.errors) > before:
+        return False
+
+    keys: Dict[str, int] = {}  # top-level key -> line, from the text alone
+    for n, line in enumerate(block, 2):
+        if not line or line == "-" or line.startswith((" ", "#", "- ")):
+            continue
+        key = FRONTMATTER_KEY_RE.fullmatch(line)
+        if not key:
+            refuse(
+                n,
+                "a line in column 0 must be `name: value`, `- item` or a # comment; "
+                "indent a value that goes on over several lines",
+            )
+        elif key.group(1) in keys:
+            refuse(n, f"duplicate key {key.group(1)!r} (line {keys[key.group(1)]})")
+        else:
+            keys[key.group(1)] = n
 
     source = "\n".join(block)
     try:
         data = yaml.safe_load(source) or {}
         tokens = list(yaml.scan(source, Loader=yaml.SafeLoader))
     except yaml.YAMLError:
-        return  # reported as invalid YAML already
+        return False  # reported as invalid YAML already
     if not isinstance(data, dict):
-        return
+        return False
     flow = 0
     for token in tokens:
         start, stop = token.start_mark, token.end_mark
@@ -502,26 +517,36 @@ def _check_frontmatter_layout(text: str, report: SkillReport) -> None:
                 if block[i].strip() and not block[i].startswith(" "):
                     refuse(i + 2, "a value goes on in column 0: indent it")
 
-    keys: List[str] = []
-    for n, line in enumerate(block, 2):
-        if not line or line == "-" or line.startswith((" ", "#", "- ")):
-            continue
-        key = FRONTMATTER_KEY_RE.fullmatch(line)
-        if key:
-            keys.append(key.group(1))
-        else:
+    odd = False
+    for name, n in keys.items():
+        try:
+            alone = next(iter(yaml.safe_load(f"{name}: x")))
+        except (yaml.YAMLError, TypeError, StopIteration):
+            alone = name
+        if not isinstance(alone, str):
             refuse(
                 n,
-                "a line in column 0 must be `name: value`, `- item` or a # comment",
+                f"key {name!r} reads as {alone!r} in YAML 1.1 (this check) and as a "
+                "string in YAML 1.2 (Claude Code): use another name",
             )
-    found = list(data)
-    if found != keys or not all(isinstance(k, str) for k in found):
+            odd = True
+    if not odd and list(data) != list(keys):
         refuse(
             None,
             "write each top-level key as a plain name at the start of its own line "
-            f"(the YAML has {', '.join(map(repr, found)) or 'no keys'}; "
+            f"(the YAML has {', '.join(map(repr, data)) or 'no keys'}; "
             f"the lines start {', '.join(map(repr, keys)) or 'no keys'})",
         )
+    return len(report.errors) == before
+
+
+def _yaml_error(exc: yaml.YAMLError) -> str:
+    """PyYAML's error on one line, with the line number counted in the whole file."""
+    problem = getattr(exc, "problem", None) or str(exc).splitlines()[0]
+    mark = getattr(exc, "problem_mark", None)
+    if mark is None:
+        return str(problem)
+    return f"{problem} (line {mark.line + 2}, column {mark.column + 1})"
 
 
 def _split_words(value: object) -> Optional[List[str]]:
@@ -535,6 +560,7 @@ def _check_frontmatter(
     core_names: Set[str],
     is_core: bool,
     catalog: ToolCatalog,
+    readable: bool = True,
 ) -> Tuple[Optional[Set[str]], Set[str]]:
     """Check name/description/license/metadata; return (declared tables, declared writes)."""
     name = data.get("name")
@@ -572,7 +598,7 @@ def _check_frontmatter(
             None,
             f"description is {len(description)} characters (at most {MAX_DESCRIPTION})",
         )
-    if "license" not in data:
+    if "license" not in data and readable:
         report.add("warning", "SKILL.md", None, "no license: say how others may use it")
     for key in data:
         if key in SKILL_CODE_KEYS:
@@ -606,7 +632,13 @@ def _check_frontmatter(
     if TABLES_KEY in metadata:
         words = _split_words(metadata[TABLES_KEY])
         if words is None:
-            report.add("error", "SKILL.md", None, f"{TABLES_KEY} must be a string")
+            report.add(
+                "error",
+                "SKILL.md",
+                None,
+                f"{TABLES_KEY} must be one string of space-separated names, "
+                'e.g. "incident change_request"',
+            )
         else:
             bad = [w for w in words if not IDENTIFIER_RE.match(w)]
             if bad:
@@ -620,7 +652,13 @@ def _check_frontmatter(
     if ROLES_KEY in metadata:
         words = _split_words(metadata[ROLES_KEY])
         if words is None:
-            report.add("error", "SKILL.md", None, f"{ROLES_KEY} must be a string")
+            report.add(
+                "error",
+                "SKILL.md",
+                None,
+                f"{ROLES_KEY} must be one string of space-separated names, "
+                'e.g. "incident change_request"',
+            )
         else:
             bad = [w for w in words if not ROLE_RE.match(w)]
             if bad:
@@ -630,7 +668,13 @@ def _check_frontmatter(
     if WRITES_KEY in metadata:
         words = _split_words(metadata[WRITES_KEY])
         if words is None:
-            report.add("error", "SKILL.md", None, f"{WRITES_KEY} must be a string")
+            report.add(
+                "error",
+                "SKILL.md",
+                None,
+                f"{WRITES_KEY} must be one string of space-separated names, "
+                'e.g. "incident change_request"',
+            )
         else:
             bad = [w for w in words if w not in catalog.write]
             if bad:
@@ -702,6 +746,7 @@ def _check_calls(
     writes: Set[str],
     used: Set[str],
     report: SkillReport,
+    readable: bool = True,
 ) -> None:
     names = set(CALL_NAME_RE.findall(content))
     if not names & catalog.all:
@@ -740,7 +785,9 @@ def _check_calls(
                 used.add(table)
                 declared = tables or set()
                 cmdb_class = table.startswith("cmdb_ci") and "cmdb_ci" in declared
-                if tables is None:
+                if not readable:
+                    pass  # the frontmatter's own errors come first
+                elif tables is None:
                     report.add(
                         "error",
                         rel,
@@ -785,13 +832,14 @@ def _check_writes(
     writes: Set[str],
     used: Set[str],
     report: SkillReport,
+    readable: bool = True,
 ) -> None:
     """Every write-tool call anywhere in the text, in code blocks or prose."""
     pattern = re.compile(r"\b(" + "|".join(sorted(catalog.write)) + r")\s*\(")
     for n, line in enumerate(text.splitlines(), 1):
         for tool in dict.fromkeys(pattern.findall(line)):
             used.add(tool)
-            if tool not in writes:
+            if tool not in writes and readable:
                 report.add(
                     "warning",
                     rel,
@@ -888,15 +936,16 @@ def lint_skill(
     data, body_line, problem = _frontmatter(texts.get(main, ""))
     tables: Optional[Set[str]] = None
     writes: Set[str] = set()
+    readable = False  # the metadata can be trusted for the profile checks below
     if data is None:
         report.add("error", "SKILL.md", None, problem)
         if problem.startswith("frontmatter is not valid YAML"):
             # Claude Code may still read it, by its own rules: say what differs.
             _check_frontmatter_layout(texts[main], report)
     else:
-        _check_frontmatter_layout(texts[main], report)
+        readable = _check_frontmatter_layout(texts[main], report)
         tables, writes = _check_frontmatter(
-            skill, data, report, core_names, is_core, catalog
+            skill, data, report, core_names, is_core, catalog, readable
         )
     report.writes = sorted(writes)
 
@@ -905,20 +954,28 @@ def lint_skill(
         _check_text(skill, path, text, report)
         if path.suffix.lower() == ".md":
             rel = path.relative_to(skill).as_posix()
-            _check_writes(rel, text, catalog, writes, used, report)
+            _check_writes(rel, text, catalog, writes, used, report, readable)
             for first_line, content in _fences(text):
                 _check_calls(
-                    rel, first_line, content, catalog, tables, writes, used, report
+                    rel,
+                    first_line,
+                    content,
+                    catalog,
+                    tables,
+                    writes,
+                    used,
+                    report,
+                    readable,
                 )
     unused_writes = sorted(writes - used)
-    if unused_writes:
+    if unused_writes and readable:
         report.add(
             "warning",
             "SKILL.md",
             None,
             f"{WRITES_KEY} declares tools no call uses: {' '.join(unused_writes)}",
         )
-    if tables:
+    if tables and readable:
         # Dot-walks (group.name) read other tables without a call naming them, so
         # only flag a declared table the skill never mentions at all.
         bodies = dict(texts)

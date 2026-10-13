@@ -581,6 +581,8 @@ def summarize(
         )
     elif mean_over_tools is not None:
         over_tools_text = f"{mean_over_tools:+.2f}"
+    elif baseline is not None:
+        over_tools_text = "— (the baseline has no per-run grader results)"
     else:
         over_tools_text = "— (no tools-only baseline)"
 
