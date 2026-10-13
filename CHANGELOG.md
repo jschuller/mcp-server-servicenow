@@ -7,7 +7,8 @@ A security fix for the skill validator, plus the small fixes the 0.9.0 review de
 ### Upgrade notes
 - **The validator accepts a narrower frontmatter layout** (see Security). A skill that
   passed 0.9.0 can now fail if its frontmatter holds a tab, a `---` inside a value, a
-  value that goes on in column 0, a quoted key or a YAML anchor or tag. Ordinary
+  value that goes on in column 0, a quoted, duplicate or `yes:`/`on:` key, a control or
+  bidi character, or a YAML anchor or tag. Ordinary
   frontmatter, such as folded `description: >-` blocks, a `metadata:` map or lists of
   paths, is unaffected, and all the skills in this repository pass unchanged.
 - **The template pins the validate-skills Action by commit SHA** (`@66ba925… # v0.9.0`)
@@ -36,8 +37,10 @@ A security fix for the skill validator, plus the small fixes the 0.9.0 review de
 - **Identifier patterns end in `\Z`, not `$`.** `$` also matches before a final
   newline, so the server's own guard let `"incident\n"` through as a table name into the
   URL path. The same applied to `order_by`, an update-set state, a role name, a schema
-  URI and the end of an allowed date helper in a query. In the validator,
-  `"mcp-server-servicenow\n"` passed as the package and `"false\n"` as a safe setting.
+  URI and the end of an allowed date helper in a query. In the validator and the eval
+  kit, `"mcp-server-servicenow\n"` passed as the package and `"false\n"` as a safe
+  setting, and so did a trailing newline in a skill name, a role or the plugin's server
+  name.
 
 ### Fixed
 - `--eval-summary` refuses a tools-only baseline with a different number of runs per

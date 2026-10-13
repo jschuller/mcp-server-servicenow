@@ -82,7 +82,7 @@ These rules keep a skill safe to read and to serve: it is instructions and refer
 
 Claude Code reads frontmatter with its own parser: it ends the block at the first `---`, even inside a value, parses it as YAML 1.2, and when that fails it quotes `key: value` lines and parses again. This check reads YAML 1.1. Frontmatter those readers could disagree on could hide `hooks`, `allowed-tools` or `shell` from the check, so the validator accepts only a layout that fixes the keys in the text itself:
 
-- the first line is `---` alone, and the block ends at the next line that is `---` alone;
+- the first line is `---` alone (trailing spaces allowed), and the block ends at the next such line;
 - no `---` anywhere inside the block (write a dash or two);
 - no tabs, no control characters (a lone carriage return included), no U+2028/U+2029 line or paragraph separators, no byte-order mark and no bidi controls (CRLF line endings are fine);
 - each line in column 0 is a key written as a plain name (`name: value`), a `- item` or a `#` comment, and those keys are exactly the ones the YAML holds (so no quoted, `?` or `on:`/`yes:` keys, and no duplicate keys);
@@ -110,7 +110,7 @@ The digest covers every file's path and content, so you can pin a skill: if anyt
 | A `.claude-plugin/marketplace.json` with keys other than `name`, `owner`, `description`, `version`, `metadata`, `plugins`, `$schema`; a `metadata.pluginRoot`; an entry with keys other than metadata, `source`, `category` and `tags` (no `strict`, no components); or a `source` that isn't a folder in the repository holding `.claude-plugin/plugin.json`. Plugins it lists are checked wherever they are | |
 | Eval case, grader or mock frontmatter that doesn't parse: `claude plugin eval` skips the file | |
 
-The reason is that `claude plugin eval` runs a plugin's hooks, agents and servers on the evaluator's machine, as the evaluator, and the skills' users run what the skills carry. A repository that passes with `--strict` declares nothing that runs except this server, and its skills are instructions only. The validator is a static check, not a sandbox: read what you run, and run unfamiliar suites in a container or CI runner. Pin the server (`mcp-server-servicenow==0.9.0`) in the wrapper and in the Action.
+The reason is that `claude plugin eval` runs a plugin's hooks, agents and servers on the evaluator's machine, as the evaluator, and the skills' users run what the skills carry. A repository that passes with `--strict` declares nothing that runs except this server, and its skills are instructions only. The validator is a static check, not a sandbox: read what you run, and run unfamiliar suites in a container or CI runner. Pin the server (`mcp-server-servicenow==0.9.1`) in the wrapper and in the Action.
 
 ## The eval kit
 

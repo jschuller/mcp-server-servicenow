@@ -28,20 +28,26 @@ the release (see Failure modes).
    Then `uv lock` (the lockfile records the project's own version), a
    `CHANGELOG.md` section (`## [X.Y.Z] - YYYY-MM-DD`).
 
-   The template pins the release too, and CI checks the pins. The places are:
-   - `examples/template/.claude-plugin/plugin.json` (`mcp-server-servicenow==X.Y.Z`);
+   The template and the examples pin the release too, and CI checks those pins:
+   - `examples/template/.claude-plugin/plugin.json` and the examples'
+     `.claude-plugin/plugin.json` (`mcp-server-servicenow==X.Y.Z`);
    - `examples/template/.github/workflows/validate-skills.yml` (`server-version`);
    - `examples/template/.github/workflows/evals.yml` (`SERVER_VERSION`);
    - the template README.
 
+   CI doesn't check the doc commands, so grep them: the `==X.Y.Z` commands and
+   `server-version` in `EXTENDING.md`, `docs/skill-profile.md` and `examples/*/README.md`
+   (`grep -rn 'validate-skills@\|==0\.' EXTENDING.md docs examples/*/README.md`).
+
    That workflow pins the Action by commit SHA, not by tag (the same SHA is shown in
-   `EXTENDING.md` and `docs/skill-profile.md`). CI requires the pinned commit to be in
-   main's history with the same `actions/validate-skills/` as the release. While the
-   Action is unchanged, keep the pin. When a release changes it, pin the commit that
-   changes it, with `# main` as the comment. After the release, re-pin to the tag's
-   commit (`git rev-parse vX.Y.Z^{commit}`, with `# vX.Y.Z` as the comment) in a
-   follow-up commit on main, and copy the template from that commit in post-release
-   step 5.
+   `EXTENDING.md` and `docs/skill-profile.md`; CI doesn't compare those two). CI requires
+   the pinned commit to be in the checked-out history with the same
+   `actions/validate-skills/` as the tree. While the Action is unchanged, keep the pin.
+   When a release changes it, pin the last commit that changes it, with `# main` as the
+   comment; the fast-forward in step 4 keeps that commit on main. In that case only,
+   after the release, re-pin to the tag's commit (`git rev-parse vX.Y.Z^{commit}`, with
+   `# vX.Y.Z` as the comment) in a follow-up commit on main, and copy the template from
+   that commit in post-release step 5.
 
    After tool changes, refresh the eval mocks. CI's strict wrapper check fails on a
    stale `_tools.json`. Run `--eval-mocks` on `.` and on each `examples/*` plugin.
@@ -148,12 +154,13 @@ The tag must be exactly `v` + the pyproject version.
    publishing, PyPI's CDN can still answer that the version doesn't exist (v0.9.0:
    about 5 minutes); wait and retry.
 5. Template repository ([jschuller/servicenow-skills-template](https://github.com/jschuller/servicenow-skills-template)):
-   replace its files with the tagged `examples/template/`, commit, tag `vX.Y.Z` and push.
+   replace its files with `examples/template/` from the tag (or from the re-pin commit
+   when the release changed the Action, see Pre-flight 1), commit, tag `vX.Y.Z` and push.
    Its "Validate skills" run then exercises the released Action and package, and must
    pass.
 
    ```sh
-   git archive vX.Y.Z examples/template | tar -x -C /tmp/tpl   # copy /tmp/tpl/examples/template/ over a clone
+   git archive vX.Y.Z examples/template | tar -x -C /tmp/tpl   # or the re-pin commit; copy /tmp/tpl/examples/template/ over a clone
    ```
 
 ## Failure modes & recovery

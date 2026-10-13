@@ -156,7 +156,7 @@ Two shortcuts:
 
 A skill is instructions your agent will follow, so treat skills from others like code from others:
 - read them before installing;
-- pin them by tag or by the validator's digest;
+- pin them by commit or by the validator's digest;
 - prefer read-only skills.
 
 To re-run someone else's evals, run the validator with `--strict` on their repository first. `claude plugin eval` runs a plugin's hooks, agents and servers as you, and a repository that passes has none of those: its wrapper declares only skills and this server, and its skills carry no hooks, pre-approved tools or shell injection. The validator is a check, not a sandbox, so still read what you run. Never pass `--scaffold`, `--allow-real-servers` or `--mocks off` to a suite you didn't write. If you're unsure, run it in a container or a CI runner.
