@@ -13,6 +13,7 @@ Skills for [mcp-server-servicenow](https://github.com/jschuller/mcp-server-servi
 | `evals/` | Behaviour tests with mocked tools: no instance, no credentials |
 | `.github/workflows/validate-skills.yml` | Validator and citation check on every push |
 | `.github/workflows/evals.yml` | The eval suite, started by hand, with your own Claude credential |
+| `LICENSE` | MIT. Put your own name in it, or replace it with the licence you choose |
 
 ## 1. Write the skill
 
@@ -20,6 +21,7 @@ Edit `skills/my-servicenow-skill/SKILL.md`:
 - **The description** says what it does, then the words people type when they need it.
 - **The metadata** declares the tables and roles, plus `io.github.jschuller/servicenow-writes` if it calls a write tool.
 - **The body** covers what a 403, an empty result or a missing field means.
+- **The licence:** put your name in `LICENSE` and in the skill's `author`. If you choose another licence, change `LICENSE` and the skill's `license` together.
 
 Then check it:
 
