@@ -61,12 +61,12 @@ Warnings cover what a reviewer should look at:
 
 It also checks the plugin wrapper (`.claude-plugin/plugin.json`):
 - **The manifest** may declare only metadata, the skills and one server. Any other key is an error, and so are the folders Claude Code loads as code (`hooks/`, `agents/`, `commands/`, `bin/`, `workflows/` and the rest), a `package.json`, and uv settings.
-- **The server** must run `uvx mcp-server-servicenow[==version]` with the package first. Only `--read-only`, `--debug` or `--allow-js-queries` may follow it, and `env` may set only this server's `SERVICENOW_*` settings. Credentials must come from the user's environment (`${SERVICENOW_PASSWORD}`), with no default.
+- **The server** must run `uvx mcp-server-servicenow[==version]` with the package first. Only `--read-only`, `--debug` or `--allow-js-queries` may follow it, and `env` may set only this server's `SERVICENOW_*` settings. Credentials, the instance URL and the token URL must come from the user's environment, as `${NAME}` or `${NAME:-}` with no default value, so a skills repository can't send your credentials to a host it chooses.
 - **The evals:** it warns when `evals/mocks/<server>/_tools.json` no longer matches the server's tools, and when a grader names a skill, plugin or server that isn't there.
 
 With `--strict`, warnings fail too, such as a remote server, `--allow-js-queries` or an audit log written to a file.
 
-In GitHub, the template's workflow runs the same check and a citation check on every push, using the Action:
+In GitHub, the template's workflow runs the same check and a citation check on pull requests and pushes to main, using the Action:
 
 ```yaml
 - uses: jschuller/mcp-server-servicenow/actions/validate-skills@v0.9.0

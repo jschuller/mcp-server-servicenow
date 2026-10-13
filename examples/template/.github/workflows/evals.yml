@@ -69,6 +69,9 @@ jobs:
             --runs "$RUNS" --threshold "$THRESHOLD" --model "$MODEL" --judge-model "$JUDGE" \
             --ablation none --no-publish --max-cost-usd "$MAX_COST"
           echo "code=$?" >> "$GITHUB_OUTPUT"
+      - name: Copy the plugin without its skills
+        if: always() && steps.run.outputs.code != ''
+        run: uvx "mcp-server-servicenow==${SERVER_VERSION}" --eval-baseline . "$RUNNER_TEMP/tools-only"
       - name: Run the same cases with the bare tools (what the skills add)
         if: always() && steps.run.outputs.code != ''
         env:
@@ -79,7 +82,6 @@ jobs:
           JUDGE: ${{ inputs.judge-model }}
           MAX_COST: ${{ inputs.max-cost-usd }}
         run: |
-          uvx "mcp-server-servicenow==${SERVER_VERSION}" --eval-baseline . "$RUNNER_TEMP/tools-only"
           # Its own exit code doesn't matter: skill checks can't pass without skills.
           claude plugin eval "$RUNNER_TEMP/tools-only" --trust-plugin --json evals/baseline.json \
             --runs "$RUNS" --model "$MODEL" --judge-model "$JUDGE" \

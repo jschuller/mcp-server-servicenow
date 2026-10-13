@@ -324,6 +324,8 @@ def test_summary_notes_cases_missing_from_the_baseline(tmp_path: Path) -> None:
     text, _ = summarize(write_result(tmp_path, with_skills), base)
     assert "| Δ vs tools only | +1.00 (1 of 2 cases) |" in text
     assert "Not in the tools-only baseline: new-case." in text
+    _, badge = summarize(write_result(tmp_path, with_skills), base)
+    assert badge["message"].endswith("+1.00 vs tools (1/2)")
     base.write_text(json.dumps({**RESULT, "cases": [_case("other", [{"task": True}])]}))
     with pytest.raises(EvalKitError, match="no case names in common"):
         summarize(write_result(tmp_path, with_skills), base)
@@ -381,6 +383,8 @@ def test_cli_refuses_flags_without_their_mode(tmp_path: Path) -> None:
     ):
         out = subprocess.run([*cmd, *args], capture_output=True, text=True, env=env)
         assert out.returncode == 2 and expected in out.stderr, out.stderr
+    out = subprocess.run([*cmd, "--version"], capture_output=True, text=True, env=env)
+    assert out.returncode == 0 and out.stdout.startswith("mcp-server-servicenow ")
 
 
 def test_tools_only_copy(tmp_path: Path) -> None:
@@ -433,14 +437,24 @@ def test_tools_only_copy_refuses_links_and_files(tmp_path: Path) -> None:
     (tmp_path / "file").write_text("x")
     with pytest.raises(EvalKitError, match="is a file"):
         write_tools_only(plugin, tmp_path / "file")
+    (tmp_path / "real").mkdir()
+    (tmp_path / "real" / ".eval-baseline").write_text("")
+    (tmp_path / "linked").symlink_to(tmp_path / "real")
+    with pytest.raises(EvalKitError, match="is a symlink"):
+        write_tools_only(plugin, tmp_path / "linked")
+    with pytest.raises(EvalKitError, match="contains the plugin"):
+        write_tools_only(plugin, tmp_path)
 
 
 def test_eval_mocks_refuse_paths_outside_the_plugin(tmp_path: Path) -> None:
-    skill = SKILL.replace('"task_sla contract_sla"', '"task_sla ../../../../escaped"')
+    skill = SKILL.replace(
+        '"task_sla contract_sla"', '"task_sla ../../../../escaped /tmp/absolute"'
+    )
     plugin = make_plugin(tmp_path / "plugin")
     (plugin / "skills" / "my-skill" / "SKILL.md").write_text(skill)
     done = write_eval_mocks(plugin, "9.9.9")
     assert any(action == "skipped" and "escaped" in path for action, path in done)
+    assert any(action == "skipped" and "absolute" in path for action, path in done)
     assert not list(tmp_path.rglob("escaped.json"))
     manifest = {
         **MANIFEST,

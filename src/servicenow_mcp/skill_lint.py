@@ -147,6 +147,8 @@ SERVER_ENV = {
     "SERVICENOW_AUDIT_LOG",
 }
 SECRET_ENV = {"SERVICENOW_PASSWORD", "SERVICENOW_CLIENT_SECRET", "SERVICENOW_API_KEY"}
+# Where the server sends those credentials: a skills repository mustn't choose it.
+HOST_ENV = {"SERVICENOW_INSTANCE_URL", "SERVICENOW_TOKEN_URL"}
 SERVER_FLAGS = {"--read-only", "--debug", "--allow-js-queries"}
 SERVER_SPEC_KEYS = {"type", "command", "args", "env"}
 ENV_REF_RE = re.compile(r"^\$\{[A-Za-z_][A-Za-z0-9_]*(:-[^}]*)?\}$")
@@ -230,6 +232,9 @@ class SkillReport:
     digest: str = ""
     writes: List[str] = field(default_factory=list)  # declared write tools
     findings: List[Finding] = field(default_factory=list)
+    declared_skills: List[Path] = field(
+        default_factory=list
+    )  # a plugin's skill folders
 
     def add(self, level: str, path: str, line: Optional[int], message: str) -> None:
         self.findings.append(Finding(level, path, line, message))
@@ -680,7 +685,7 @@ def _check_shell(rel: str, text: str, report: SkillReport) -> None:
     for n, line in enumerate(text.splitlines(), 1):
         fence = FENCE_RE.match(line)
         if SHELL_INJECTION_RE.search(line) or (
-            fence and fence.group(3).startswith("!")
+            fence and fence.group(3).lstrip().startswith("!")
         ):
             report.add(
                 "error",
@@ -905,6 +910,14 @@ def _check_server(name: str, spec: object, report: SkillReport) -> None:
                 "error", where, None, f"mcpServers.{name}.env.{key} must be a string"
             )
             continue
+        if key in HOST_ENV and value and not SECRET_REF_RE.match(value):
+            report.add(
+                "error",
+                where,
+                None,
+                f"mcpServers.{name}.env.{key} sets a host or default: use ${{{key}}}, "
+                "so the user's credentials go only to the instance they choose",
+            )
         if key in SECRET_ENV and value and not SECRET_REF_RE.match(value):
             report.add(
                 "error",
@@ -1106,7 +1119,9 @@ def lint_plugin(plugin: Path, catalog_tools: List[Dict[str, Any]]) -> SkillRepor
                 "error", where, None, f"skills path {entry!r} is not a folder inside"
             )
         else:
-            skill_names.update(p.name for p in find_skill_dirs(target))
+            declared = find_skill_dirs(target)
+            report.declared_skills.extend(declared)
+            skill_names.update(p.name for p in declared)
     servers = manifest.get("mcpServers")
     server_name = (
         str(next(iter(servers)))
@@ -1162,6 +1177,14 @@ def lint_skills(paths: Sequence[Path]) -> LintReport:
             catalog_tools = _catalog_tools()
         for plugin in plugins:
             report.plugins.append(lint_plugin(plugin, catalog_tools or []))
+    # A plugin's skills paths may point where the search doesn't go (node_modules, .venv);
+    # Claude Code loads those skills all the same, so check them too.
+    seen = {s.path.resolve() for s in report.skills}
+    for plugin_report in report.plugins:
+        for skill in plugin_report.declared_skills:
+            if skill.resolve() not in seen:
+                seen.add(skill.resolve())
+                report.skills.append(lint_skill(skill, catalog, core_names, core_root))
     return report
 
 

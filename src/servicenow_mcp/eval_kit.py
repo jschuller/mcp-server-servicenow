@@ -35,6 +35,7 @@ import subprocess
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple
 
+from servicenow_mcp import __version__
 from servicenow_mcp.middleware.policy import IDENTIFIER_RE
 from servicenow_mcp.skill_lint import (
     TABLES_KEY,
@@ -203,17 +204,12 @@ def write_eval_mocks(plugin_dir: Path, version: str) -> List[Tuple[str, str]]:
     )
     for name, text in DEFAULT_MOCKS.items():
         write(mocks / name, text)
+    fixtures = (mocks / "fixtures").relative_to(plugin_dir).as_posix()
     for table in declared_tables(plugin_dir, manifest):
-        fixture = mocks / "fixtures" / f"{table}.json"
         if not IDENTIFIER_RE.match(table):
-            done.append(
-                (
-                    "skipped",
-                    f"{fixture.parent.relative_to(plugin_dir).as_posix()}/"
-                    f" (not a table name: {table!r})",
-                )
-            )
+            done.append(("skipped", f"{fixtures}/ (not a table name: {table!r})"))
             continue
+        fixture = mocks / "fixtures" / f"{table}.json"
         write(fixture, EMPTY_FIXTURE)
     return done
 
@@ -265,6 +261,7 @@ def _commit(result: Dict[str, Any]) -> Optional[str]:
         "evals",
         ".claude-plugin",
         ":(exclude)evals/badge.json",
+        ":(exclude)evals/mocks/*/.replay",  # recordings a run may add
     )
     return f"{sha} (with uncommitted changes)" if dirty else sha
 
@@ -304,10 +301,16 @@ def write_tools_only(plugin_dir: Path, out_dir: Path) -> List[str]:
             f"{plugin_dir}: plugin.json has no mcpServers entry that runs "
             "mcp-server-servicenow"
         )
+    if out_dir.is_symlink():
+        raise EvalKitError(f"{out_dir}: is a symlink; give a real folder")
     plugin, out = plugin_dir.resolve(), out_dir.resolve()
-    if out == plugin or out.is_relative_to(plugin) or plugin.is_relative_to(out):
+    if out == plugin or out.is_relative_to(plugin):
         raise EvalKitError(
             f"{out_dir}: give a folder outside the plugin, e.g. ../tools-only"
+        )
+    if plugin.is_relative_to(out):
+        raise EvalKitError(
+            f"{out_dir}: contains the plugin; give a new folder, e.g. ../tools-only"
         )
     if out_dir.exists() and not out_dir.is_dir():
         raise EvalKitError(f"{out_dir}: is a file; give a folder")
@@ -459,7 +462,7 @@ def summarize(
         failed = _failed_runs(run) if run is not None else []
         if failed:
             raise EvalKitError(
-                f"{path}: {len(failed)} runs ended with an error, e.g. {failed[0]} "
+                f"{path}: {len(failed)} run(s) ended with an error, e.g. {failed[0]} "
                 "(a usage limit or a timeout scores 0); run the suite again"
             )
     if baseline is not None and baseline_path is not None:
@@ -567,6 +570,8 @@ def summarize(
         reproduce += f" --judge-model {judge}"
     if runs:
         reproduce += f" --runs {runs[-1]}"
+    if threshold is not None:
+        reproduce += f" --threshold {threshold:g}"
     lines += [
         "",
         "- **Δ vs tools only:** the same cases with this server's tools and no skills "
@@ -587,7 +592,7 @@ def summarize(
         ]
     if baseline is not None:
         baseline_cmd = (
-            "mcp-server-servicenow --eval-baseline . ../tools-only && "
+            f"uvx mcp-server-servicenow=={__version__} --eval-baseline . ../tools-only && "
             + reproduce.replace("eval .", "eval ../tools-only").replace(
                 f"--ablation {ablation}", "--ablation none"
             )
@@ -605,6 +610,8 @@ def summarize(
     )
     if mean_over_tools is not None:
         message += f", {mean_over_tools:+.2f} vs tools"
+        if len(over_tools) < len(cases):
+            message += f" ({len(over_tools)}/{len(cases)})"
     elif mean_delta is not None:
         message += f", Δ {mean_delta:+.2f}"
     badge = {"schemaVersion": 1, "label": "evals", "message": message, "color": color}

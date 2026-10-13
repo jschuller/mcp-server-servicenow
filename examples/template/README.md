@@ -11,7 +11,7 @@ Skills for [mcp-server-servicenow](https://github.com/jschuller/mcp-server-servi
 | `skills/my-servicenow-skill/` | A plain Agent Skill. Rename the folder, its `name` and the name in `evals/my-first-case/graders/skill-fired.md` together |
 | `.claude-plugin/plugin.json` | Makes the repository a Claude Code plugin, so `claude plugin eval` can test it. It declares only the skills and the server, pinned to a version |
 | `evals/` | Behaviour tests with mocked tools: no instance, no credentials |
-| `.github/workflows/validate-skills.yml` | Validator and citation check on every push |
+| `.github/workflows/validate-skills.yml` | Validator and citation check on pull requests and pushes to main |
 | `.github/workflows/evals.yml` | The eval suite, started by hand, with your own Claude credential |
 | `LICENSE` | MIT. Put your own name in it, or replace it with the licence you choose |
 

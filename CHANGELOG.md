@@ -41,10 +41,12 @@ content and fixes prepared as 0.8.1, which was never released.
     a `package.json`, and uv settings;
   - a server entry that isn't `uvx mcp-server-servicenow[==version]` first, with only
     `--read-only`, `--debug` or `--allow-js-queries` after it; `env` keys other than
-    this server's settings (no `PYTHONPATH` or `UV_*`); credentials with a literal
-    value or default;
+    this server's settings (no `PYTHONPATH` or `UV_*`); credentials, the instance URL
+    or the token URL with a literal value or default, so a repository can't send the
+    user's credentials to a host it chooses;
   - symlinked folders anywhere it searches. It now searches hidden folders such as
-    `.claude/skills` too, because installers read them.
+    `.claude/skills` too, because installers read them, and checks every skill a
+    plugin's `skills` paths declare, even in `node_modules` or `.venv`.
 
   A pre-release review found each of these could pass `--strict` while running other
   code for whoever evaluated or installed the skills.

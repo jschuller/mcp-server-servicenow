@@ -66,7 +66,12 @@ def _env_int(name: str, default: int) -> int:
 
 def parse_args() -> argparse.Namespace:
     """Parse command-line arguments."""
+    from servicenow_mcp import __version__
+
     parser = argparse.ArgumentParser(description="ServiceNow MCP Server")
+    parser.add_argument(
+        "--version", action="version", version=f"mcp-server-servicenow {__version__}"
+    )
 
     parser.add_argument(
         "--instance-url",
