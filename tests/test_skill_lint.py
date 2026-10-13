@@ -555,6 +555,8 @@ def test_a_skills_wrapper_passes(tmp_path: Path) -> None:
         ({"workflows": "./workflows/"}, "error", "adds code"),
         ({"userConfig": {"k": {}}}, "error", "adds code"),
         ({"skills": "../elsewhere"}, "error", "not a folder inside"),
+        ({"skills": "/etc"}, "error", "not a folder inside"),
+        ({"skills": ["./skills/", "/tmp"]}, "error", "not a folder inside"),
         (
             {"mcpServers": {**WRAPPER["mcpServers"], "other": {"command": "npx"}}},  # type: ignore[dict-item]
             "error",
@@ -796,6 +798,15 @@ def test_skill_folders_named_like_skipped_folders_are_checked(
     )
     errors = messages(lint_skills([plugin]), "error")
     assert any("shell injection" in m for m in errors), errors
+
+
+def test_a_symlinked_skills_path_is_refused(tmp_path: Path) -> None:
+    plugin = make_wrapper(tmp_path, {**WRAPPER, "skills": "./linked/"})
+    (plugin / "linked").symlink_to(plugin / "skills")
+    report = lint_skills([plugin])
+    assert any(
+        "'./linked/' is a symlink" in m for m in plugin_messages(report, "error")
+    )
 
 
 def test_symlinks_in_a_declared_skills_path_are_refused(tmp_path: Path) -> None:

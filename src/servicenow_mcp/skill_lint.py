@@ -1235,9 +1235,17 @@ def lint_plugin(plugin: Path, catalog_tools: List[Dict[str, Any]]) -> SkillRepor
             continue
         path = plugin / entry
         target = path.resolve()
-        if path.is_symlink():
+        # Outside by its spelling first: "/etc" is also a symlink on macOS.
+        outside = not Path(os.path.abspath(path)).is_relative_to(
+            os.path.abspath(plugin)
+        )
+        if path.is_symlink() and not outside:
             report.add("error", where, None, f"skills path {entry!r} is a symlink")
-        elif not target.is_relative_to(plugin.resolve()) or not target.is_dir():
+        elif (
+            outside
+            or not target.is_relative_to(plugin.resolve())
+            or not target.is_dir()
+        ):
             report.add(
                 "error", where, None, f"skills path {entry!r} is not a folder inside"
             )
