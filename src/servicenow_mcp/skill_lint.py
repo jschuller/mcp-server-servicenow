@@ -193,6 +193,18 @@ SKILL_KEYS = (
     | set(SKILL_CODE_KEYS)
     | SKILL_CONTEXT_KEYS
 )
+# SKILL.md frontmatter laid out so that every YAML reader finds the same top-level keys.
+# Claude Code ends the block at the first "---" (even inside a value), parses it with Bun's
+# YAML 1.2 parser and, when that fails, re-quotes `key: value` lines and parses again; this
+# check uses PyYAML (YAML 1.1). A key is a plain name at the start of its own line, so the
+# text alone fixes the keys, whichever reader parses it.
+FRONTMATTER_FENCE_RE = re.compile(r"---[ \t]*")
+FRONTMATTER_KEY_RE = re.compile(r"([A-Za-z0-9_][A-Za-z0-9_.-]*):(?: .*)?")
+# Characters some YAML readers take as a line break or a space and others don't (tab, NEL,
+# U+2028/9), the byte-order mark, and the bidi controls that hide text from a reviewer.
+FRONTMATTER_UNSAFE_RE = re.compile(
+    "[\x00-\x09\x0b-\x1f\x7f-\x9f\u061c\u200e\u200f\u2028-\u202e\u2066-\u2069\ufeff]"
+)
 # Claude Code runs !`command` (after a line start or whitespace, in JavaScript's sense,
 # which includes U+FEFF) and ```! blocks (anywhere in the text) when a skill loads.
 SHELL_INJECTION_RE = re.compile(r"(?:^|[\s\ufeff])!`|```\s*!")
@@ -393,6 +405,8 @@ def _digest(skill: Path, paths: Iterable[Path]) -> str:
 
 def _frontmatter(text: str) -> Tuple[Optional[dict], int, str]:
     """Return (frontmatter or None, the body's first line number, error)."""
+    if text.startswith("\ufeff"):
+        return None, 1, "the file starts with a byte-order mark; remove it"
     if not text.startswith("---"):
         return None, 1, "SKILL.md must start with YAML frontmatter (---)"
     lines = text.splitlines()
@@ -406,6 +420,104 @@ def _frontmatter(text: str) -> Tuple[Optional[dict], int, str]:
                 return None, i + 2, "frontmatter must be a mapping"
             return data, i + 2, ""
     return None, 1, "frontmatter has no closing ---"
+
+
+def _check_frontmatter_layout(text: str, report: SkillReport) -> None:
+    """Refuse SKILL.md frontmatter that Claude Code could read with other top-level keys.
+
+    Claude Code acts on ``hooks``, ``allowed-tools`` and ``shell``; a layout two YAML
+    readers disagree on could hide them from this check.
+    """
+
+    def refuse(line: Optional[int], why: str) -> None:
+        report.add(
+            "error",
+            "SKILL.md",
+            line,
+            f"Claude Code could read this frontmatter differently: {why}",
+        )
+
+    lines = [line.removesuffix("\r") for line in text.split("\n")]
+    if not FRONTMATTER_FENCE_RE.fullmatch(lines[0]):
+        refuse(1, "the first line must be --- alone")
+        return
+    end = next(
+        (i for i in range(1, len(lines)) if FRONTMATTER_FENCE_RE.fullmatch(lines[i])),
+        None,
+    )
+    if end is None:
+        refuse(None, "no line that is --- alone closes it")
+        return
+    block = lines[1:end]
+    clean = True
+    for n, line in enumerate(block, 2):
+        if "---" in line:
+            refuse(
+                n,
+                "Claude Code ends the frontmatter at the first ---, even inside a value",
+            )
+            clean = False
+        unsafe = FRONTMATTER_UNSAFE_RE.search(line)
+        if unsafe:
+            char = unsafe.group()
+            refuse(
+                n,
+                "a tab: indent with spaces"
+                if char == "\t"
+                else f"character U+{ord(char):04X}, which YAML readers treat differently "
+                "or which hides text",
+            )
+            clean = False
+    if not clean:
+        return
+
+    source = "\n".join(block)
+    try:
+        data = yaml.safe_load(source) or {}
+        tokens = list(yaml.scan(source, Loader=yaml.SafeLoader))
+    except yaml.YAMLError:
+        return  # reported as invalid YAML already
+    if not isinstance(data, dict):
+        return
+    flow = 0
+    for token in tokens:
+        start, stop = token.start_mark, token.end_mark
+        line = start.line + 2
+        if isinstance(token, (yaml.AnchorToken, yaml.AliasToken, yaml.TagToken)):
+            refuse(line, "anchors, aliases and tags (&, *, !): write the value out")
+        if flow and start.column == 0:
+            refuse(line, "a [...] or {...} value goes on in column 0: indent it")
+        if isinstance(token, (yaml.FlowSequenceStartToken, yaml.FlowMappingStartToken)):
+            flow += 1
+        elif isinstance(token, (yaml.FlowSequenceEndToken, yaml.FlowMappingEndToken)):
+            flow -= 1
+        elif isinstance(token, yaml.ScalarToken):
+            # A block scalar's end mark sits at the start of the line after it.
+            last = stop.line if stop.column else stop.line - 1
+            for i in range(start.line + 1, last + 1):
+                if block[i].strip() and not block[i].startswith(" "):
+                    refuse(i + 2, "a value goes on in column 0: indent it")
+
+    keys: List[str] = []
+    for n, line in enumerate(block, 2):
+        if not line or line == "-" or line.startswith((" ", "#", "- ")):
+            continue
+        key = FRONTMATTER_KEY_RE.fullmatch(line)
+        if key:
+            keys.append(key.group(1))
+        else:
+            refuse(
+                n,
+                "a line in column 0 must be `name: value`, `- item` or a # comment",
+            )
+    found = list(data)
+    if found != keys or not all(isinstance(k, str) for k in found):
+        refuse(
+            None,
+            "write each top-level key as a plain name at the start of its own line "
+            f"(the YAML has {', '.join(map(repr, found)) or 'no keys'}; "
+            f"the lines start {', '.join(map(repr, keys)) or 'no keys'})",
+        )
 
 
 def _split_words(value: object) -> Optional[List[str]]:
@@ -761,7 +873,8 @@ def lint_skill(
     texts: Dict[Path, str] = {}
     for path in paths:
         try:
-            texts[path] = path.read_text(encoding="utf-8")
+            # Bytes as they are: read_text would turn CR and CRLF into LF.
+            texts[path] = path.read_bytes().decode("utf-8")
         except UnicodeDecodeError:
             report.add(
                 "error", path.relative_to(skill).as_posix(), None, "not UTF-8 text"
@@ -773,7 +886,11 @@ def lint_skill(
     writes: Set[str] = set()
     if data is None:
         report.add("error", "SKILL.md", None, problem)
+        if problem.startswith("frontmatter is not valid YAML"):
+            # Claude Code may still read it, by its own rules: say what differs.
+            _check_frontmatter_layout(texts[main], report)
     else:
+        _check_frontmatter_layout(texts[main], report)
         tables, writes = _check_frontmatter(
             skill, data, report, core_names, is_core, catalog
         )

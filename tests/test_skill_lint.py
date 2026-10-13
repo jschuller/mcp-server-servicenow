@@ -168,6 +168,92 @@ def test_frontmatter_errors(tmp_path: Path, frontmatter: str, expected: str) -> 
     assert any(expected in m for m in messages(lint_skills([skill]), "error"))
 
 
+DIFFERENTLY = "Claude Code could read this frontmatter differently"
+
+
+@pytest.mark.parametrize(
+    ("block", "expected"),
+    [
+        # Claude Code 2.1.296 re-quotes `key: value` lines when Bun's YAML parser fails, which
+        # closes the first value early and turns the next line into a key.
+        ("description: 'start #x\nhooks: {} '", "goes on in column 0"),
+        ('description: "start #x\nhooks: {} "', "goes on in column 0"),
+        ("paths: [a,\nhooks: x]", "goes on in column 0"),
+        ("x: {a: 1,\nhooks: 1}", "goes on in column 0"),
+        ('description: "x\n# y\n  z"', "goes on in column 0"),
+        ("description: x\n\ufeffhooks: {}", "U+FEFF"),
+        ("description: x\x85hooks: {}", "U+0085"),
+        ("description: x\u2028hooks: {}", "U+2028"),
+        ("description: x\nmetadata:\n\tk: v", "a tab"),
+        ("description: x\rhooks: {}", "U+000D"),
+        ("description: a---b", "first ---"),
+        ('description: x\n"hooks": {}', "must be `name: value`"),
+        ("description: x\n? hooks\n: {}", "must be `name: value`"),
+        ("description: x\non: y", "plain name"),
+        ("description: x\nname: again", "plain name"),
+        ("description: &a x\nx: *a", "anchors, aliases and tags"),
+        ("description: !!str x", "anchors, aliases and tags"),
+    ],
+)
+def test_frontmatter_readers_could_disagree_on(
+    tmp_path: Path, block: str, expected: str
+) -> None:
+    skill = tmp_path / "my-skill"
+    skill.mkdir()
+    text = f"---\nname: my-skill\n{block}\n---\n\n# Body\n"
+    (skill / "SKILL.md").write_bytes(text.encode("utf-8"))
+    errors = [m for m in messages(lint_skills([skill]), "error") if DIFFERENTLY in m]
+    assert any(expected in m for m in errors), errors
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("---x\nname: my-skill\ndescription: x\n---\n", "--- alone"),
+        ("---\n  name: my-skill\n  description: x\n---\n", "plain name"),
+        ("---\nname: my-skill\ndescription: x\n----\n", "no closing ---"),
+        ("---\r\nname: my-skill\rdescription: x\r---\r", "--- alone closes it"),
+    ],
+)
+def test_frontmatter_fences_readers_could_disagree_on(
+    tmp_path: Path, text: str, expected: str
+) -> None:
+    skill = tmp_path / "my-skill"
+    skill.mkdir()
+    (skill / "SKILL.md").write_bytes((text + "\n# Body\n").encode("utf-8"))
+    assert any(expected in m for m in messages(lint_skills([skill]), "error"))
+
+
+def test_a_byte_order_mark_is_named(tmp_path: Path) -> None:
+    skill = tmp_path / "my-skill"
+    skill.mkdir()
+    (skill / "SKILL.md").write_bytes(("\ufeff" + GOOD).encode("utf-8"))
+    assert any("byte-order mark" in m for m in messages(lint_skills([skill]), "error"))
+
+
+@pytest.mark.parametrize(
+    "block",
+    [
+        "description: >-\n  Folded\n  over lines.",
+        "description: x\npaths:\n- src/**\n- docs/*.md",
+        'description: x\n# a comment\nmetadata:\n  a.b: "c d"',
+        "description: Non\u00a0breaking, emoji \U0001f469\u200d\U0001f4bb, a-b--c",
+    ],
+)
+def test_frontmatter_every_reader_agrees_on(tmp_path: Path, block: str) -> None:
+    skill = tmp_path / "my-skill"
+    skill.mkdir()
+    text = f"---\nname: my-skill\nlicense: MIT\n{block}\n---\n\n# Body\n"
+    (skill / "SKILL.md").write_bytes(text.encode("utf-8"))
+    assert messages(lint_skills([skill]), "error") == []
+
+
+def test_crlf_frontmatter_is_fine(tmp_path: Path) -> None:
+    skill = make_skill(tmp_path, {"references/notes.md": ""})
+    (skill / "SKILL.md").write_bytes(GOOD.replace("\n", "\r\n").encode("utf-8"))
+    assert messages(lint_skills([skill]), "error") == []
+
+
 def test_missing_license_is_a_warning(tmp_path: Path) -> None:
     skill = make_skill(
         tmp_path,

@@ -67,6 +67,7 @@ These rules keep a skill safe to read and to serve: it is instructions and refer
 |--------|----------|
 | Frontmatter missing, not YAML, or breaking the name/description rules | No `license` |
 | Frontmatter that runs code or pre-approves tools: `hooks`, `allowed-tools`, `shell` | `context`, `agent` or `background`, which run the skill elsewhere; a field that is neither Agent Skills nor Claude Code |
+| Frontmatter that Claude Code could read with other keys than this check: see [Frontmatter layout](#frontmatter-layout) | |
 | `` !`command` `` after a line start or whitespace, or ```` ```! ```` anywhere in the text: Claude Code runs it when the skill loads | |
 | A file that isn't `.md`/`.txt`/`.csv`, a hidden file or folder, a symlink, not UTF-8; a symlinked folder anywhere in the path | A call to a write tool that `servicenow-writes` doesn't declare, in code or prose |
 | More than 512 files or 16 MiB | A link outside servicenow.com/docs and ServiceNowDocs |
@@ -76,6 +77,19 @@ These rules keep a skill safe to read and to serve: it is instructions and refer
 | Invalid names in the metadata keys, or a `servicenow-writes` entry that isn't a write tool | A function that isn't a tool of this server |
 | | A skill name that is also one of this server's skills |
 | | A declared write tool that no call uses |
+
+### Frontmatter layout
+
+Claude Code reads frontmatter with its own parser: it ends the block at the first `---`, even inside a value, parses it as YAML 1.2, and when that fails it quotes `key: value` lines and parses again. This check reads YAML 1.1. Frontmatter those readers could disagree on could hide `hooks`, `allowed-tools` or `shell` from the check, so the validator accepts only a layout that fixes the keys in the text itself:
+
+- the first line is `---` alone, and the block ends at the next line that is `---` alone;
+- no `---` anywhere inside the block (write a dash or two);
+- no tabs, no control characters (a lone carriage return included), no U+2028/U+2029 line or paragraph separators, no byte-order mark and no bidi controls (CRLF line endings are fine);
+- each line in column 0 is a key written as a plain name (`name: value`), a `- item` or a `#` comment, and those keys are exactly the ones the YAML holds (so no quoted, `?` or `on:`/`yes:` keys, and no duplicate keys);
+- a value that goes on over several lines is indented on each of them;
+- no anchors, aliases or tags (`&`, `*`, `!`).
+
+Ordinary frontmatter (folded `description: >-` blocks, a `metadata:` map, lists of paths) passes unchanged.
 
 A skill that declares its writes passes `--strict`, and its line in the output names them (`writes: create_record`), so a reviewer sees them without reading the body. The skill should still say to ask before writing. This repository's own skills run with `--strict` in CI.
 
