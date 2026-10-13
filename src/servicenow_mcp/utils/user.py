@@ -31,7 +31,7 @@ CALLER_ROLE_QUERY = "user=javascript:gs.getUserID()^state=active"
 # Direct grants only: inherited rows add dozens of contained roles (47 for a
 # plain itil + snc_read_only user) that say nothing the direct ones don't.
 DIRECT_ROLES_QUERY = f"{CALLER_ROLE_QUERY}^inherited=false"
-ROLE_NAME_RE = re.compile(r"^[A-Za-z0-9_.]+$")
+ROLE_NAME_RE = re.compile(r"^[A-Za-z0-9_.]+\Z")
 MAX_DIRECT_ROLES = 200
 
 

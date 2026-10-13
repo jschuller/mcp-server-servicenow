@@ -572,6 +572,31 @@ def test_a_skills_wrapper_passes(tmp_path: Path) -> None:
                 "mcpServers": {
                     "servicenow": {
                         "command": "uvx",
+                        "args": ["mcp-server-servicenow==0.9.0\n"],
+                    }
+                }
+            },
+            "error",
+            "uvx mcp-server-servicenow",
+        ),
+        (
+            {
+                "mcpServers": {
+                    "servicenow": {
+                        "command": "uvx",
+                        "args": ["mcp-server-servicenow"],
+                        "env": {"SERVICENOW_ALLOW_JS_QUERIES": "false\n"},
+                    }
+                }
+            },
+            "warning",
+            "javascript: guard",
+        ),
+        (
+            {
+                "mcpServers": {
+                    "servicenow": {
+                        "command": "uvx",
                         "args": ["mcp-server-servicenow", "rm"],
                     }
                 }

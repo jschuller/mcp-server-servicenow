@@ -96,7 +96,7 @@ DEFAULT_MOCKS = {
     "get_current_user.md": CURRENT_USER_MOCK,
 }
 EMPTY_FIXTURE = '{"count": 0, "records": []}\n'
-SERVER_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$")
+SERVER_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}\Z")
 # Marks a folder --eval-baseline wrote, so a later run may replace it.
 BASELINE_MARKER = ".eval-baseline"
 

@@ -28,11 +28,12 @@ class PolicyError(ToolError):
 
 # Table names, sys_ids and other identifiers that end up in URL paths or in
 # encoded queries. ServiceNow identifiers are [a-z0-9_]; anything else (``/``,
-# ``?``, ``^``, ``..``) is a traversal or query-injection attempt.
-IDENTIFIER_RE = re.compile(r"^[A-Za-z0-9_]+$")
-ORDER_BY_RE = re.compile(r"^-?[A-Za-z0-9_.]+$")
+# ``?``, ``^``, ``..``) is a traversal or query-injection attempt. Patterns end in
+# ``\Z``, not ``$``, which also matches before a final newline.
+IDENTIFIER_RE = re.compile(r"^[A-Za-z0-9_]+\Z")
+ORDER_BY_RE = re.compile(r"^-?[A-Za-z0-9_.]+\Z")
 FIELD_LIST_RE = re.compile(r"^\s*[A-Za-z0-9_.]+(\s*,\s*[A-Za-z0-9_.]+)*\s*$")
-STATE_RE = re.compile(r"^[A-Za-z_ ]+$")
+STATE_RE = re.compile(r"^[A-Za-z_ ]+\Z")
 
 JS_PREFIX_RE = re.compile(r"javascript:", re.IGNORECASE)
 # The only server-side script allowed in an encoded query: GlideSystem date
@@ -52,7 +53,7 @@ _DATE_GENERATE = (
     r"\s*['\"](?:start|end|\d{2}:\d{2}:\d{2})['\"]\s*\)"
 )
 SAFE_JS_RE = re.compile(
-    rf"javascript:(?:{_RELATIVE_DATE_HELPER}|{_DATE_GENERATE})(?=[\^@]|$)",
+    rf"javascript:(?:{_RELATIVE_DATE_HELPER}|{_DATE_GENERATE})(?=[\^@]|\Z)",
     re.IGNORECASE,
 )
 
@@ -77,7 +78,7 @@ FIELD_LIST_ARGS = (
     "sum_fields",
 )
 QUERY_ARGS = ("query", "having")
-SCHEMA_URI_RE = re.compile(r"^servicenow://schema/(?P<table>[^/]+)$")
+SCHEMA_URI_RE = re.compile(r"^servicenow://schema/(?P<table>[^/]+)\Z")
 
 
 def _current_config() -> Optional[ServerConfig]:

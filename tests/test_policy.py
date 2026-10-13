@@ -108,7 +108,8 @@ class TestTableNames:
 class TestIdentifiers:
     @pytest.mark.asyncio
     @pytest.mark.parametrize(
-        "table", ["incident/../sys_user", "incident^ORjavascript:1", "a b", ""]
+        "table",
+        ["incident/../sys_user", "incident^ORjavascript:1", "a b", "", "incident\n"],
     )
     async def test_invalid_table_name(self, table_mock: Mock, table: str) -> None:
         init_test_services()
@@ -135,6 +136,10 @@ class TestIdentifiers:
             await _call(
                 "list_records",
                 {"table_name": "incident", "order_by": "number^ORDERBYx"},
+            )
+        with pytest.raises(ToolError, match="Invalid order_by"):
+            await _call(
+                "list_records", {"table_name": "incident", "order_by": "number\n"}
             )
         with pytest.raises(ToolError, match="Invalid fields"):
             await _call("list_records", {"table_name": "incident", "fields": "a;b"})

@@ -58,8 +58,8 @@ ROLES_KEY = "io.github.jschuller/servicenow-roles"
 TABLES_KEY = "io.github.jschuller/servicenow-tables"
 WRITES_KEY = "io.github.jschuller/servicenow-writes"
 
-NAME_RE = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
-ROLE_RE = re.compile(r"^[A-Za-z0-9_.]+$")
+NAME_RE = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*\Z")
+ROLE_RE = re.compile(r"^[A-Za-z0-9_.]+\Z")
 ALLOWED_SUFFIXES = {".md", ".txt", ".csv"}
 MAX_FILES = 512  # SEP-2640: resources per skill, SKILL.md included
 MAX_BYTES = 16 * 1024 * 1024  # SEP-2640: total size per skill
@@ -83,7 +83,7 @@ CREDENTIAL_RES = (
 )
 URL_RE = re.compile(r"https?://\S+")
 
-PACKAGE_RE = re.compile(r"^mcp-server-servicenow(==\d+\.\d+\.\d+)?$")
+PACKAGE_RE = re.compile(r"^mcp-server-servicenow(==\d+\.\d+\.\d+)?\Z")
 PLUGIN_METADATA_KEYS = {
     "$schema",
     "name",
@@ -151,17 +151,18 @@ SECRET_ENV = {"SERVICENOW_PASSWORD", "SERVICENOW_CLIENT_SECRET", "SERVICENOW_API
 HOST_ENV = {"SERVICENOW_INSTANCE_URL", "SERVICENOW_TOKEN_URL"}
 SERVER_FLAGS = {"--read-only", "--debug", "--allow-js-queries"}
 SERVER_SPEC_KEYS = {"type", "command", "args", "env"}
-ENV_REF_RE = re.compile(r"^\$\{[A-Za-z_][A-Za-z0-9_]*(:-[^}]*)?\}$")
 # Settings whose literal or default value changes what the server does on the user's machine.
 SAFE_ENV_VALUES = {
     "SERVICENOW_ALLOW_JS_QUERIES": (
         re.compile(
-            r"^(false|0|no|)$|^\$\{[A-Za-z_][A-Za-z0-9_]*(:-(false|0|no)?)?\}$", re.I
+            r"^(false|0|no|)\Z|^\$\{[A-Za-z_][A-Za-z0-9_]*(:-(false|0|no)?)?\}\Z", re.I
         ),
         "lifts the javascript: guard",
     ),
     "SERVICENOW_AUDIT_LOG": (
-        re.compile(r"^(stderr|off|)$|^\$\{[A-Za-z_][A-Za-z0-9_]*(:-(stderr|off)?)?\}$"),
+        re.compile(
+            r"^(stderr|off|)\Z|^\$\{[A-Za-z_][A-Za-z0-9_]*(:-(stderr|off)?)?\}\Z"
+        ),
         "writes the audit log to a file on the user's machine",
     ),
 }
