@@ -368,6 +368,11 @@ def test_summary_marks_uncommitted_changes(tmp_path: Path) -> None:
     (plugin / "RESULTS.md").write_text("being written")
     text, _ = summarize(write_result(tmp_path, result))
     assert "(with uncommitted changes)" not in text
+    replay = plugin / "evals" / "mocks" / "servicenow" / ".replay"
+    replay.mkdir(parents=True)
+    (replay / "a.json").write_text("{}")  # a run's new recordings
+    text, _ = summarize(write_result(tmp_path, result))
+    assert "(with uncommitted changes)" not in text
     (plugin / "skills" / "my-skill" / "SKILL.md").write_text(SKILL + "\nEdited\n")
     text, _ = summarize(write_result(tmp_path, result))
     assert "(with uncommitted changes)" in text

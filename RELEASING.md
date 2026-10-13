@@ -47,8 +47,8 @@ the release (see Failure modes).
    uv run ruff format --check src/ tests/
    uv run mypy
    uv run pytest tests/ --ignore=tests/integration     # unit suite
-   uv run --with build,twine python -m build
-   uv run --with build,twine twine check --strict dist/*
+   uv run --with build python -m build
+   uv run --with 'twine>=7' twine check --strict dist/*   # Metadata-Version 2.5
    curl -sfL "$(jq -r '."$schema"' server.json)" -o /tmp/server.schema.json
    uv run --with jsonschema python -c 'import json, jsonschema; jsonschema.validate(json.load(open("server.json")), json.load(open("/tmp/server.schema.json")))'
    uv run pytest tests/integration/ -v                 # live E2E (below)

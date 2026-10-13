@@ -30,6 +30,7 @@ import json
 import math
 import os
 import re
+import shlex
 import shutil
 import subprocess
 from pathlib import Path
@@ -261,7 +262,7 @@ def _commit(result: Dict[str, Any]) -> Optional[str]:
         "evals",
         ".claude-plugin",
         ":(exclude)evals/badge.json",
-        ":(exclude)evals/mocks/*/.replay",  # recordings a run may add
+        ":(exclude)evals/mocks/*/.replay/",  # recordings a run may add
     )
     return f"{sha} (with uncommitted changes)" if dirty else sha
 
@@ -565,9 +566,9 @@ def summarize(
         )
     reproduce = f"claude plugin eval . --ablation {ablation}"
     if model != "default":
-        reproduce += f" --model {model}"
+        reproduce += f" --model {shlex.quote(model)}"
     if judge != "default":
-        reproduce += f" --judge-model {judge}"
+        reproduce += f" --judge-model {shlex.quote(judge)}"
     if runs:
         reproduce += f" --runs {runs[-1]}"
     if threshold is not None:
