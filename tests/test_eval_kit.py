@@ -310,6 +310,43 @@ def test_summary_refuses_a_baseline_with_other_models(tmp_path: Path) -> None:
         summarize(write_result(tmp_path, RESULT), base)
 
 
+def test_summary_refuses_a_baseline_with_other_runs(tmp_path: Path) -> None:
+    with_skills = {**RESULT, "cases": [_case("fallback", [{"task": True}] * 3)]}
+    tools_only = {**RESULT, "cases": [_case("fallback", [{"task": False}])]}
+    base = tmp_path / "baseline.json"
+    base.write_text(json.dumps(tools_only))
+    with pytest.raises(EvalKitError, match="baseline ran 1 run.*this run 3"):
+        summarize(write_result(tmp_path, with_skills), base)
+
+
+@pytest.mark.parametrize(
+    ("change", "expected"),
+    [
+        ({"suite": "x"}, "suite is not an object"),
+        ({"aggregates": [1]}, "aggregates is not an object"),
+        ({"cases": {"a": 1}}, "cases is not a list"),
+        ({"cases": ["a"]}, r"cases\[0\] is not an object"),
+        ({"cases": [{"name": "a", "aggregates": 1}]}, r"cases\[0\].aggregates"),
+        ({"cases": [{"name": "a", "graders": 5}]}, r"cases\[0\].graders is not a list"),
+        ({"cases": [{"name": "a", "arms": {"with": 5}}]}, r"arms.with is not a list"),
+        ({"cases": [{"name": "a", "arms": {"with": [1]}}]}, r"arms.with\[0\]"),
+        (
+            {"cases": [{"name": "a", "arms": {"with": [{"graders": "x"}]}}]},
+            r"arms.with\[0\] is not a run",
+        ),
+    ],
+)
+def test_summary_refuses_a_malformed_result(
+    tmp_path: Path, change: Dict[str, Any], expected: str
+) -> None:
+    with pytest.raises(EvalKitError, match=expected):
+        summarize(write_result(tmp_path, {**RESULT, **change}))
+    base = tmp_path / "baseline.json"
+    base.write_text(json.dumps({**RESULT, **change}))
+    with pytest.raises(EvalKitError, match=expected):
+        summarize(write_result(tmp_path, RESULT), base)
+
+
 def test_summary_notes_cases_missing_from_the_baseline(tmp_path: Path) -> None:
     with_skills = {
         **RESULT,

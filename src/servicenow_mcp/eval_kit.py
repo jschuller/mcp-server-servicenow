@@ -362,6 +362,9 @@ def _load_result(path: Path) -> Dict[str, Any]:
         raise EvalKitError(
             f"{path}: not a claude plugin eval result with schemaVersion 1"
         )
+    malformed = _malformed(result)
+    if malformed:
+        raise EvalKitError(f"{path}: not a claude plugin eval result ({malformed})")
     if result.get("partial"):
         reason = result.get("partialReason") or "unknown reason"
         raise EvalKitError(
@@ -369,6 +372,34 @@ def _load_result(path: Path) -> Dict[str, Any]:
             "run the suite to completion"
         )
     return result
+
+
+def _malformed(result: Dict[str, Any]) -> Optional[str]:
+    """The first field this summary reads that lacks the shape ``claude plugin eval`` writes."""
+    for key in ("suite", "aggregates"):
+        if not isinstance(result.get(key) or {}, dict):
+            return f"{key} is not an object"
+    cases = result.get("cases") or []
+    if not isinstance(cases, list):
+        return "cases is not a list"
+    for i, case in enumerate(cases):
+        where = f"cases[{i}]"
+        if not isinstance(case, dict):
+            return f"{where} is not an object"
+        for key, kind in (("aggregates", dict), ("arms", dict), ("graders", list)):
+            if not isinstance(case.get(key) or kind(), kind):
+                return (
+                    f"{where}.{key} is not {'an object' if kind is dict else 'a list'}"
+                )
+        for arm, runs in (case.get("arms") or {}).items():
+            if not isinstance(runs or [], list):
+                return f"{where}.arms.{arm} is not a list"
+            for j, run in enumerate(runs or []):
+                if not isinstance(run, dict) or not isinstance(
+                    run.get("graders") or [], list
+                ):
+                    return f"{where}.arms.{arm}[{j}] is not a run with a graders list"
+    return None
 
 
 def _skill_graders(case: Dict[str, Any]) -> Set[Any]:
@@ -417,6 +448,14 @@ def _task_score(case: Dict[str, Any]) -> Optional[float]:
     return sum(scores) / len(scores) if scores else None
 
 
+def _runs_per_case(result: Dict[str, Any]) -> List[int]:
+    """Runs that finished per case, which --runs can make fewer than the suite's runsPerCase."""
+    cases = [c for c in result.get("cases") or [] if isinstance(c, dict)]
+    return sorted({len(_with_runs(c)) for c in cases if _with_runs(c)}) or sorted(
+        {c["runsPerCase"] for c in cases if isinstance(c.get("runsPerCase"), int)}
+    )
+
+
 def _failed_runs(result: Dict[str, Any]) -> List[str]:
     """Runs that ended in an error (a usage limit, a timeout): their score is not the skill's."""
     failed = []
@@ -434,7 +473,7 @@ def _failed_runs(result: Dict[str, Any]) -> List[str]:
 def _check_baseline(
     result: Dict[str, Any], baseline: Dict[str, Any], path: Path
 ) -> None:
-    """Refuse a tools-only run that used other models than the run it is compared with."""
+    """Refuse a tools-only run made with other models or another number of runs."""
     mine, theirs = result.get("suite") or {}, baseline.get("suite") or {}
     for label, keys in (
         ("model", ("modelOverride", "model")),
@@ -447,6 +486,13 @@ def _check_baseline(
                 f"{path}: the baseline ran with {label} {b or 'default'}, this run with "
                 f"{a or 'default'}; run both with the same --model and --judge-model"
             )
+    mine_runs, their_runs = _runs_per_case(result), _runs_per_case(baseline)
+    if mine_runs != their_runs:
+        raise EvalKitError(
+            f"{path}: the baseline ran {', '.join(map(str, their_runs)) or 'no'} run(s) per "
+            f"case, this run {', '.join(map(str, mine_runs)) or 'no'}; run both with the "
+            "same --runs"
+        )
 
 
 def summarize(
@@ -476,10 +522,7 @@ def summarize(
     model = suite.get("modelOverride") or suite.get("model") or "default"
     judge = suite.get("judgeModelOverride") or suite.get("judgeModel") or "default"
     ablation = suite.get("ablation") or "default"
-    # Runs that finished, which --runs can make fewer than the suite's runsPerCase.
-    runs = sorted({len(_with_runs(c)) for c in cases if _with_runs(c)}) or sorted(
-        {c["runsPerCase"] for c in cases if isinstance(c.get("runsPerCase"), int)}
-    )
+    runs = _runs_per_case(result)
     mean_delta = _number(agg.get("meanDelta"))
     threshold = _number(suite.get("threshold"))
     ci_url = _ci_run_url()
