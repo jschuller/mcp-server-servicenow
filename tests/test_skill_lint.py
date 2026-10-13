@@ -195,6 +195,7 @@ DIFFERENTLY = "Claude Code could read this frontmatter differently"
         ("description: !!str x", "anchors, aliases and tags"),
         ("description: x\n1e3: y", "key '1e3' must be a plain name"),
         ("description: x\n__proto__: {}", "special in JavaScript"),
+        ('description: x\nmetadata:\n  k: "a\\\n  b"', "backslash at the end"),
         ('description: "a \\uD800 b"', "surrogate pair"),
     ],
 )
@@ -296,8 +297,13 @@ def test_yaml_errors_are_one_line_with_file_lines(tmp_path: Path) -> None:
 
 @pytest.mark.parametrize(
     "block",
-    ['description: "a \\U00110000 b"', "description: x\nk: " + "[" * 5000 + "]" * 5000],
-    ids=["beyond-unicode", "deep-nesting"],
+    [
+        'description: "a \\U00110000 b"',
+        "description: x\nk: " + "[" * 5000 + "]" * 5000,
+        "description: x\nmetadata:\n  k: !!bool maybe",
+        "description: x\nk: !!timestamp abc",
+    ],
+    ids=["beyond-unicode", "deep-nesting", "bad-bool", "bad-timestamp"],
 )
 def test_frontmatter_pyyaml_cannot_read_is_an_error(tmp_path: Path, block: str) -> None:
     skill = tmp_path / "my-skill"
@@ -937,8 +943,27 @@ def test_plugin_files_in_another_case_are_checked(tmp_path: Path) -> None:
     report = lint_skills([plugin])
     errors = plugin_messages(report, "error")
     assert not manifest.exists() or manifest.samefile(renamed / "Plugin.json")
-    assert any("name it .claude-plugin/plugin.json exactly" in m for m in errors)
+    assert any("another spelling of .claude-plugin/plugin.json" in m for m in errors)
     assert sum("loads this location as plugin code" in m for m in errors) == 2, errors
+
+
+def test_every_other_spelling_is_reported(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # On Linux both spellings can sit side by side; on macOS one wins the checkout.
+    from servicenow_mcp import skill_lint
+
+    listing = {
+        str(tmp_path): [".claude-plugin", "Skills"],
+        str(tmp_path / ".claude-plugin"): ["plugin.json", "plugin.j\u017fon"],
+    }
+    monkeypatch.setattr(skill_lint.os, "listdir", lambda p: listing.get(str(p), []))
+    assert skill_lint._misspelled(tmp_path, ".claude-plugin", "plugin.json") == [
+        ".claude-plugin/plugin.j\u017fon"
+    ]
+    assert skill_lint._misspelled(tmp_path, "skills") == ["Skills"]
+    assert skill_lint._same_name("SK\u0131LL.md", "SKILL.md")  # NTFS: dotless i is I
+    assert not skill_lint._same_name("SKILL.md.txt", "SKILL.md")
 
 
 def test_a_symlinked_skills_path_is_refused(tmp_path: Path) -> None:

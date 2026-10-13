@@ -39,8 +39,10 @@ A security fix for the skill validator, plus the small fixes the 0.9.0 review de
   `skill.md`; the validator, matching the exact name, skipped the folder, so its
   frontmatter could carry `hooks` past the check and the digest. The same held for
   `.claude-plugin/plugin.json`, `marketplace.json` and the locations Claude Code loads
-  as code (`Hooks/`, `Settings.json`). All are now found in any letter case, and a
-  spelling other than the exact one is an error. Present since 0.9.0.
+  as code (`Hooks/`, `Settings.json`). All are now found in any letter case, the way
+  macOS and Windows compare names, and any other spelling is an error, even beside the
+  exact one (git can hold both, and either may win a checkout on macOS). Present since
+  0.9.0.
 - **Identifier patterns end in `\Z`, not `$`.** `$` also matches before a final
   newline, so the server's own guard let `"incident\n"` through as a table name into the
   URL path. The same applied to `order_by`, an update-set state, a role name, a schema

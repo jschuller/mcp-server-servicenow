@@ -37,6 +37,7 @@ import hashlib
 import json
 import os
 import re
+import unicodedata
 from dataclasses import dataclass, field
 from importlib.resources import files
 from pathlib import Path
@@ -327,6 +328,39 @@ def core_skill_names() -> Set[str]:
     return {p.name for p in root.iterdir() if (p / "SKILL.md").is_file()}
 
 
+def _same_name(name: str, wanted: str) -> bool:
+    """Whether a case-insensitive file system could open ``name`` for ``wanted``.
+
+    APFS folds case on normalised names; NTFS upper-cases (so dotless i matches I).
+    """
+    folded = unicodedata.normalize("NFC", name).casefold()
+    return folded == wanted.casefold() or name.upper() == wanted.upper()
+
+
+def _misspelled(root: Path, *parts: str) -> List[str]:
+    """Every other spelling of ``root/parts`` a case-insensitive disk would open for it.
+
+    Two spellings can sit side by side in git; on macOS or Windows one of them wins the
+    checkout, and it need not be the exact one, so every other spelling is reported.
+    """
+    found: List[str] = []
+    level = [root]
+    for part in parts:
+        nxt = []
+        for here in level:
+            try:
+                names = sorted(os.listdir(here))
+            except OSError:
+                continue
+            for name in names:
+                if _same_name(name, part):
+                    if name != part:
+                        found.append((here / name).relative_to(root).as_posix())
+                    nxt.append(here / name)
+        level = nxt
+    return found
+
+
 def _entry(folder: Path, *parts: str) -> Optional[Path]:
     """``folder/parts`` as a case-insensitive file system (macOS, Windows) finds it.
 
@@ -339,7 +373,7 @@ def _entry(folder: Path, *parts: str) -> Optional[Path]:
             names = os.listdir(here)
         except OSError:
             return None
-        matches = [n for n in names if n.casefold() == part.casefold()]
+        matches = [n for n in names if _same_name(n, part)]
         if not matches:
             return None
         here = here / (part if part in matches else sorted(matches)[0])
@@ -372,7 +406,7 @@ def find_skill_dirs(root: Path) -> List[Path]:
         return [root]
     found: List[Path] = []
     for here, dirnames, filenames in _walk(root):
-        if any(f.casefold() == "skill.md" for f in filenames):
+        if any(_same_name(f, "SKILL.md") for f in filenames):
             found.append(here)
             dirnames[:] = []  # a skill's own subfolders belong to it
     return found
@@ -421,7 +455,7 @@ def _skill_files(skill: Path, report: SkillReport) -> List[Path]:
                     "only .md, .txt and .csv files are allowed (no scripts or binaries)",
                 )
             else:
-                if name.casefold() == "skill.md" and name != "SKILL.md":
+                if _same_name(name, "SKILL.md") and name != "SKILL.md":
                     report.add(
                         "error",
                         rel,
@@ -452,7 +486,7 @@ def _frontmatter(text: str) -> Tuple[Optional[dict], int, str]:
         if lines[i].strip() == "---":
             try:
                 data = yaml.safe_load("\n".join(lines[1:i])) or {}
-            except (yaml.YAMLError, ValueError, RecursionError) as exc:
+            except Exception as exc:  # PyYAML raises more than YAMLError on odd input
                 return None, i + 2, f"frontmatter is not valid YAML: {_yaml_error(exc)}"
             if not isinstance(data, dict):
                 return None, i + 2, "frontmatter must be a mapping"
@@ -497,6 +531,12 @@ def _check_frontmatter_layout(text: str, report: SkillReport) -> bool:
                 n,
                 "Claude Code ends the frontmatter at the first ---, even inside a "
                 "value: write a dash or two",
+            )
+        if line.endswith("\\"):
+            refuse(
+                n,
+                "a backslash at the end of a line: Claude Code then reads no "
+                "frontmatter; keep a quoted value on one line",
             )
         if SURROGATE_ESCAPE_RE.search(line):
             refuse(
@@ -552,7 +592,7 @@ def _check_frontmatter_layout(text: str, report: SkillReport) -> bool:
     try:
         data = yaml.safe_load(source) or {}
         tokens = list(yaml.scan(source, Loader=yaml.SafeLoader))
-    except (yaml.YAMLError, ValueError, RecursionError):
+    except Exception:
         return False  # reported as invalid YAML already
     if not isinstance(data, dict):
         return False
@@ -1095,17 +1135,17 @@ def find_plugin_dirs(root: Path) -> List[Path]:
     ]
 
 
-def _check_spelling(root: Path, path: Path, where: str, report: SkillReport) -> None:
-    """Claude Code on a case-insensitive disk finds other spellings; Linux CI doesn't."""
-    spelled = path.relative_to(root).as_posix()
-    if spelled != where:
-        report.add(
-            "error",
-            spelled,
-            None,
-            f"name it {where} exactly: on a case-insensitive disk (macOS, Windows) "
-            "Claude Code loads it, on Linux this check might not",
-        )
+def _check_spelling(root: Path, report: SkillReport, *paths: str) -> None:
+    """Claude Code on a case-insensitive disk opens other spellings; Linux CI doesn't."""
+    for wanted in paths:
+        for spelled in _misspelled(root, *wanted.split("/")):
+            report.add(
+                "error",
+                spelled,
+                None,
+                f"another spelling of {wanted}: on a case-insensitive disk (macOS, "
+                "Windows) Claude Code may load it instead; keep only the exact name",
+            )
 
 
 def _check_server(name: str, spec: object, report: SkillReport) -> None:
@@ -1306,7 +1346,7 @@ def _check_eval_files(
     skill_names: Optional[Set[str]] = None,
 ) -> None:
     """Case, grader and mock files need YAML frontmatter that parses, or the case is skipped."""
-    evals = plugin / "evals"
+    evals = _entry(plugin, "evals") or plugin / "evals"
     if not evals.is_dir():
         return
     for path in sorted(evals.rglob("*.md")):
@@ -1333,7 +1373,14 @@ def lint_plugin(plugin: Path, catalog_tools: List[Dict[str, Any]]) -> SkillRepor
     )
     where = ".claude-plugin/plugin.json"
     report = SkillReport(name=f"plugin {plugin.name}", path=plugin)
-    _check_spelling(plugin, manifest_path, where, report)
+    _check_spelling(
+        plugin,
+        report,
+        ".claude-plugin/plugin.json",
+        "pyproject.toml",
+        "skills",
+        "evals",
+    )
     try:
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     except (OSError, ValueError) as exc:
@@ -1482,7 +1529,7 @@ def lint_marketplace(market: Path) -> SkillReport:
     )
     where = ".claude-plugin/marketplace.json"
     report = SkillReport(name=f"marketplace {market.name}", path=market)
-    _check_spelling(market, path, where, report)
+    _check_spelling(market, report, ".claude-plugin/marketplace.json")
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError) as exc:
