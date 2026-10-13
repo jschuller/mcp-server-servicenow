@@ -22,7 +22,7 @@ Ideas and requests go in [Discussions › Ideas](https://github.com/jschuller/mc
 ## Start from the template
 
 1. Create a repository from the [template](examples/template/) (with GitHub's "Use this template" button once the template repository exists, or by copying the folder). A private repository works the same way.
-2. Rename `skills/my-servicenow-skill/` and the `name` in its `SKILL.md` together.
+2. Rename `skills/my-servicenow-skill/`, the `name` in its `SKILL.md` and the skill name in `evals/my-first-case/graders/skill-fired.md` together. The validator warns when a grader names a skill that isn't there.
 3. Write the skill:
    - **The description:** what the skill does, then the words a user would type when they need it. Agents choose skills by their description.
    - **Tables and roles:** each table it reads, and the least role that reads it. Put the same lists in the two metadata keys:
@@ -37,6 +37,7 @@ Ideas and requests go in [Discussions › Ideas](https://github.com/jschuller/mc
    - **Tool calls:** in code blocks, written as calls, e.g. `list_records(table_name="incident", query="...", fields="...")`. The validator checks them against the server's rules.
    - **Denials:** what a 403 means ("not assessable with this identity"), and what 0 rows or missing fields mean ("possibly hidden by an ACL").
    - **References:** long material goes in `references/*.md`.
+   - **Instructions only:** no `hooks`, `allowed-tools` or `shell` fields, and no `` !`command` `` shell injection. Claude Code runs those as the user, so the validator refuses them.
 
 [`examples/incident-triage/`](examples/incident-triage/) and [`examples/change-impact/`](examples/change-impact/) show complete skills, each with evals. The precise rules are in the [skill profile](docs/skill-profile.md). The official [skill-creator](https://github.com/anthropics/claude-plugins-official/tree/main/plugins/skill-creator) plugin for Claude Code helps with drafting and with tuning the description.
 
@@ -47,7 +48,8 @@ uvx mcp-server-servicenow==0.9.0 --validate-skills . --strict
 ```
 
 The command runs offline. It prints each skill's `sha256:` digest and every finding. Errors cover anything that makes a skill broken or unsafe:
-- scripts, symlinks or binary files;
+- scripts, symlinks or binary files, and symlinked folders anywhere in the repository;
+- frontmatter that runs code or pre-approves tools (`hooks`, `allowed-tools`, `shell`), and `` !`command` `` shell injection;
 - links that leave the skill;
 - undeclared tables;
 - queries the server would refuse.
@@ -57,7 +59,12 @@ Warnings cover what a reviewer should look at:
 - links outside ServiceNow's documentation;
 - anything that looks like a credential.
 
-It also checks the plugin wrapper (`.claude-plugin/plugin.json`). The wrapper may declare only the skills and one server that runs `uvx mcp-server-servicenow`: no hooks, agents, commands or scripts, and no literal credentials. It also warns when `evals/mocks/<server>/_tools.json` no longer matches the server's tools.
+It also checks the plugin wrapper (`.claude-plugin/plugin.json`):
+- **The manifest** may declare only metadata, the skills and one server. Any other key is an error, and so are the folders Claude Code loads as code (`hooks/`, `agents/`, `commands/`, `bin/`, `workflows/` and the rest), a `package.json`, and uv settings.
+- **The server** must run `uvx mcp-server-servicenow[==version]` with the package first. Only `--read-only`, `--debug` or `--allow-js-queries` may follow it, and `env` may set only this server's `SERVICENOW_*` settings. Credentials must come from the user's environment (`${SERVICENOW_PASSWORD}`), with no default.
+- **The evals:** it warns when `evals/mocks/<server>/_tools.json` no longer matches the server's tools, and when a grader names a skill, plugin or server that isn't there.
+
+With `--strict`, warnings fail too, such as a remote server, `--allow-js-queries` or an audit log written to a file.
 
 In GitHub, the template's workflow runs the same check and a citation check on every push, using the Action:
 
@@ -87,13 +94,17 @@ Point mcp-server-servicenow at a personal developer instance, with an identity t
    Re-running it refreshes `_tools.json` and keeps everything you edited.
 2. **Fill the fixtures** with invented rows that exercise the skill, including the awkward cases: a hidden field, an empty table, a denial. A case can override any mock in its own `mocks/` folder.
 3. **Write cases:** `evals/<case>/prompt.md` (what a user would ask) plus `graders/`. Prefer deterministic graders (`tool_used`, `regex`), and keep `llm` graders to short, concrete PASS/FAIL rules. Add one case where the skill must not fire.
-4. **Run the cases with your skills, then with the bare tools:**
+4. **Commit, then run the cases with your skills and with the bare tools:**
    ```bash
-   claude plugin eval . --runs 3 --ablation none --json evals/results.json
+   claude plugin eval . --trust-plugin --runs 3 --ablation none --json evals/results.json
    uvx mcp-server-servicenow==0.9.0 --eval-baseline . ../tools-only
-   claude plugin eval ../tools-only --runs 3 --ablation none --json evals/baseline.json
+   claude plugin eval ../tools-only --trust-plugin --runs 3 --ablation none --json evals/baseline.json
    ```
-   `--eval-baseline` copies your plugin without its skills: same name, same server, same cases and mocks. Runs count against your Claude plan's usage or your API bill.
+   - `--eval-baseline` copies your plugin without its skills: same name, same server, same cases and mocks. It replaces the copy an earlier run wrote, so re-run it whenever a case changes.
+   - `--trust-plugin` answers the trust prompt, which `--json` can't show. Pass it only for your own repository.
+   - Runs count against your Claude plan's usage or your API bill.
+
+Mocks are not an instance. They don't apply queries (`list_records` returns the whole fixture) or add the missing-field `warning`, and a tool with no mock is unavailable in the run.
 
 Read the score next to the tools-only score. The eval tool's own Δ compares your plugin with no plugin at all, and without the plugin the mocked tools are absent too, so that Δ overstates what the skills add. A study of agent skills (SkillsBench) found that skills authors write for themselves often add nothing. Our own examples show the same: on the change-collision case the bare tools already score 1.00, and the no-plugin Δ of +1.00 says nothing about the skill.
 
@@ -104,7 +115,7 @@ Copy the skill folders where your client looks for skills, with mcp-server-servi
 - Other clients: see their skills documentation.
 
 Two shortcuts:
-- **The `skills` command-line tool** ([vercel-labs/skills](https://github.com/vercel-labs/skills)): `npx skills add <owner>/<repo>` finds the skills in a repository, including those that `.claude-plugin/plugin.json` lists, and installs them for Claude Code, Codex, Cursor and other clients.
+- **The `skills` command-line tool** ([vercel-labs/skills](https://github.com/vercel-labs/skills)): `npx skills add <owner>/<repo>` searches a repository for skill folders and installs them for Claude Code, Codex, Cursor and other clients.
   - Pin the tool's version, e.g. `npx skills@1.7.0`.
   - Add `--copy` for real copies instead of symlinks.
   - Tested with 1.7.0 on this template and the example.
@@ -117,8 +128,8 @@ Two shortcuts:
   ```bash
   uvx mcp-server-servicenow==0.9.0 --eval-summary evals/results.json --baseline evals/baseline.json --badge evals/badge.json > RESULTS.md
   ```
-  The summary records what the skills add over the bare tools, case by case, and the models, the Claude Code version, the server version the mocks came from, the commit, and a command to reproduce the run. It refuses a partial run. There are two kinds of results:
-  - **CI-run:** produced by the template's `evals.yml` in GitHub Actions; it links the public log.
+  The summary records what the skills add over the bare tools, case by case, and the models, the Claude Code version, the server version the mocks came from, the commit, and a command to reproduce the run. It refuses a partial run, a run where some runs ended in an error (a usage limit scores 0), and a baseline made with other models. Commit before the run: the summary marks a commit with uncommitted edits. There are two kinds of results:
+  - **CI-run:** produced by the template's `evals.yml` in GitHub Actions; it links the public log. Commit the `RESULTS.md` and badge from the run's `eval-results` artifact.
   - **Self-reported:** run anywhere else.
 
   Nobody verifies either; the committed mocks make both reproducible. Commit `RESULTS.md`, not the raw result files: those record paths on your machine.
@@ -147,6 +158,6 @@ A skill is instructions your agent will follow, so treat skills from others like
 - pin them by tag or by the validator's digest;
 - prefer read-only skills.
 
-To re-run someone else's evals, run the validator on their repository first. `claude plugin eval` runs a plugin's hooks, agents and servers as you, and a wrapper that passes the validator has none of those. Never pass `--scaffold`, `--allow-real-servers` or `--mocks off` to a suite you didn't write. If you're unsure, run it in a container or a CI runner.
+To re-run someone else's evals, run the validator with `--strict` on their repository first. `claude plugin eval` runs a plugin's hooks, agents and servers as you, and a repository that passes has none of those: its wrapper declares only skills and this server, and its skills carry no hooks, pre-approved tools or shell injection. The validator is a check, not a sandbox, so still read what you run. Never pass `--scaffold`, `--allow-real-servers` or `--mocks off` to a suite you didn't write. If you're unsure, run it in a container or a CI runner.
 
 Hosts treat skills served over MCP as untrusted input (SEP-2640). Keep skills that write to an instance explicit about it, and keep the identity they run with to the least roles that do the job.

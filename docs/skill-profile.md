@@ -61,12 +61,14 @@ These rules keep a skill safe to read and to serve: it is instructions and refer
 
 ## The validator
 
-`mcp-server-servicenow --validate-skills PATH [PATH ...] [--strict]` runs offline. A path is a skill folder or any folder above skills: every `SKILL.md` below it is checked, skipping hidden folders. It prints one line per skill with a `sha256:` digest of its files, then each finding, then a result line. The exit code is 1 on any error, and with `--strict` on any warning too.
+`mcp-server-servicenow --validate-skills PATH [PATH ...] [--strict]` runs offline. A path is a skill folder or any folder above skills: every `SKILL.md` below it is checked, including hidden folders such as `.claude/skills` (installers read them) but not `.git`, virtual environments or `node_modules`. It prints one line per skill with a `sha256:` digest of its files, then each finding, then a result line. The exit code is 1 on any error, and with `--strict` on any warning too.
 
 | Errors | Warnings |
 |--------|----------|
 | Frontmatter missing, not YAML, or breaking the name/description rules | No `license` |
-| A file that isn't `.md`/`.txt`/`.csv`, a hidden file or folder, a symlink, not UTF-8 | A call to a write tool that `servicenow-writes` doesn't declare |
+| Frontmatter that runs code or pre-approves tools: `hooks`, `allowed-tools`, `shell` | `context`, `agent` or `background`, which run the skill elsewhere; a field that is neither Agent Skills nor Claude Code |
+| `` !`command` `` or a ```` ```! ```` block: Claude Code runs it when the skill loads | |
+| A file that isn't `.md`/`.txt`/`.csv`, a hidden file or folder, a symlink, not UTF-8; a symlinked folder anywhere in the path | A call to a write tool that `servicenow-writes` doesn't declare, in code or prose |
 | More than 512 files or 16 MiB | A link outside servicenow.com/docs and ServiceNowDocs |
 | A relative link that leaves the skill or points nowhere | Text that looks like a credential or token |
 | A tool call with an invalid table, field list or `order_by`, or a refused `javascript:` | A declared table the skill never mentions |
@@ -85,13 +87,15 @@ The digest covers every file's path and content, so you can pin a skill: if anyt
 
 | Errors | Warnings |
 |--------|----------|
-| Keys that add code that runs as the user: `hooks`, `agents`, `commands`, `monitors`, `lspServers`, `outputStyles`, `mods`, `settings` | An unknown key |
-| Files in the locations Claude Code loads as code: `hooks/`, `agents/`, `commands/`, `monitors/`, `output-styles/`, `bin/`, `.mcp.json`, `.lsp.json`, `settings.json` | A remote (`url`) server, which the validator can't confirm is this one |
-| `mcpServers` with anything other than one server running `uvx mcp-server-servicenow[==version]` plus server flags | `--allow-js-queries` in the server's arguments |
-| A literal value in a password, secret, key or token environment variable (use `${NAME}`) | `evals/mocks/<server>/_tools.json` that differs from this server's tools |
-| A `skills` path outside the plugin folder | |
+| Any key other than metadata (`name`, `version`, `description`, `author`, `homepage`, `repository`, `license`, `keywords`, `metadata`, `$schema`), `skills` and `mcpServers`: `hooks`, `agents`, `commands`, `workflows`, `userConfig`, `dependencies` and the rest add code or behaviour | A remote (`url`) server, which the validator can't confirm is this one |
+| Locations Claude Code loads without a key: `hooks/`, `agents/`, `commands/`, `monitors/`, `output-styles/`, `workflows/`, `themes/`, `bin/`, `.mcp.json`, `.lsp.json`, `settings.json`; a `package.json` (installed when the plugin loads); `uv.toml` or `[tool.uv]` settings (they can change which package `uvx` runs) | `--allow-js-queries`, or `SERVICENOW_ALLOW_JS_QUERIES` set to anything but false |
+| `mcpServers` with anything other than one server: `command` `uvx`, `args` starting with `mcp-server-servicenow[==version]` followed only by `--read-only`, `--debug` or `--allow-js-queries`, and no keys besides `command`, `args`, `env` | `SERVICENOW_AUDIT_LOG` naming a file on the evaluator's machine |
+| An `env` key that isn't one of this server's `SERVICENOW_*` settings (no `PYTHONPATH`, no `UV_*`) | `evals/mocks/<server>/_tools.json` that differs from this server's tools: names, descriptions, schemas or hints |
+| A password, client secret or API key that isn't `${NAME}` or `${NAME:-}` (no literal, no default) | A `tool_used` grader that names no skill of this plugin, or tools of another plugin or server name |
+| A `skills` path outside the plugin folder, or a symlink | |
+| Eval case, grader or mock frontmatter that doesn't parse: `claude plugin eval` skips the file | |
 
-The reason is that `claude plugin eval` runs a plugin's hooks, agents and servers on the evaluator's machine, as the evaluator. A wrapper that passes declares nothing that runs except this server, so anyone can re-run its evals. Pin the server (`mcp-server-servicenow==0.9.0`) in the wrapper and in the Action.
+The reason is that `claude plugin eval` runs a plugin's hooks, agents and servers on the evaluator's machine, as the evaluator, and the skills' users run what the skills carry. A repository that passes with `--strict` declares nothing that runs except this server, and its skills are instructions only. The validator is a static check, not a sandbox: read what you run, and run unfamiliar suites in a container or CI runner. Pin the server (`mcp-server-servicenow==0.9.0`) in the wrapper and in the Action.
 
 ## The eval kit
 
@@ -105,7 +109,7 @@ The reason is that `claude plugin eval` runs a plugin's hooks, agents and server
   - An empty fixture, `{"count": 0, "records": []}`, for every table the skills declare.
 
   Existing mocks and fixtures are kept. Tools without a mock, including every write tool, aren't available in a run.
-- **`mcp-server-servicenow --eval-baseline PLUGIN_DIR OUT_DIR`** copies the plugin without its skills: the same name, server, cases and mocks. Running the cases against it measures the bare tools.
+- **`mcp-server-servicenow --eval-baseline PLUGIN_DIR OUT_DIR`** copies the plugin without its skills: the same name, server, cases and mocks. Running the cases against it measures the bare tools. `OUT_DIR` must be outside the plugin; a later run replaces a folder an earlier run wrote, and refuses any other folder that isn't empty. Symlinks in `evals/` are refused.
 - **`mcp-server-servicenow --eval-summary RESULT_JSON [--baseline RESULT_JSON] [--badge FILE]`** reads a finished `aggregate-result.json` (`schemaVersion` 1) and prints a Markdown summary. It records:
   - cases passed and the suite score;
   - Δ vs tools only, per case and overall, from the baseline run. Graders that check a skill fired are left out, since they can't pass without skills;
@@ -117,7 +121,7 @@ The reason is that `claude plugin eval` runs a plugin's hooks, agents and server
   - the kind of result, "CI-run" (with the GitHub Actions run URL) or "self-reported";
   - a per-case table and a command to reproduce the run.
 
-  It never prints the run's local paths. It refuses a partial run. `--badge` writes a [shields.io endpoint](https://shields.io/badges/endpoint-badge) JSON file.
+  It never prints the run's local paths. It refuses a partial run, a run where some runs ended in an error (a usage limit scores 0 without marking the run partial), and a baseline made with another model or judge. Cases missing from the baseline are named, and the commit is marked when the skills or evals had uncommitted edits. `--badge` writes a [shields.io endpoint](https://shields.io/badges/endpoint-badge) JSON file.
 
 ## The citation check
 

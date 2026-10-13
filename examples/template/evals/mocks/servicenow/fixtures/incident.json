@@ -1,4 +1,4 @@
 {"count": 2, "records": [
- {"number": "INC0010001", "short_description": "Invented sample row", "priority": "2"},
- {"number": "INC0010002", "short_description": "Another invented row", "priority": "4"}
+ {"number": "INC0010001", "short_description": "Invented sample row", "priority": "2", "active": "true"},
+ {"number": "INC0010002", "short_description": "Another invented row", "priority": "4", "active": "true"}
 ]}

@@ -202,7 +202,7 @@ Flags and environment variables: [configuration](https://github.com/jschuller/mc
 
 ## Works with
 
-Verified on 2026-10-11 against ServiceNow Brazil: Claude Code 2.1.296, VS Code 1.140 with GitHub Copilot, Codex CLI 0.162.1, opencode 1.19.0, Antigravity CLI 1.1.20 and pi 1.1.0. Claude Desktop, Cursor and any other client that speaks MCP over stdio or Streamable HTTP should work too; behaviour per client: [client setup](https://github.com/jschuller/mcp-server-servicenow/blob/main/docs/clients.md#verified-clients).
+Verified with 0.8.0 on 2026-10-11 against ServiceNow Brazil, and the 0.9.0 skills re-checked in Claude Code and Codex: Claude Code 2.1.296, VS Code 1.140 with GitHub Copilot, Codex CLI 0.162.1, opencode 1.19.0, Antigravity CLI 1.1.20 and pi 1.1.0. Claude Desktop, Cursor and any other client that speaks MCP over stdio or Streamable HTTP should work too; behaviour per client: [client setup](https://github.com/jschuller/mcp-server-servicenow/blob/main/docs/clients.md#verified-clients).
 
 ## More
 

@@ -21,8 +21,36 @@ content and fixes prepared as 0.8.1, which was never released.
   roles no longer shows a misleading table warning.
 - **`servicenow-cmdb` names `cmdb_read` and `sn_cmdb_user` as its roles,** taken from
   the instance's read ACLs. `itil` still works, since it holds both.
+- **`servicenow-cmdb` no longer handles dependency maps or "what depends on X".** Its
+  description dropped those triggers, and it points CI search and change impact to
+  ServiceNow's CMDB MCP server. `get_ci_relationships` still works.
+- **The server instructions no longer send incident questions to a skill.** They list
+  only the four platform skills; install the incident-triage example to get that
+  workflow back.
+- **The skill validator is stricter** (see Security). A skills repository that passed
+  in a pre-release build may now fail: for example, `uvx` options before the package,
+  `env` keys other than `SERVICENOW_*`, or unknown manifest keys.
 
 ### Security
+- **Skills and skills repositories are checked for code that would run as the user.**
+  The validator refuses:
+  - skill frontmatter that registers hooks, pre-approves tools or picks a shell
+    (`hooks`, `allowed-tools`, `shell`), and `` !`command` `` shell injection;
+  - plugin manifest keys other than metadata, `skills` and `mcpServers`, and the
+    locations Claude Code loads as code (`hooks/`, `bin/`, `workflows/` and the rest),
+    a `package.json`, and uv settings;
+  - a server entry that isn't `uvx mcp-server-servicenow[==version]` first, with only
+    `--read-only`, `--debug` or `--allow-js-queries` after it; `env` keys other than
+    this server's settings (no `PYTHONPATH` or `UV_*`); credentials with a literal
+    value or default;
+  - symlinked folders anywhere it searches. It now searches hidden folders such as
+    `.claude/skills` too, because installers read them.
+
+  A pre-release review found each of these could pass `--strict` while running other
+  code for whoever evaluated or installed the skills.
+- **The eval kit stays inside the plugin.** `--eval-mocks` refuses table and server
+  names that would write elsewhere, and `--eval-baseline` refuses an output folder
+  inside the plugin and symlinks in `evals/`.
 - **The `javascript:` guard accepts the list UI's date ranges.** The `@` that separates
   the two ends of an `ON`, `NOTON` or `BETWEEN` range is now allowed after a date helper.
   So is `gs.dateGenerate()` with a literal date and `'start'`, `'end'` or a literal time,
@@ -46,10 +74,12 @@ content and fixes prepared as 0.8.1, which was never released.
   It warns on undeclared write-tool calls, outside links and credential-like text, and
   prints a `sha256:` digest per skill for pinning, plus the write tools it declares.
 - **The validator checks plugin wrappers.** A folder with `.claude-plugin/plugin.json`
-  may declare only skills and one server that runs `uvx mcp-server-servicenow`: no
-  hooks, agents, commands, scripts or literal credentials. `claude plugin eval` runs a
-  plugin's code as the evaluator, so a passing wrapper is safe to re-run. It also warns
-  when a saved `_tools.json` no longer matches the server's tools.
+  may declare only metadata, skills and one server that runs
+  `uvx mcp-server-servicenow`, with this server's own settings (see Security).
+  `claude plugin eval` runs a plugin's code as the evaluator, and a repository that
+  passes with `--strict` carries none. It also warns when a saved `_tools.json` no
+  longer matches the server's tools (names, descriptions, schemas or hints), and when
+  a grader names a skill, plugin or server that isn't there.
 - **`--eval-mocks PLUGIN_DIR`** writes mocks for `claude plugin eval`:
   - this version's tool list;
   - default mocks modelled on a least-privilege identity, using the server's own 401
@@ -63,7 +93,9 @@ content and fixes prepared as 0.8.1, which was never released.
   finished run into a `RESULTS.md` table: score, what the skills add over the bare
   tools per case, Δ vs no plugin, models, versions, commit, "CI-run" or
   "self-reported", and a command to reproduce it. `--badge` writes a shields.io badge.
-  A partial run is refused.
+  It refuses a partial run, a run where some runs ended in an error (a usage limit
+  scores 0), and a baseline made with other models. It marks a commit with uncommitted
+  edits to the skills or evals.
   - **Why the baseline:** on the examples, Δ vs no plugin was +1.00 on every case that
     reads data, but the bare tools alone already scored 1.00 on change collision, so
     the skill added nothing there. They scored 0.00 on the trend case, where the skill's
@@ -129,6 +161,9 @@ content and fixes prepared as 0.8.1, which was never released.
     read the skill first in 1 of 8 runs of "what's on fire", against 5 of 7 for 0.8.0.
   - The new wording read it in 7 of 7. On an access question it read it in 5 of 5,
     against 1 of 4 before. It still skipped the skill for "which user am I?" (3 of 3).
+    Those runs still listed `triaging-incidents`.
+  - With the four platform skills, a fresh-session test read the matching skill before
+    its first data call in 28 of 28 runs (7 per skill).
 - **On a 403, the instructions add that more access means another identity configured
   in the server, never credentials asked for in the chat.**
   - Before: in a fresh-session test, 1 of 7 update-set answers offered to continue if the

@@ -74,21 +74,27 @@ jobs:
           version = versions["pyproject.toml"]
           print(f"All five version fields agree: {version}")
 
-          # The template pins the release it is copied from, in four places.
+          # The template pins the release it is copied from, in four places, and the
+          # examples pin it in their plugin wrappers.
           template = "examples/template"
           pins = {
+              f"{ex}/plugin.json": " ".join(json.load(open(f"examples/{ex}/.claude-plugin/plugin.json"))["mcpServers"]["servicenow"]["args"])
+              for ex in ("change-impact", "incident-triage")
+          }
+          pins |= {
               "plugin.json": " ".join(json.load(open(f"{template}/.claude-plugin/plugin.json"))["mcpServers"]["servicenow"]["args"]),
               "validate-skills.yml": open(f"{template}/.github/workflows/validate-skills.yml").read(),
               "evals.yml": open(f"{template}/.github/workflows/evals.yml").read(),
               "README.md": open(f"{template}/README.md").read(),
           }
-          stale = {
-              name: sorted(set(re.findall(r"(?:==|@v|SERVER_VERSION: \"|server-version: \")(\d+\.\d+\.\d+)", text)) - {version})
+          found = {
+              name: set(re.findall(r"(?:==|@v|SERVER_VERSION: \"|server-version: \")(\d+\.\d+\.\d+)", text))
               for name, text in pins.items()
           }
-          stale = {name: found for name, found in stale.items() if found}
-          if stale:
-              print(f"::error::Template pins other versions than {version}: {stale}")
+          stale = {name: sorted(v - {version}) for name, v in found.items() if v - {version}}
+          missing = sorted(name for name, v in found.items() if version not in v)
+          if stale or missing:
+              print(f"::error::Pins other than {version}: {stale}; no {version} pin in: {missing}")
               sys.exit(1)
           print(f"Template pins agree: {version}")
           EOF

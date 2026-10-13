@@ -189,7 +189,7 @@ pi mcp list   # connects and lists 12 tools, 18 resources
 
 ## Verified clients
 
-Checked on 2026-10-11 against a ServiceNow Brazil PDI (stdio, read-only identity, this release), asking for the five most recent incidents and a CMDB health summary:
+Checked on 2026-10-11 with 0.8.0 against a ServiceNow Brazil PDI (stdio, read-only identity), asking for the five most recent incidents and a CMDB health summary. For 0.9.0, fresh Claude Code 2.1.296 sessions read the matching platform skill before the first data call in 28 of 28 runs, and Codex CLI 0.162.1 lists the 18 resources:
 
 | Client | Protocol | Tools and approval | Skills over MCP |
 |---|---|---|---|

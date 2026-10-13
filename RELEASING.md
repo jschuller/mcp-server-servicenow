@@ -26,8 +26,7 @@ the release (see Failure modes).
    - `.claude-plugin/plugin.json` → `version` (missed in v0.6.1 — hence the check)
 
    Then `uv lock` (the lockfile records the project's own version), a
-   `CHANGELOG.md` section (`## [X.Y.Z] - YYYY-MM-DD`), and the README
-   version-history line.
+   `CHANGELOG.md` section (`## [X.Y.Z] - YYYY-MM-DD`).
 
    The template pins the release too, and CI checks the pins. The places are:
    - `examples/template/.claude-plugin/plugin.json` (`mcp-server-servicenow==X.Y.Z`);
@@ -109,12 +108,17 @@ the release (see Failure modes).
      `command claude plugin eval . --trust-plugin --runs 1 --ablation none --model sonnet --no-publish --max-cost-usd 5`.
      Runs draw on the signed-in plan's usage. Hitting a usage limit mid-suite scores
      the rest 0, so read the `NOTES` column before treating a low score as a
-     regression. Not a gate yet: the owner decides the suite's size and cadence after
-     the 0.8.1 trial.
+     regression (`--eval-summary` refuses such a run). Not a gate yet: the owner
+     decides the suite's size and cadence.
 
 4. Push to main and wait for CI green — the test matrix (3.11–3.14)
    plus the `package` job (version consistency, `uv lock --check`,
    build + twine).
+
+   Land the reviewed commits on main unchanged: fast-forward main to the PR branch
+   (`git push origin <branch>:main` once the PR's CI is green), not GitHub's
+   rebase-merge, which rewrites every commit. The examples' `RESULTS.md` files name the
+   commit their run came from, and a rewritten commit leaves that link dangling.
 
 ## Cutting the release
 

@@ -4,4 +4,4 @@ max_turns: 10
 allowed_tools: [Skill, Read]
 ---
 
-What are the open high-priority incidents from the last week?
+What are the open high-priority incidents?

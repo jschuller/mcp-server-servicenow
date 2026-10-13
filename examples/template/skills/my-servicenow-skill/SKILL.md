@@ -38,7 +38,7 @@ Declare every table your tool calls read in `io.github.jschuller/servicenow-tabl
 
 1. Write each tool call in a code block, as a call, so the validator can check it:
    ```
-   list_records(table_name="incident", query="active=true^opened_atRELATIVEGT@dayofweek@ago@7", fields="number,short_description,priority", limit=20)
+   list_records(table_name="incident", query="active=true^priority<=2", fields="number,short_description,priority,active", limit=20)
    ```
 2. Put long reference material in `references/` and link to it: see [the notes](references/notes.md).
 3. Say what the report contains.

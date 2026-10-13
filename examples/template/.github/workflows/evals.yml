@@ -17,7 +17,7 @@ on:
         description: Model that judges llm graders
         default: claude-haiku-5-5
       max-cost-usd:
-        description: Stop when the list-price estimate reaches this
+        description: Stop each of the two runs (skills, then tools only) at this list-price estimate
         default: "5"
 permissions:
   contents: read
@@ -31,14 +31,16 @@ jobs:
     env:
       # Pin both, and bump them together with the Action and plugin.json.
       SERVER_VERSION: "0.9.0"
-      CLAUDE_CODE_VERSION: "2.1.280"
-      # One of these repository secrets: an Anthropic API key (billed per call), or a
-      # token from `claude setup-token` (counts against that Claude subscription).
-      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-      CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+      CLAUDE_CODE_VERSION: "2.1.296"
+    # One of two repository secrets: an Anthropic API key (billed per call), or a token
+    # from `claude setup-token` (counts against that Claude subscription). Only the steps
+    # that call Claude get it, not the installs.
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Check for a credential
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
         run: |
           if [ -z "${ANTHROPIC_API_KEY}${CLAUDE_CODE_OAUTH_TOKEN}" ]; then
             echo "::error::Add an ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN repository secret"
@@ -54,6 +56,8 @@ jobs:
       - name: Run the suite
         id: run
         env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           RUNS: ${{ inputs.runs }}
           THRESHOLD: ${{ inputs.threshold }}
           MODEL: ${{ inputs.model }}
@@ -68,6 +72,8 @@ jobs:
       - name: Run the same cases with the bare tools (what the skills add)
         if: always() && steps.run.outputs.code != ''
         env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           RUNS: ${{ inputs.runs }}
           MODEL: ${{ inputs.model }}
           JUDGE: ${{ inputs.judge-model }}
@@ -86,6 +92,7 @@ jobs:
           uvx "mcp-server-servicenow==${SERVER_VERSION}" --eval-summary evals/results.json \
             "${baseline[@]}" --badge evals/badge.json > RESULTS.md
           cat RESULTS.md >> "$GITHUB_STEP_SUMMARY"
+      # Download this artifact, then commit its RESULTS.md and evals/badge.json.
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always()
         with:
