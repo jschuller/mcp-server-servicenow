@@ -13,24 +13,29 @@ Claude Code plugin whose ``mcpServers`` runs this server:
 Existing mocks and fixtures are kept, so edit them freely.
 
 ``mcp-server-servicenow --eval-baseline PLUGIN_DIR OUT_DIR`` copies the plugin without its
-skills, so the same cases run against the bare tools.
+skills, so the same cases run against the bare tools. OUT_DIR must be outside the plugin; a
+later run replaces a folder an earlier run wrote, and no other.
 
 ``mcp-server-servicenow --eval-summary aggregate-result.json [--baseline tools-only.json]``
 turns a finished run (``schemaVersion`` 1) into a Markdown table for a ``RESULTS.md``, with
 what the skills add over the bare tools when a baseline run is given; ``--badge FILE``
-writes a shields.io endpoint badge. A partial run is refused.
+writes a shields.io endpoint badge. A partial run, a run with failed runs (a usage limit
+scores 0) and a baseline made with other models are refused.
 """
 
 from __future__ import annotations
 
 import asyncio
 import json
+import math
 import os
+import re
 import shutil
 import subprocess
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple
 
+from servicenow_mcp.middleware.policy import IDENTIFIER_RE
 from servicenow_mcp.skill_lint import (
     TABLES_KEY,
     _frontmatter,
@@ -89,6 +94,9 @@ DEFAULT_MOCKS = {
     "get_current_user.md": CURRENT_USER_MOCK,
 }
 EMPTY_FIXTURE = '{"count": 0, "records": []}\n'
+SERVER_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$")
+# Marks a folder --eval-baseline wrote, so a later run may replace it.
+BASELINE_MARKER = ".eval-baseline"
 
 
 class EvalKitError(Exception):
@@ -131,7 +139,13 @@ def declared_tables(plugin_dir: Path, manifest: Dict[str, Any]) -> List[str]:
         if not root.exists():
             continue
         for skill in find_skill_dirs(root):
-            data, _, _ = _frontmatter((skill / "SKILL.md").read_text(encoding="utf-8"))
+            try:
+                text = (skill / "SKILL.md").read_text(encoding="utf-8")
+            except (OSError, UnicodeDecodeError) as exc:
+                raise EvalKitError(
+                    f"{skill / 'SKILL.md'}: cannot read ({exc})"
+                ) from exc
+            data, _, _ = _frontmatter(text)
             metadata = (data or {}).get("metadata") or {}
             value = metadata.get(TABLES_KEY) if isinstance(metadata, dict) else None
             if isinstance(value, str):
@@ -139,8 +153,13 @@ def declared_tables(plugin_dir: Path, manifest: Dict[str, Any]) -> List[str]:
     return sorted(tables)
 
 
+def _inside(path: Path, root: Path) -> bool:
+    """True when ``path`` resolves inside ``root``, symlinks followed."""
+    return path.resolve().is_relative_to(root.resolve())
+
+
 def write_eval_mocks(plugin_dir: Path, version: str) -> List[Tuple[str, str]]:
-    """Write the mock kit; return (``wrote`` or ``kept``, path relative to the plugin)."""
+    """Write the mock kit; return (``wrote``, ``kept`` or ``skipped``, relative path)."""
     manifest = read_manifest(plugin_dir)
     server = servicenow_server(manifest)
     if server is None:
@@ -148,16 +167,33 @@ def write_eval_mocks(plugin_dir: Path, version: str) -> List[Tuple[str, str]]:
             f"{plugin_dir}: plugin.json has no mcpServers entry that runs "
             "mcp-server-servicenow"
         )
+    if not SERVER_NAME_RE.match(server):
+        raise EvalKitError(
+            f"{plugin_dir}: mcpServers name {server!r} is not a plain name "
+            "(letters, digits, - and _)"
+        )
     mocks = plugin_dir / "evals" / "mocks" / server
-    (mocks / "fixtures").mkdir(parents=True, exist_ok=True)
+    if not _inside(mocks, plugin_dir):
+        raise EvalKitError(f"{mocks}: resolves outside the plugin folder")
+    try:
+        (mocks / "fixtures").mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        raise EvalKitError(f"{mocks}: cannot create ({exc})") from exc
+    if not _inside(mocks / "fixtures", plugin_dir):
+        raise EvalKitError(f"{mocks / 'fixtures'}: resolves outside the plugin folder")
     done: List[Tuple[str, str]] = []
 
     def write(path: Path, text: str, overwrite: bool = False) -> None:
         rel = path.relative_to(plugin_dir).as_posix()
+        if path.is_symlink():
+            raise EvalKitError(f"{rel}: is a symlink; replace it with a file")
         if path.exists() and not overwrite:
             done.append(("kept", rel))
             return
-        path.write_text(text, encoding="utf-8")
+        try:
+            path.write_text(text, encoding="utf-8")
+        except OSError as exc:
+            raise EvalKitError(f"{rel}: cannot write ({exc})") from exc
         done.append(("wrote", rel))
 
     write(
@@ -168,12 +204,24 @@ def write_eval_mocks(plugin_dir: Path, version: str) -> List[Tuple[str, str]]:
     for name, text in DEFAULT_MOCKS.items():
         write(mocks / name, text)
     for table in declared_tables(plugin_dir, manifest):
-        write(mocks / "fixtures" / f"{table}.json", EMPTY_FIXTURE)
+        fixture = mocks / "fixtures" / f"{table}.json"
+        if not IDENTIFIER_RE.match(table):
+            done.append(
+                (
+                    "skipped",
+                    f"{fixture.parent.relative_to(plugin_dir).as_posix()}/"
+                    f" (not a table name: {table!r})",
+                )
+            )
+            continue
+        write(fixture, EMPTY_FIXTURE)
     return done
 
 
 def _number(value: Any) -> Optional[float]:
-    return float(value) if isinstance(value, (int, float)) else None
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    return float(value) if math.isfinite(value) else None
 
 
 def _fmt(value: Optional[float], signed: bool = False) -> str:
@@ -182,22 +230,43 @@ def _fmt(value: Optional[float], signed: bool = False) -> str:
     return f"{value:+.2f}" if signed else f"{value:.2f}"
 
 
-def _commit() -> Optional[str]:
-    sha = os.environ.get("GITHUB_SHA")
-    if sha:
-        return sha[:12]
+def _git(root: Path, *args: str) -> Optional[str]:
     try:
         out = subprocess.run(
-            ["git", "rev-parse", "--short=12", "HEAD"],
+            ["git", "-C", str(root), *args],
             capture_output=True,
             text=True,
             timeout=10,
         )
     except (OSError, subprocess.SubprocessError):
         return None
-    if out.returncode != 0:
+    return out.stdout.strip() if out.returncode == 0 else None
+
+
+def _commit(result: Dict[str, Any]) -> Optional[str]:
+    """The commit the suite ran from, marked when its skills or evals had uncommitted edits."""
+    root_value = (result.get("suite") or {}).get("root")
+    root = Path(root_value) if isinstance(root_value, str) else None
+    if root is None or not root.is_dir():
+        sha = os.environ.get("GITHUB_SHA")
+        return sha[:12] if sha else None
+    sha = os.environ.get("GITHUB_SHA", "")[:12] or _git(
+        root, "rev-parse", "--short=12", "HEAD"
+    )
+    if not sha:
         return None
-    return out.stdout.strip() or None
+    # Edits to what was evaluated, not to RESULTS.md or the badge being written now.
+    dirty = _git(
+        root,
+        "status",
+        "--porcelain",
+        "--",
+        "skills",
+        "evals",
+        ".claude-plugin",
+        ":(exclude)evals/badge.json",
+    )
+    return f"{sha} (with uncommitted changes)" if dirty else sha
 
 
 def _ci_run_url() -> Optional[str]:
@@ -235,21 +304,48 @@ def write_tools_only(plugin_dir: Path, out_dir: Path) -> List[str]:
             f"{plugin_dir}: plugin.json has no mcpServers entry that runs "
             "mcp-server-servicenow"
         )
-    if out_dir.exists() and any(out_dir.iterdir()):
-        raise EvalKitError(f"{out_dir}: not empty; give a new folder")
-    if not (plugin_dir / "evals").is_dir():
+    plugin, out = plugin_dir.resolve(), out_dir.resolve()
+    if out == plugin or out.is_relative_to(plugin) or plugin.is_relative_to(out):
+        raise EvalKitError(
+            f"{out_dir}: give a folder outside the plugin, e.g. ../tools-only"
+        )
+    if out_dir.exists() and not out_dir.is_dir():
+        raise EvalKitError(f"{out_dir}: is a file; give a folder")
+    evals = plugin_dir / "evals"
+    if not evals.is_dir() or evals.is_symlink():
         raise EvalKitError(f"{plugin_dir}: no evals/ folder to copy")
+    for dirpath, dirnames, filenames in os.walk(evals):
+        dirnames[:] = [d for d in dirnames if d != "results"]
+        for name in dirnames + filenames:
+            if (Path(dirpath) / name).is_symlink():
+                rel = (Path(dirpath) / name).relative_to(plugin_dir).as_posix()
+                raise EvalKitError(f"{rel}: is a symlink; the copy takes files only")
+    if out_dir.exists() and any(out_dir.iterdir()):
+        if not (out_dir / BASELINE_MARKER).is_file():
+            raise EvalKitError(
+                f"{out_dir}: not empty, and not an earlier --eval-baseline copy; "
+                "give a new folder"
+            )
+        shutil.rmtree(out_dir)  # an earlier copy: replace it, so it can't go stale
     baseline = {k: v for k, v in manifest.items() if k != "skills"}
     baseline["description"] = "Tools-only baseline: the same server, no skills"
-    (out_dir / ".claude-plugin").mkdir(parents=True)
-    (out_dir / ".claude-plugin" / "plugin.json").write_text(
-        json.dumps(baseline, indent=2) + "\n", encoding="utf-8"
-    )
-    shutil.copytree(
-        plugin_dir / "evals",
-        out_dir / "evals",
-        ignore=lambda folder, names: [n for n in names if n == "results"],
-    )
+    try:
+        (out_dir / ".claude-plugin").mkdir(parents=True)
+        (out_dir / BASELINE_MARKER).write_text(
+            "Written by mcp-server-servicenow --eval-baseline; the next run replaces "
+            "this folder.\n",
+            encoding="utf-8",
+        )
+        (out_dir / ".claude-plugin" / "plugin.json").write_text(
+            json.dumps(baseline, indent=2) + "\n", encoding="utf-8"
+        )
+        shutil.copytree(
+            evals,
+            out_dir / "evals",
+            ignore=lambda folder, names: [n for n in names if n == "results"],
+        )
+    except (OSError, shutil.Error) as exc:
+        raise EvalKitError(f"{out_dir}: copy failed ({exc})") from exc
     return [".claude-plugin/plugin.json", "evals/"]
 
 
@@ -275,25 +371,78 @@ def _skill_graders(case: Dict[str, Any]) -> Set[Any]:
     """Graders that check the Skill tool fired: they can't pass without skills."""
     names = set()
     for grader in case.get("graders") or []:
+        if not isinstance(grader, dict):
+            continue
         config = grader.get("config") or {}
-        if grader.get("type") == "tool_used" and config.get("tool") == "Skill":
+        if (
+            grader.get("type") == "tool_used"
+            and isinstance(config, dict)
+            and config.get("tool") == "Skill"
+        ):
             names.add(grader.get("name"))
     return names
 
 
+def _with_runs(case: Dict[str, Any]) -> List[Dict[str, Any]]:
+    arms = case.get("arms")
+    runs = arms.get("with") if isinstance(arms, dict) else None
+    return [r for r in runs or [] if isinstance(r, dict)]
+
+
+def _weight(grader: Dict[str, Any]) -> float:
+    weight = _number(grader.get("weight"))
+    return 1.0 if weight is None else weight
+
+
 def _task_score(case: Dict[str, Any]) -> Optional[float]:
-    """Mean with-arm score over the graders that aren't Skill checks."""
+    """Mean with-arm score over the scored graders that aren't Skill checks."""
     skip = _skill_graders(case)
     scores = []
-    for run in (case.get("arms") or {}).get("with") or []:
-        graders = [g for g in run.get("graders") or [] if g.get("name") not in skip]
-        weight = sum(_number(g.get("weight")) or 1.0 for g in graders)
-        if weight:
-            got = sum(
-                _number(g.get("weight")) or 1.0 for g in graders if g.get("passed")
-            )
+    for run in _with_runs(case):
+        graders = [
+            g
+            for g in run.get("graders") or []
+            if isinstance(g, dict)
+            and g.get("name") not in skip
+            and g.get("scored") is not False
+        ]
+        weight = sum(_weight(g) for g in graders)
+        if weight > 0:
+            got = sum(_weight(g) for g in graders if g.get("passed") is True)
             scores.append(got / weight)
     return sum(scores) / len(scores) if scores else None
+
+
+def _failed_runs(result: Dict[str, Any]) -> List[str]:
+    """Runs that ended in an error (a usage limit, a timeout): their score is not the skill's."""
+    failed = []
+    for case in result.get("cases") or []:
+        if not isinstance(case, dict):
+            continue
+        arms = case.get("arms")
+        for arm, runs in (arms if isinstance(arms, dict) else {}).items():
+            for run in runs or []:
+                if isinstance(run, dict) and run.get("error"):
+                    failed.append(f"{case.get('name', '?')} ({arm})")
+    return failed
+
+
+def _check_baseline(
+    result: Dict[str, Any], baseline: Dict[str, Any], path: Path
+) -> None:
+    """Refuse a tools-only run that used other models than the run it is compared with."""
+    mine, theirs = result.get("suite") or {}, baseline.get("suite") or {}
+    for label, keys in (
+        ("model", ("modelOverride", "model")),
+        ("judge model", ("judgeModelOverride", "judgeModel")),
+    ):
+        a = next((mine.get(k) for k in keys if mine.get(k)), None)
+        b = next((theirs.get(k) for k in keys if theirs.get(k)), None)
+        if a != b:
+            raise EvalKitError(
+                f"{path}: the baseline ran with {label} {b or 'default'}, this run with "
+                f"{a or 'default'}; run both with the same --model and --judge-model"
+            )
 
 
 def summarize(
@@ -306,6 +455,15 @@ def summarize(
     """
     result = _load_result(result_path)
     baseline = _load_result(baseline_path) if baseline_path else None
+    for path, run in ((result_path, result), (baseline_path, baseline)):
+        failed = _failed_runs(run) if run is not None else []
+        if failed:
+            raise EvalKitError(
+                f"{path}: {len(failed)} runs ended with an error, e.g. {failed[0]} "
+                "(a usage limit or a timeout scores 0); run the suite again"
+            )
+    if baseline is not None and baseline_path is not None:
+        _check_baseline(result, baseline, baseline_path)
 
     suite = result.get("suite") or {}
     agg = result.get("aggregates") or {}
@@ -314,22 +472,32 @@ def summarize(
     model = suite.get("modelOverride") or suite.get("model") or "default"
     judge = suite.get("judgeModelOverride") or suite.get("judgeModel") or "default"
     ablation = suite.get("ablation") or "default"
-    runs = sorted(
+    # Runs that finished, which --runs can make fewer than the suite's runsPerCase.
+    runs = sorted({len(_with_runs(c)) for c in cases if _with_runs(c)}) or sorted(
         {c["runsPerCase"] for c in cases if isinstance(c.get("runsPerCase"), int)}
     )
     mean_delta = _number(agg.get("meanDelta"))
     threshold = _number(suite.get("threshold"))
     ci_url = _ci_run_url()
-    commit = _commit()
+    commit = _commit(result)
     mocks_version = _mocks_version(result)
 
     tools_only: Dict[Any, Optional[float]] = {}
+    unmatched: List[str] = []
     if baseline is not None:
         tools_only = {
             c.get("name"): _task_score(c)
             for c in baseline.get("cases") or []
             if isinstance(c, dict)
         }
+        unmatched = [
+            str(c.get("name")) for c in cases if c.get("name") not in tools_only
+        ]
+        if len(unmatched) == len(cases):
+            raise EvalKitError(
+                f"{baseline_path}: no case names in common with this run; "
+                "make the baseline with --eval-baseline from the same plugin"
+            )
     over_tools = [
         s - t
         for c in cases
@@ -337,20 +505,27 @@ def summarize(
         if s is not None and t is not None
     ]
     mean_over_tools = sum(over_tools) / len(over_tools) if over_tools else None
+    if mean_over_tools is not None and len(over_tools) < len(cases):
+        over_tools_text = (
+            f"{mean_over_tools:+.2f} ({len(over_tools)} of {len(cases)} cases)"
+        )
+    elif mean_over_tools is not None:
+        over_tools_text = f"{mean_over_tools:+.2f}"
+    else:
+        over_tools_text = "— (no tools-only baseline)"
 
     rows = [
         (
             "Cases passed",
-            f"{passed} / {total}"
+            (
+                f"{passed} / {total}"
+                if isinstance(passed, int) and isinstance(total, int)
+                else "—"
+            )
             + (f" (threshold {threshold:g})" if threshold is not None else ""),
         ),
         ("Suite score", _fmt(_number(agg.get("overallScore")))),
-        (
-            "Δ vs tools only",
-            _fmt(mean_over_tools, signed=True)
-            if mean_over_tools is not None
-            else "— (no tools-only baseline)",
-        ),
+        ("Δ vs tools only", over_tools_text),
         (
             "Δ vs no plugin",
             _fmt(mean_delta, signed=True)
@@ -399,10 +574,17 @@ def summarize(
         "It is what the skills add.",
         "- **Δ vs no plugin:** what `claude plugin eval` reports. The mocked tools are "
         "absent without the plugin, so it overstates what the skills add.",
+        "- **Score** is `claude plugin eval`'s case score, which counts the graders that "
+        "check a skill fired; **Tools only** and **Δ vs tools** leave those graders out.",
         "",
         f"Reproduce from this commit: `{reproduce}`",
         "",
     ]
+    if unmatched:
+        lines[-1:-1] = [
+            "",
+            f"Not in the tools-only baseline: {', '.join(unmatched)}.",
+        ]
     if baseline is not None:
         baseline_cmd = (
             "mcp-server-servicenow --eval-baseline . ../tools-only && "
@@ -416,7 +598,11 @@ def summarize(
     if isinstance(passed, int) and isinstance(total, int) and total > 0:
         ratio = passed / total
     color = "brightgreen" if ratio == 1 else ("yellow" if ratio >= 0.8 else "red")
-    message = f"{passed}/{total} cases"
+    message = (
+        f"{passed}/{total} cases"
+        if isinstance(passed, int) and isinstance(total, int)
+        else "no cases"
+    )
     if mean_over_tools is not None:
         message += f", {mean_over_tools:+.2f} vs tools"
     elif mean_delta is not None:

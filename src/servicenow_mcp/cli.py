@@ -226,7 +226,28 @@ def parse_args() -> argparse.Namespace:
         help="Audit log target: 'stderr' (default), 'off', or a file path (SERVICENOW_AUDIT_LOG)",
     )
 
-    return parser.parse_args()
+    args = parser.parse_args()
+    modes = [
+        flag
+        for flag, value in (
+            ("--check", args.check),
+            ("--validate-skills", args.validate_skills),
+            ("--eval-mocks", args.eval_mocks),
+            ("--eval-summary", args.eval_summary),
+            ("--eval-baseline", args.eval_baseline),
+        )
+        if value
+    ]
+    if len(modes) > 1:
+        parser.error(f"{' and '.join(modes)} can't be combined; run them one at a time")
+    for flag, value, parent in (
+        ("--baseline", args.baseline, "--eval-summary"),
+        ("--badge", args.badge, "--eval-summary"),
+        ("--strict", args.strict, "--validate-skills"),
+    ):
+        if value and parent not in modes:
+            parser.error(f"{flag} works only with {parent}")
+    return args
 
 
 def _safety_kwargs(args: argparse.Namespace) -> dict[str, Any]:
@@ -405,7 +426,7 @@ def run_eval_mocks(plugin_dir: str) -> int:
     try:
         done = write_eval_mocks(Path(plugin_dir), __version__)
     except EvalKitError as exc:
-        print(f"error   {exc}")
+        print(f"error   {exc}", file=sys.stderr)
         return 1
     print(f"mcp-server-servicenow {__version__} --eval-mocks")
     for action, path in done:
@@ -420,7 +441,7 @@ def run_eval_baseline(plugin_dir: str, out_dir: str) -> int:
     try:
         written = write_tools_only(Path(plugin_dir), Path(out_dir))
     except EvalKitError as exc:
-        print(f"error   {exc}")
+        print(f"error   {exc}", file=sys.stderr)
         return 1
     for path in written:
         print(f"wrote   {Path(out_dir) / path}")
@@ -439,9 +460,13 @@ def run_eval_summary(
     except EvalKitError as exc:
         print(f"error   {exc}", file=sys.stderr)
         return 1
-    print(text)
     if badge:
-        Path(badge).write_text(json.dumps(badge_json) + "\n", encoding="utf-8")
+        try:
+            Path(badge).write_text(json.dumps(badge_json) + "\n", encoding="utf-8")
+        except OSError as exc:
+            print(f"error   {badge}: cannot write the badge ({exc})", file=sys.stderr)
+            return 1
+    print(text)
     return 0
 
 

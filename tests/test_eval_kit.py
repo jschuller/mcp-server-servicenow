@@ -302,6 +302,87 @@ def test_summary_against_a_tools_only_baseline(tmp_path: Path) -> None:
     )
 
 
+def test_summary_refuses_a_baseline_with_other_models(tmp_path: Path) -> None:
+    other = {**RESULT, "suite": {**RESULT["suite"], "modelOverride": "haiku"}}
+    base = tmp_path / "baseline.json"
+    base.write_text(json.dumps(other))
+    with pytest.raises(EvalKitError, match="model haiku"):
+        summarize(write_result(tmp_path, RESULT), base)
+
+
+def test_summary_notes_cases_missing_from_the_baseline(tmp_path: Path) -> None:
+    with_skills = {
+        **RESULT,
+        "cases": [
+            _case("fallback", [{"task": True}]),
+            _case("new-case", [{"task": True}]),
+        ],
+    }
+    tools_only = {**RESULT, "cases": [_case("fallback", [{"task": False}])]}
+    base = tmp_path / "baseline.json"
+    base.write_text(json.dumps(tools_only))
+    text, _ = summarize(write_result(tmp_path, with_skills), base)
+    assert "| Δ vs tools only | +1.00 (1 of 2 cases) |" in text
+    assert "Not in the tools-only baseline: new-case." in text
+    base.write_text(json.dumps({**RESULT, "cases": [_case("other", [{"task": True}])]}))
+    with pytest.raises(EvalKitError, match="no case names in common"):
+        summarize(write_result(tmp_path, with_skills), base)
+
+
+def test_summary_refuses_runs_that_errored(tmp_path: Path) -> None:
+    case = _case("fallback", [{"task": True}])
+    case["arms"]["with"][0]["error"] = "usage limit reached"
+    with pytest.raises(EvalKitError, match="ended with an error"):
+        summarize(write_result(tmp_path, {**RESULT, "cases": [case]}))
+
+
+def test_task_score_weights_and_unscored_graders(tmp_path: Path) -> None:
+    case = _case("c", [{"task": True}])
+    run = case["arms"]["with"][0]["graders"]
+    run.append({"name": "advisory", "passed": False, "weight": 0})
+    run.append({"name": "not-scored", "passed": False, "weight": 1, "scored": False})
+    run.append("not a grader")
+    base = tmp_path / "baseline.json"
+    base.write_text(json.dumps({**RESULT, "cases": [_case("c", [{"task": True}])]}))
+    text, _ = summarize(write_result(tmp_path, {**RESULT, "cases": [case]}), base)
+    assert "| c | 1.00 | 1.00 | +0.00 |" in text
+
+
+def test_summary_marks_uncommitted_changes(tmp_path: Path) -> None:
+    plugin = make_plugin(tmp_path / "plugin")
+    git = [
+        "git",
+        "-C",
+        str(plugin),
+        "-c",
+        "user.name=t",
+        "-c",
+        "user.email=t@example.com",
+    ]
+    subprocess.run([*git, "init", "-q"], check=True)
+    subprocess.run([*git, "add", "-A"], check=True)
+    subprocess.run([*git, "commit", "-qm", "init"], check=True)
+    result = {**RESULT, "suite": {**RESULT["suite"], "root": str(plugin)}}
+    (plugin / "RESULTS.md").write_text("being written")
+    text, _ = summarize(write_result(tmp_path, result))
+    assert "(with uncommitted changes)" not in text
+    (plugin / "skills" / "my-skill" / "SKILL.md").write_text(SKILL + "\nEdited\n")
+    text, _ = summarize(write_result(tmp_path, result))
+    assert "(with uncommitted changes)" in text
+
+
+def test_cli_refuses_flags_without_their_mode(tmp_path: Path) -> None:
+    cmd = [sys.executable, "-m", "servicenow_mcp.cli"]
+    env = {**os.environ, "SERVICENOW_INSTANCE_URL": ""}
+    for args, expected in (
+        (["--badge", "b.json"], "--badge works only with --eval-summary"),
+        (["--strict"], "--strict works only with --validate-skills"),
+        (["--eval-mocks", "x", "--eval-summary", "y"], "can't be combined"),
+    ):
+        out = subprocess.run([*cmd, *args], capture_output=True, text=True, env=env)
+        assert out.returncode == 2 and expected in out.stderr, out.stderr
+
+
 def test_tools_only_copy(tmp_path: Path) -> None:
     plugin = make_plugin(tmp_path / "plugin")
     write_eval_mocks(plugin, "9.9.9")
@@ -315,5 +396,56 @@ def test_tools_only_copy(tmp_path: Path) -> None:
     assert (out / "evals" / "case" / "prompt.md").is_file()
     assert (out / "evals" / "mocks" / "servicenow" / "_tools.json").is_file()
     assert not (out / "evals" / "results").exists() and not (out / "skills").exists()
-    with pytest.raises(EvalKitError, match="not empty"):
-        write_tools_only(plugin, out)
+    # A second run replaces its own earlier copy, so the baseline can't go stale ...
+    (plugin / "evals" / "case" / "prompt.md").write_text("Changed")
+    write_tools_only(plugin, out)
+    assert (out / "evals" / "case" / "prompt.md").read_text() == "Changed"
+    # ... but never a folder it didn't write.
+    other = tmp_path / "other"
+    other.mkdir()
+    (other / "keep.txt").write_text("mine")
+    with pytest.raises(EvalKitError, match="not an earlier --eval-baseline copy"):
+        write_tools_only(plugin, other)
+    assert (other / "keep.txt").read_text() == "mine"
+
+
+@pytest.mark.parametrize(
+    ("out", "expected"),
+    [("plugin/evals/base", "outside the plugin"), ("plugin", "outside")],
+)
+def test_tools_only_copy_refuses_folders_in_the_plugin(
+    tmp_path: Path, out: str, expected: str
+) -> None:
+    plugin = make_plugin(tmp_path / "plugin")
+    (plugin / "evals").mkdir()
+    with pytest.raises(EvalKitError, match=expected):
+        write_tools_only(plugin, tmp_path / out)
+
+
+def test_tools_only_copy_refuses_links_and_files(tmp_path: Path) -> None:
+    plugin = make_plugin(tmp_path / "plugin")
+    (plugin / "evals").mkdir()
+    (tmp_path / "secret.txt").write_text("x")
+    (plugin / "evals" / "link.md").symlink_to(tmp_path / "secret.txt")
+    with pytest.raises(EvalKitError, match="symlink"):
+        write_tools_only(plugin, tmp_path / "out")
+    (plugin / "evals" / "link.md").unlink()
+    (tmp_path / "file").write_text("x")
+    with pytest.raises(EvalKitError, match="is a file"):
+        write_tools_only(plugin, tmp_path / "file")
+
+
+def test_eval_mocks_refuse_paths_outside_the_plugin(tmp_path: Path) -> None:
+    skill = SKILL.replace('"task_sla contract_sla"', '"task_sla ../../../../escaped"')
+    plugin = make_plugin(tmp_path / "plugin")
+    (plugin / "skills" / "my-skill" / "SKILL.md").write_text(skill)
+    done = write_eval_mocks(plugin, "9.9.9")
+    assert any(action == "skipped" and "escaped" in path for action, path in done)
+    assert not list(tmp_path.rglob("escaped.json"))
+    manifest = {
+        **MANIFEST,
+        "mcpServers": {"../x": MANIFEST["mcpServers"]["servicenow"]},
+    }
+    (plugin / ".claude-plugin" / "plugin.json").write_text(json.dumps(manifest))
+    with pytest.raises(EvalKitError, match="not a plain name"):
+        write_eval_mocks(plugin, "9.9.9")

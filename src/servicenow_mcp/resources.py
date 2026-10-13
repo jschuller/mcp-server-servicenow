@@ -8,7 +8,7 @@ Five hand-written resources:
 - servicenow://help/query-syntax — encoded query operators; an alias for
   skill://exploring-tables/references/query-syntax.md
 
-Plus the five Agent Skills under src/servicenow_mcp/skills/, served by FastMCP's
+Plus the four Agent Skills under src/servicenow_mcp/skills/, served by FastMCP's
 SkillsDirectoryProvider as skill://<name>/SKILL.md, skill://<name>/_manifest
 (SHA-256 per file) and skill://<name>/references/<file> — the SEP-2640 convention.
 """
@@ -222,18 +222,18 @@ def cmdb_classes() -> str:
 _QUERY_SYNTAX_PATH = ("skills", "exploring-tables", "references", "query-syntax.md")
 
 
-@mcp.resource(
-    "servicenow://help/query-syntax",
-    description="ServiceNow encoded query operators reference — prevents hallucinated query syntax",
-    mime_type="text/markdown",
-    tags={"read"},
-)
 @lru_cache(maxsize=1)
 def _query_syntax_text() -> str:
     """The packaged reference, read once: it can't change while the server runs."""
     return files("servicenow_mcp").joinpath(*_QUERY_SYNTAX_PATH).read_text("utf-8")
 
 
+@mcp.resource(
+    "servicenow://help/query-syntax",
+    description="ServiceNow encoded query operators reference — prevents hallucinated query syntax",
+    mime_type="text/markdown",
+    tags={"read"},
+)
 def query_syntax_help() -> str:
     """Return the encoded query syntax reference."""
     return _query_syntax_text()
