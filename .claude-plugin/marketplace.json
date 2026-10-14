@@ -1,7 +1,7 @@
 {
   "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
   "name": "mcp-server-servicenow",
-  "description": "ServiceNow developer data plane for Claude Code — Table API, CMDB, update sets, schema, with read-only mode, headless OAuth and an audit log.",
+  "description": "Marketplace for the servicenow plugin: the ServiceNow MCP server and four Agent Skills for Claude Code.",
   "owner": {
     "name": "Josh Schuller",
     "url": "https://github.com/jschuller"
@@ -9,7 +9,8 @@
   "plugins": [
     {
       "name": "servicenow",
-      "description": "ServiceNow developer data plane for the Now Platform — tables and schema, CMDB data quality, update sets, access reviews. 19 MCP tools, 5 resources, 4 Agent Skills served over MCP, read-only mode, OAuth client credentials, audit log.",
+      "displayName": "ServiceNow developer data plane",
+      "description": "ServiceNow MCP server for Claude Code, GitHub Copilot, Codex and any MCP client: Table API, CMDB, schema, aggregates and update sets, plus four Agent Skills. Read-only mode, OAuth client credentials for headless use, audit log.",
       "source": "./",
       "category": "development",
       "author": {

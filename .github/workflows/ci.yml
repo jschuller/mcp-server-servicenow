@@ -77,13 +77,15 @@ jobs:
           print(f"All five version fields agree: {version}")
 
           # The template pins the release it is copied from, in four places, and the
-          # examples pin it in their plugin wrappers.
+          # examples and this repo's own plugin pin it in their plugin manifests.
           template = "examples/template"
           pins = {
               f"{ex}/plugin.json": " ".join(json.load(open(f"examples/{ex}/.claude-plugin/plugin.json"))["mcpServers"]["servicenow"]["args"])
               for ex in ("change-impact", "incident-triage")
           }
           pins |= {
+              # Anthropic's plugin directory blocks an unpinned uvx launcher.
+              ".claude-plugin/plugin.json args": " ".join(json.load(open(".claude-plugin/plugin.json"))["mcpServers"]["servicenow"]["args"]),
               "plugin.json": " ".join(json.load(open(f"{template}/.claude-plugin/plugin.json"))["mcpServers"]["servicenow"]["args"]),
               "validate-skills.yml": open(f"{template}/.github/workflows/validate-skills.yml").read(),
               "evals.yml": open(f"{template}/.github/workflows/evals.yml").read(),

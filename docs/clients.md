@@ -41,7 +41,7 @@ claude plugin marketplace add jschuller/mcp-server-servicenow
 claude plugin install servicenow@mcp-server-servicenow
 ```
 
-The plugin reads these variables from the shell that starts Claude Code. To develop on it: `claude --plugin-dir /path/to/mcp-server-servicenow`. 0.8.0 renamed the 0.7.x commands (see the [changelog](../CHANGELOG.md)).
+The plugin reads these variables from the shell that starts Claude Code. It runs the server release it ships with (`uvx mcp-server-servicenow==X.Y.Z`), so updating the plugin brings the next server too. To develop on it: `claude --plugin-dir /path/to/mcp-server-servicenow`. 0.8.0 renamed the 0.7.x commands (see the [changelog](../CHANGELOG.md)).
 
 ## Claude Desktop
 
