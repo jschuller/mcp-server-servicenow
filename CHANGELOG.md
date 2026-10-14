@@ -1,5 +1,22 @@
 # Changelog
 
+## [Unreleased]
+
+### Changed
+- **The Claude Code plugin pins its server** (`uvx mcp-server-servicenow==0.9.1`), as
+  Anthropic's plugin directory requires. Plugin users get a new server when the plugin
+  updates, so the skills and the server always come from the same release. CI checks
+  the pin with the other version fields, and RELEASING.md now publishes to PyPI before
+  main (the marketplace) moves.
+- One description everywhere: pyproject, server.json, the plugin and the marketplace.
+- The plugin manifest carries the directory listing fields (`displayName`,
+  `documentationUrl`, `supportUrl`, `privacyPolicyUrl`), and the skill validator accepts
+  them, plus `termsOfServiceUrl`, in a skills wrapper.
+
+### Added
+- [docs/privacy.md](docs/privacy.md): the server talks only to your instance and sends no
+  telemetry; what the audit log keeps.
+
 ## [0.9.1] - 2026-10-13
 
 A security fix for the skill validator, plus the small fixes the 0.9.0 review deferred.

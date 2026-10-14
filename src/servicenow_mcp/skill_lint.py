@@ -96,6 +96,14 @@ PLUGIN_METADATA_KEYS = {
     "license",
     "keywords",
     "metadata",
+    "displayName",
+}
+# Read only by Anthropic's directory listing, and valid only in plugin.json.
+DIRECTORY_LISTING_KEYS = {
+    "documentationUrl",
+    "supportUrl",
+    "privacyPolicyUrl",
+    "termsOfServiceUrl",
 }
 # Every other manifest key is refused; these add code that runs as the user.
 PLUGIN_CODE_KEYS = {
@@ -1406,7 +1414,10 @@ def lint_plugin(plugin: Path, catalog_tools: List[Dict[str, Any]]) -> SkillRepor
                 f"{key!r} adds code that runs as the user; a skills wrapper declares "
                 "only skills and the servicenow server",
             )
-        elif key not in PLUGIN_METADATA_KEYS | {"skills", "mcpServers"}:
+        elif key not in PLUGIN_METADATA_KEYS | DIRECTORY_LISTING_KEYS | {
+            "skills",
+            "mcpServers",
+        }:
             report.add(
                 "error",
                 where,

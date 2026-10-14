@@ -657,6 +657,7 @@ def test_a_skills_wrapper_passes(tmp_path: Path) -> None:
         ({"hooks": "./hooks/hooks.json"}, "error", "adds code"),
         ({"agents": ["./agents/x.md"]}, "error", "adds code"),
         ({"homepage2": "x"}, "error", "not allowed in a skills wrapper"),
+        ({"icon": "./icon.png"}, "error", "not allowed in a skills wrapper"),
         ({"workflows": "./workflows/"}, "error", "adds code"),
         ({"userConfig": {"k": {}}}, "error", "adds code"),
         ({"skills": "../elsewhere"}, "error", "not a folder inside"),
@@ -1082,6 +1083,18 @@ def test_pyproject_uv_settings_are_refused(tmp_path: Path) -> None:
     assert any(
         "[tool.uv]" in m for m in plugin_messages(lint_skills([plugin]), "error")
     )
+
+
+def test_wrapper_directory_listing_keys_pass(tmp_path: Path) -> None:
+    listing = {
+        "displayName": "My skills",
+        "documentationUrl": "https://example.com/docs",
+        "supportUrl": "https://example.com/support",
+        "privacyPolicyUrl": "https://example.com/privacy",
+        "termsOfServiceUrl": "https://example.com/terms",
+    }
+    report = lint_skills([make_wrapper(tmp_path, {**WRAPPER, **listing})])
+    assert plugin_messages(report, "error") == []
 
 
 def test_wrapper_metadata_key_and_no_skills_key(tmp_path: Path) -> None:

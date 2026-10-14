@@ -63,6 +63,12 @@ claude mcp add servicenow \
   -- uvx mcp-server-servicenow
 ```
 
+Or install the Claude Code plugin, which adds the four skills as slash commands. It reads the same `SERVICENOW_*` variables from the shell that starts Claude Code ([details](https://github.com/jschuller/mcp-server-servicenow/blob/main/docs/clients.md#claude-code-plugin)):
+
+```
+/plugin install servicenow --marketplace jschuller/mcp-server-servicenow
+```
+
 <details>
 <summary><strong>Windows (PowerShell)</strong></summary>
 
@@ -195,7 +201,7 @@ Per-tool detail: [roles per tool](https://github.com/jschuller/mcp-server-servic
 - **Read-only mode** — `--read-only` hides the 7 write tools and refuses any non-GET request.
 - **Read-only identities see read-only tools** — when the user holds `snc_read_only` the write tools are hidden without a flag. A convenience, not a control: ServiceNow refuses those writes anyway.
 - **Table scope lives in ServiceNow** — ACLs and REST API access policies on the integration user decide which tables and fields it can read, dot-walks included.
-- **Audit log** — one JSON line per tool call or resource read: who, which table, outcome; field names only, never values.
+- **Audit log** — one JSON line per tool call or resource read: who, which table, outcome; written fields by name only, never their values, and secret-like values in queries masked.
 - **Your client approves writes** — every tool is annotated read-only or destructive, so Claude Code, Copilot and Codex ask before a write. Clients that don't ask (opencode by default, pi) need a read-only identity, or `--read-only` when the identity can write.
 
 Flags and environment variables: [configuration](https://github.com/jschuller/mcp-server-servicenow/blob/main/docs/configuration.md#safety-rails).
@@ -212,6 +218,7 @@ Verified with 0.8.0 on 2026-10-11 against ServiceNow Brazil, and the 0.9.0 skill
 - [Alongside ServiceNow's own MCP servers](https://github.com/jschuller/mcp-server-servicenow/blob/main/docs/native-mcp.md)
 - [Architecture and embedding](https://github.com/jschuller/mcp-server-servicenow/blob/main/docs/architecture.md) — mount it in your own FastMCP server
 - [Write your own skills](https://github.com/jschuller/mcp-server-servicenow/blob/main/EXTENDING.md) — the template, the validator, the GitHub Action, sharing
+- [Privacy](https://github.com/jschuller/mcp-server-servicenow/blob/main/docs/privacy.md) — the server talks only to your instance; no telemetry
 - [Contributing](https://github.com/jschuller/mcp-server-servicenow/blob/main/CONTRIBUTING.md) · [Changelog](https://github.com/jschuller/mcp-server-servicenow/blob/main/CHANGELOG.md) · [Support](https://github.com/jschuller/mcp-server-servicenow/blob/main/SUPPORT.md) · [Security](https://github.com/jschuller/mcp-server-servicenow/blob/main/SECURITY.md)
 
 Write your own skills: [EXTENDING.md](https://github.com/jschuller/mcp-server-servicenow/blob/main/EXTENDING.md) covers the template, the validator and how to share them. Next: MCP prompts.
@@ -220,4 +227,4 @@ Write your own skills: [EXTENDING.md](https://github.com/jschuller/mcp-server-se
 
 ## License
 
-[MIT](https://github.com/jschuller/mcp-server-servicenow/blob/main/LICENSE)
+[MIT](https://github.com/jschuller/mcp-server-servicenow/blob/main/LICENSE). An independent project, not affiliated with or endorsed by ServiceNow, Inc. ServiceNow is a trademark of ServiceNow, Inc.
