@@ -28,7 +28,11 @@ the release (see Failure modes).
    Then `uv lock` (the lockfile records the project's own version), a
    `CHANGELOG.md` section (`## [X.Y.Z] - YYYY-MM-DD`).
 
-   The template and the examples pin the release too, and CI checks those pins:
+   This repo's plugin, the template and the examples pin the release too, and CI checks
+   those pins:
+   - `.claude-plugin/plugin.json` → `mcpServers.servicenow.args`
+     (`mcp-server-servicenow==X.Y.Z`; Anthropic's plugin directory blocks an unpinned
+     `uvx`);
    - `examples/template/.claude-plugin/plugin.json` and the examples'
      `.claude-plugin/plugin.json` (`mcp-server-servicenow==X.Y.Z`);
    - `examples/template/.github/workflows/validate-skills.yml` (`server-version`);
@@ -44,7 +48,7 @@ the release (see Failure modes).
    the pinned commit to be in the checked-out history with the same
    `actions/validate-skills/` as the tree. While the Action is unchanged, keep the pin.
    When a release changes it, pin the last commit that changes it, with `# main` as the
-   comment; the fast-forward in step 4 keeps that commit on main. In that case only,
+   comment; the fast-forward after the release keeps that commit on main. In that case only,
    after the release, re-pin to the tag's commit (`git rev-parse vX.Y.Z^{commit}`, with
    `# vX.Y.Z` as the comment) in a follow-up commit on main, and copy the template from
    that commit in post-release step 5.
@@ -124,22 +128,28 @@ the release (see Failure modes).
      regression (`--eval-summary` refuses such a run). Not a gate yet: the owner
      decides the suite's size and cadence.
 
-4. Push to main and wait for CI green — the test matrix (3.11–3.14)
-   plus the `package` job (version consistency, `uv lock --check`,
+4. Push the release branch, open the PR and wait for CI green — the test matrix
+   (3.11–3.14) plus the `package` job (version consistency, `uv lock --check`,
    build + twine).
-
-   Land the reviewed commits on main unchanged: fast-forward main to the PR branch
-   (`git push origin <branch>:main` once the PR's CI is green), not GitHub's
-   rebase-merge, which rewrites every commit. The examples' `RESULTS.md` files name the
-   commit their run came from, and a rewritten commit leaves that link dangling.
 
 ## Cutting the release
 
+Main is the plugin marketplace, and the plugin runs `uvx mcp-server-servicenow==X.Y.Z`.
+Moving main before PyPI serves X.Y.Z would break the server for plugin users who update
+in that window, so publish from the PR branch first and move main last:
+
 ```sh
-gh release create vX.Y.Z --target main --title "..." --notes-file notes.md
+gh release create vX.Y.Z --target <branch> --title "..." --notes-file notes.md
+# wait until post-release steps 1-4 pass (PyPI, workflows, registry, fresh uvx)
+git push origin <branch>:main
 ```
 
-The tag must be exactly `v` + the pyproject version.
+The tag must be exactly `v` + the pyproject version, on the PR branch's head commit.
+
+Land the reviewed commits on main unchanged: fast-forward main to the PR branch, not
+GitHub's rebase-merge, which rewrites every commit (GitHub then marks the PR merged by
+itself). The examples' `RESULTS.md` files name the commit their run came from, and a
+rewritten commit leaves that link dangling.
 
 ## Post-release verification (do not skip)
 
@@ -168,7 +178,7 @@ The tag must be exactly `v` + the pyproject version.
 | Symptom | Cause / fix |
 |---|---|
 | PyPI `invalid-publisher` | Trusted-publisher claims must match exactly: owner `jschuller`, repo `mcp-server-servicenow`, workflow `publish.yml`, environment blank. |
-| Tag/version mismatch error in publish.yml | Release was cut from the wrong commit or a bump was missed. `gh release delete vX.Y.Z --cleanup-tag`, fix, recreate with `--target main`. Safe **only** while PyPI doesn't have the version yet. |
+| Tag/version mismatch error in publish.yml | Release was cut from the wrong commit or a bump was missed. `gh release delete vX.Y.Z --cleanup-tag`, fix, recreate with `--target <branch>`. Safe **only** while PyPI doesn't have the version yet. |
 | Registry publish failed anyway | Check `publish.yml` succeeded first, then `gh run rerun <id>` once PyPI serves the version. |
 | Packaging/metadata breakage | Surfaces in CI's `package` job pre-release, not on release day — keep that job green. |
 
