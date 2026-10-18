@@ -1357,8 +1357,10 @@ def _check_eval_files(
     plugin_name: str = "",
     server: Optional[str] = None,
     skill_names: Optional[Set[str]] = None,
+    catalog_tools: Sequence[Dict[str, Any]] = (),
 ) -> None:
     """Case, grader and mock files need YAML frontmatter that parses, or the case is skipped."""
+    schemas = {t["name"]: t.get("inputSchema") or {} for t in catalog_tools}
     evals = _entry(plugin, "evals") or plugin / "evals"
     if not evals.is_dir():
         return
@@ -1376,6 +1378,46 @@ def _check_eval_files(
             )
         elif "/graders/" in f"/{rel}":
             _check_grader(rel, data, plugin_name, server, skill_names or set(), report)
+        elif server and f"/mocks/{server}/" in f"/{rel}":
+            _check_mock_expect(rel, path.stem, data, schemas, report)
+
+
+def _check_mock_expect(
+    rel: str,
+    tool: str,
+    data: Dict[str, Any],
+    schemas: Dict[str, Dict[str, Any]],
+    report: SkillReport,
+) -> None:
+    """An ``expect`` on a parameter with a default fails every call that omits it.
+
+    claude plugin eval aborts the case when the model's call violates
+    ``expect``, and a missing parameter violates it, although the server
+    would have used the default. An eval suite once lost 12 cases this way
+    (list_ci's class_name).
+    """
+    expect = data.get("expect")
+    if not isinstance(expect, dict) or tool not in schemas:
+        return
+    properties = schemas[tool].get("properties") or {}
+    for param in expect:
+        spec = properties.get(param)
+        if spec is None:
+            report.add(
+                "warning",
+                rel,
+                None,
+                f"expect names {param!r}, which {tool} does not take",
+            )
+        elif "default" in spec:
+            report.add(
+                "warning",
+                rel,
+                None,
+                f"expect on {param!r}, which defaults to {spec['default']!r}: a call "
+                "that leaves it out aborts the case. Drop it from expect, and match "
+                "it in the body ({input.%s}) if you need it" % param,
+            )
 
 
 def lint_plugin(plugin: Path, catalog_tools: List[Dict[str, Any]]) -> SkillReport:
@@ -1498,7 +1540,12 @@ def lint_plugin(plugin: Path, catalog_tools: List[Dict[str, Any]]) -> SkillRepor
         else None
     )
     _check_eval_files(
-        plugin, report, str(manifest.get("name") or ""), server_name, skill_names
+        plugin,
+        report,
+        str(manifest.get("name") or ""),
+        server_name,
+        skill_names,
+        catalog_tools,
     )
     if servers is None:
         report.add("warning", where, None, "no mcpServers: the skills have no tools")

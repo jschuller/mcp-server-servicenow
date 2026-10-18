@@ -1,0 +1,37 @@
+{
+  "count": 4,
+  "records": [
+    {
+      "element": "comments",
+      "element_id": "4f1c2a9be3a1101089a1d5e2c7b9f001",
+      "name": "incident",
+      "value": "The 02:00 payroll export failed again, third night running.",
+      "sys_created_on": "2026-10-14 06:12:40",
+      "sys_created_by": "maria.lopez"
+    },
+    {
+      "element": "work_notes",
+      "element_id": "4f1c2a9be3a1101089a1d5e2c7b9f001",
+      "name": "incident",
+      "value": "Export host ran out of disk; cleared old archives.",
+      "sys_created_on": "2026-10-14 09:30:05",
+      "sys_created_by": "dev.ops1"
+    },
+    {
+      "element": "work_notes",
+      "element_id": "4f1c2a9be3a1101089a1d5e2c7b9f001",
+      "name": "incident",
+      "value": "Added a 7-day retention job on the archive folder.",
+      "sys_created_on": "2026-10-15 11:02:17",
+      "sys_created_by": "dev.ops1"
+    },
+    {
+      "element": "comments",
+      "element_id": "4f1c2a9be3a1101089a1d5e2c7b9f001",
+      "name": "incident",
+      "value": "Last night's export ran fine, thanks.",
+      "sys_created_on": "2026-10-16 07:45:51",
+      "sys_created_by": "maria.lopez"
+    }
+  ]
+}

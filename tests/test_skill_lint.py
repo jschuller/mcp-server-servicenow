@@ -1168,3 +1168,24 @@ def test_eval_frontmatter_must_parse(tmp_path: Path) -> None:
     (plugin / "evals" / "mocks" / "servicenow" / "get_ci.md").write_text("{}")
     errors = plugin_messages(lint_skills([plugin]), "error")
     assert len(errors) == 1 and "skips this file" in errors[0]
+
+
+def test_mock_expect_on_a_defaulted_parameter_warns(tmp_path: Path) -> None:
+    from servicenow_mcp.eval_kit import write_eval_mocks
+
+    plugin = make_wrapper(tmp_path)
+    write_eval_mocks(plugin, "9.9.9")
+    mocks = plugin / "evals/mocks/servicenow"
+    (mocks / "list_ci.md").write_text(
+        "---\nexpect:\n  class_name: /^[a-z_]+$/\n  colour: red\n---\n\n{}\n"
+    )
+    warnings = [
+        w
+        for w in plugin_messages(lint_skills([plugin]), "warning")
+        if w.startswith("expect")
+    ]
+    # Only list_ci's two: the generated list_records mock expects table_name,
+    # which is required.
+    assert len(warnings) == 2
+    assert "expect on 'class_name', which defaults to 'cmdb_ci'" in warnings[0]
+    assert "'colour', which list_ci does not take" in warnings[1]

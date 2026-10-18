@@ -1,0 +1,13 @@
+{
+  "count": 1,
+  "records": [
+    {
+      "sys_id": "4f1c2a9be3a1101089a1d5e2c7b9f001",
+      "number": "INC0010023",
+      "short_description": "Payroll export job fails nightly",
+      "state": "2",
+      "priority": "2",
+      "assigned_to": "6816f79cc0a8016401c5a33be04be441"
+    }
+  ]
+}
