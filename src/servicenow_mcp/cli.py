@@ -416,11 +416,11 @@ def _parse_static_tokens(args: argparse.Namespace) -> dict[str, dict[str, Any]] 
         if token in tokens:
             raise ValueError(f"MCP_STATIC_TOKENS entry {i} repeats a token")
         if len(token) < MIN_STATIC_TOKEN_LENGTH:
-            # Name and length only: the token itself is never logged.
+            # Position and length only: even a name may be token text.
             logger.warning(
-                "static token %s is %d characters; use at least %d "
+                "MCP_STATIC_TOKENS entry %d is %d characters; use at least %d "
                 "(openssl rand -hex 32)",
-                name,
+                i,
                 len(token),
                 MIN_STATIC_TOKEN_LENGTH,
             )

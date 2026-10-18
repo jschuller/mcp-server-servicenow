@@ -74,8 +74,11 @@ def _walk_hierarchy(
             response = make_sn_request(
                 "GET", url, timeout, params={"sysparm_fields": "name,super_class"}
             )
-            row = parse_json_response(response, url).get("result", {})
-            name = row.get("name") if isinstance(row, dict) else None
+            data = parse_json_response(response, url)
+            row = data.get("result") if isinstance(data, dict) else None
+            if not isinstance(row, dict):
+                break
+            name = row.get("name")
             if not name or name in chain:
                 break
             chain.append(name)
@@ -172,7 +175,7 @@ def fetch_table_schema(
         result["truncated"] = True
     if walk_refused:
         result["note"] = (
-            "Parent tables could not be read (sys_db_object refused), so the "
+            "Parent tables could not be read (sys_db_object unavailable), so the "
             "hierarchy may be incomplete and inherited fields are missing."
         )
     return result

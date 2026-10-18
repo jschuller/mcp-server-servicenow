@@ -192,9 +192,9 @@ Find the business rules, client scripts, UI policies, ACLs and script includes t
    find_references(table_name="<table_name>", field_name="<field>")
    ```
    Leave out `field_name` for the whole table; that also lists the reference fields on other tables that point to it.
-   Only this exact table is matched. Rules and ACLs on a parent table apply too (`incident` inherits from `task`): get the parents from `get_table_schema`'s `hierarchy` (or a field's `defined_in`) and run `find_references` on each. If the schema result has a `note` that parent tables could not be read, the hierarchy is incomplete: say that parent tables were not checked.
+   Only this exact table is matched. Rules and ACLs on a parent table apply too (`incident` inherits from `task`): get the parents from `get_table_schema`'s `hierarchy` (or a field's `defined_in`) and run `find_references` on each. If the schema result has a `note` that parent tables could not be read, or `get_table_schema` itself is refused, say that parent tables were not checked.
 2. Name every source in `not_assessable`: the answer is incomplete without them.
-3. For a match you need to explain, read its record by `sys_id` from the source's `table`, without the body: name the fields you need (`name`, `active`, `sys_updated_on`, `sys_updated_by`, plus the ones `find_references` returned for that source), never `script` or `condition`. For a business rule:
+3. For a match you need to explain, read its record by `sys_id` from the source's `table`, without the body: request the fields `find_references` returned for that source plus `sys_updated_on,sys_updated_by`, and never a body field (`script`, `script_true`, `script_false`, `condition`, `conditions`, `filter_condition`). For a business rule:
    ```
    list_records(table_name="sys_script", query="sys_id=<sys_id>", fields="name,collection,when,active,sys_updated_on,sys_updated_by", limit=1)
    ```

@@ -132,3 +132,24 @@ def test_a_401_is_the_identity_failing_not_a_gap(sn: Mock) -> None:
     )
     with pytest.raises(ServiceNowAPIError, match="401"):
         system_tools.find_references(table_name="incident")
+
+
+def test_a_policy_401_on_one_source_is_a_gap(sn: Mock) -> None:
+    def respond(method: str, url: str, timeout: int, params: Dict[str, Any]) -> Any:
+        if url.endswith("/sys_security_acl"):
+            raise ServiceNowAPIError(
+                "Authentication failed (401). Check the API key and that a REST API "
+                "access policy maps it for this API and method (GET). URL: " + url
+            )
+        return sn_response({"result": [{"sys_id": "1"}]})
+
+    sn.side_effect = respond
+    report = system_tools.find_references(table_name="incident")
+    assert len(report["groups"]) == 5
+    assert report["not_assessable"] == [
+        {
+            "source": "acls",
+            "table": "sys_security_acl",
+            "reason": "Authentication failed (401)",
+        }
+    ]

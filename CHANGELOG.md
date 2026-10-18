@@ -26,8 +26,9 @@ fixes from an independent review of the repository.
   client scripts, UI policies (or their field actions), ACLs, script includes and
   reference fields, by name and sys_id only, never script or ACL bodies. Script matches
   are text matches, and only the exact table is matched (run it again for a parent
-  table). A source the identity can't read (403) is reported in `not_assessable`, and the
-  others still answer; a 401 or a timeout is an error. The exploring-tables skill drives it (workflow 7).
+  table). A source the identity can't read (403, or a 401 from an access policy that leaves
+  its table out) is reported in `not_assessable`, and the others still answer; a 401 on
+  every source, or a timeout, is an error. The exploring-tables skill drives it (workflow 7).
 - **Record history** in the exploring-tables skill (workflow 6): a record's work notes and
   comments (`sys_journal_field`) and field changes (`sys_audit`) as one timeline. Without
   `audit_viewer` the journal returns 0 rows rather than a 403, and the skill reports that

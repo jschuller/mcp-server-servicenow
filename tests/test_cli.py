@@ -150,16 +150,17 @@ class TestParseStaticTokens:
             cli._parse_static_tokens(_args(mcp_static_tokens="ci:tok-a,dev:tok-a"))
         assert "tok-a" not in str(exc_info.value)
 
-    def test_short_token_warns_with_name_and_length_only(self, caplog):
+    def test_short_token_warns_with_position_and_length_only(self, caplog):
         with caplog.at_level("WARNING"):
             cli._parse_static_tokens(_args(mcp_static_tokens="ci:short-token"))
-        assert "static token ci is 11 characters; use at least 32" in caplog.text
+        assert "entry 1 is 11 characters; use at least 32" in caplog.text
+        assert "static token ci" not in caplog.text
         assert "short-token" not in caplog.text
 
     def test_long_token_does_not_warn(self, caplog):
         with caplog.at_level("WARNING"):
             cli._parse_static_tokens(_args(mcp_static_tokens="ci:" + "a" * 32))
-        assert "static token" not in caplog.text
+        assert "characters; use at least" not in caplog.text
 
 
 class TestHasMcpOauth:

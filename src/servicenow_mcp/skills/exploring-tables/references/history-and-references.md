@@ -34,7 +34,8 @@ A record's history lives in three places. Read the first two; the third is a cac
 | Script includes | `sys_script_include` | `script` containing the table name (and the field name): a text match, so expect false positives |
 | Reference fields | `sys_dictionary` | `reference` (fields on other tables that point here; table mode) |
 
-- **Bodies stay unread.** Don't fetch `script` or `condition` to confirm a match, and never read ACL bodies (see
+- **Bodies stay unread.** Don't fetch `script`, `script_true`, `script_false`, `condition`, `conditions` or
+  `filter_condition` to confirm a match, and never read ACL bodies (see
   `analyzing-access`). Names, the table and the `active` flag answer "what would this change touch".
 - **Roles.** Reading these tables takes `admin`, or the matching admin roles (`security_admin` for ACLs). A
   least-privilege identity gets each source in `not_assessable`.

@@ -163,7 +163,8 @@ def find_references(
     in field mode) are text matches, so expect false positives. Only this exact
     table is matched: run it again for a parent table (get_table_schema's
     hierarchy) to find rules and ACLs defined there. A source this identity
-    can't read (403) is listed in not_assessable; rows hidden by an ACL
+    can't read (403, or a 401 from an access policy that leaves its table out)
+    is listed in not_assessable; a 401 on every source is an error; rows hidden by an ACL
     are simply missing. complete=false means the source hit the limit.
     """
     for name, value in (("table name", table_name), ("field_name", field_name)):
@@ -176,6 +177,7 @@ def find_references(
     }
     if field_name:
         report["field"] = field_name
+    unauthenticated: List[ServiceNowAPIError] = []
     for source, table, query, fields in _reference_queries(table_name, field_name):
         url = build_url(config.api_url, "table", table)
         params: Dict[str, Any] = {
@@ -190,10 +192,12 @@ def find_references(
             rows = result_rows(parse_json_response(response, url))
         except ServiceNowAPIError as exc:
             reason = str(exc).split(". ", 1)[0]
-            if "(403)" not in reason:
-                # 401 is the whole identity failing, a timeout a dead instance:
-                # errors, not one unreadable source.
-                raise
+            if "(401)" in reason:
+                # An access policy may leave out one table (API keys, securely
+                # scoped OAuth): a gap, unless every source says the same.
+                unauthenticated.append(exc)
+            elif "(403)" not in reason:
+                raise  # a timeout or a dead instance is an error, not a gap
             report["not_assessable"].append(
                 {"source": source, "table": table, "reason": reason}
             )
@@ -207,4 +211,10 @@ def find_references(
                 "items": rows,
             }
         )
+    if (
+        unauthenticated
+        and len(unauthenticated) == len(report["not_assessable"])
+        and not report["groups"]
+    ):
+        raise unauthenticated[0]  # the identity itself failed
     return report
