@@ -68,7 +68,7 @@ FIXED_TABLES: Dict[str, str] = {
     "set_current_update_set": "sys_update_set",
     "list_update_set_changes": "sys_update_xml",
 }
-IDENTIFIER_ARGS = ("sys_id", "update_set_sys_id", "relation_type")
+IDENTIFIER_ARGS = ("sys_id", "update_set_sys_id", "relation_type", "field_name")
 FIELD_LIST_ARGS = (
     "fields",
     "group_by",

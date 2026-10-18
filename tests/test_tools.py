@@ -4,6 +4,7 @@ import pytest
 from fastmcp import Client
 
 from servicenow_mcp.server import mcp, init_services
+from tests.inventory import ALL_TOOLS
 from servicenow_mcp.utils.config import (
     AuthConfig,
     AuthType,
@@ -130,6 +131,17 @@ class TestGetCISchema:
             assert "sys_id" in schema.get("required", [])
 
 
+class TestFindReferencesSchema:
+    @pytest.mark.asyncio
+    async def test_table_required_field_optional(self) -> None:
+        async with Client(mcp) as client:
+            tools = await client.list_tools()
+            schema = _get_tool_schema(tools, "find_references")
+            assert schema.get("required") == ["table_name"]
+            assert schema["properties"]["limit"].get("default") == 50
+            assert schema["properties"]["limit"].get("maximum") == 100
+
+
 class TestGetTableSchemaSchema:
     @pytest.mark.asyncio
     async def test_required_table_name(self) -> None:
@@ -207,7 +219,7 @@ class TestAggregateRecordsSchema:
 
     @pytest.mark.asyncio
     async def test_tool_count(self) -> None:
-        """Verify total tool count is 19 (18 original + aggregate_records)."""
+        """Exactly the tools in tests/inventory.py."""
         async with Client(mcp) as client:
             tools = await client.list_tools()
-            assert len(tools) == 19
+            assert {t.name for t in tools} == ALL_TOOLS

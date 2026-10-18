@@ -1,8 +1,8 @@
 # Tools, resources and skills
 
-19 tools, 5 resources and 4 Agent Skills. Every tool carries MCP annotations (`readOnlyHint`, `destructiveHint`, `idempotentHint`, `openWorldHint`), so your client decides which calls need your approval. `--read-only` hides the 7 write tools, and so does an identity with `snc_read_only`.
+20 tools, 5 resources and 4 Agent Skills. Every tool carries MCP annotations (`readOnlyHint`, `destructiveHint`, `idempotentHint`, `openWorldHint`), so your client decides which calls need your approval. `--read-only` hides the 7 write tools, and so does an identity with `snc_read_only`.
 
-The list tools (`list_records`, `list_ci`, `get_ci_relationships`, `get_system_properties`, `list_update_sets`, `list_update_set_changes`, `get_table_schema`) publish an `outputSchema` and return `structuredContent` next to the same JSON as text. A result over the 500 KB limit keeps that shape: it holds the first rows that fit and says `"truncated": true`, plus `next_offset` for the tools that take `offset`. Other tools are cut to text at the limit.
+The list tools (`list_records`, `list_ci`, `get_ci_relationships`, `get_system_properties`, `list_update_sets`, `list_update_set_changes`, `get_table_schema`, `find_references`) publish an `outputSchema` and return `structuredContent` next to the same JSON as text. A result over the 500 KB limit keeps that shape: it holds the first rows that fit and says `"truncated": true`, plus `next_offset` for the tools that take `offset`. Other tools are cut to text at the limit.
 
 ## Tools
 
@@ -31,6 +31,7 @@ The list tools (`list_records`, `list_ci`, `get_ci_relationships`, `get_system_p
 | `get_system_properties` | Query system properties |
 | `get_current_user` | The authenticated user: name, email, sys_id, roles |
 | `get_table_schema` | Table data dictionary incl. inherited fields (`hierarchy`, per-field `defined_in`) |
+| `find_references` | Where-used for a table or one field: business rules, client scripts, UI policies (or their field actions), ACLs, script includes (text match) and reference fields. Names, sys_ids and flags only, never script or ACL bodies; a source this identity can't read is listed in `not_assessable` |
 
 ### Update sets (5)
 | Tool | Description |
@@ -61,6 +62,7 @@ ServiceNow's ACLs decide what the user can do; the server adds nothing on top. B
 | `list_ci`, `get_ci`, `get_ci_relationships`, `servicenow://cmdb/classes` | `itil` or `cmdb_read` | 403, or rows filtered out |
 | `create_ci`, `update_ci` | write access to the CI class | 403 |
 | `get_table_schema`, `servicenow://schema/{table}` | `personalize_dictionary` | 403 naming the role |
+| `find_references` | `admin`, or read access to `sys_script`, `sys_script_client`, `sys_ui_policy`, `sys_security_acl` (`security_admin`), `sys_script_include` and `sys_dictionary` | that source in `not_assessable`; the others still answer |
 | `get_system_properties` | `admin` | **an empty list, no error** |
 | `get_current_user`, `servicenow://instance`, `servicenow://update-set/current` | any user | `instance` omits the platform version without `admin` |
 | update-set tools | `admin` | 403 |

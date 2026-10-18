@@ -33,7 +33,7 @@ REFERENCE_URIS = {
     "skill://analyzing-access/references/access-errors.md",
     "skill://analyzing-access/references/acl-evaluation.md",
     "skill://exploring-tables/references/query-syntax.md",
-    "skill://exploring-tables/references/record-history.md",
+    "skill://exploring-tables/references/history-and-references.md",
     "skill://reviewing-update-sets/references/update-set-fields.md",
     "skill://servicenow-cmdb/references/cmdb-tables.md",
     "skill://servicenow-cmdb/references/csdm5.md",

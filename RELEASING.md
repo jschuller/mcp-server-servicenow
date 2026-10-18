@@ -85,7 +85,7 @@ the release (see Failure modes).
      sh -c 'uv run pytest tests/integration/ -v -rs && uv run python scripts/stdio_smoke.py --profile readonly && uv run mcp-server-servicenow --check'
    ```
 
-   The `itil` + `snc_read_only` key must list 12 tools with no flag, and
+   The `itil` + `snc_read_only` key must list 13 tools with no flag, and
    `--check` must exit 0 (record, schema and aggregate show as limits under
    an API key). Repeat the smoke and `--check` with an OAuth
    client-credentials identity (`SERVICENOW_AUTH_TYPE=oauth`,
@@ -105,7 +105,7 @@ the release (see Failure modes).
 3. **Real-client check** (the unit suite drives an in-memory client; these
    surfaces behave differently):
    - Claude Code: `claude mcp add servicenow-dev -- uv run --directory . mcp-server-servicenow …`
-     with the start-here identity and no flag must list 12 tools; with a
+     with the start-here identity and no flag must list 13 tools; with a
      writable identity, update a scratch incident — Claude Code's permission
      prompt must appear before the write tool runs.
    - Claude Desktop: point `claude_desktop_config.json` at the local build;
@@ -121,7 +121,7 @@ the release (see Failure modes).
      a skill is readable via `read_mcp_resource`, a write tool is refused by
      `codex exec`; in the TUI a write tool shows Codex's approval prompt.
    - pi (1.0+): `pi mcp add … --exposure direct -- uv run --directory . mcp-server-servicenow`,
-     `pi mcp list` must report 12/19 tools and 18 resources.
+     `pi mcp list` must report 13/20 tools and 19 resources.
    - Behaviour evals (Claude Code only, mocked tools, no instance):
      `command claude plugin eval . --trust-plugin --runs 1 --ablation none --model sonnet --no-publish --max-cost-usd 5`.
      Runs draw on the signed-in plan's usage. Hitting a usage limit mid-suite scores

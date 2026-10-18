@@ -1,6 +1,6 @@
 # Client setup
 
-Every snippet below assumes the [start-here](../README.md#2-create-an-integration-user) identity: user `mcp.integration` (*Web service access only*, roles `itil` + `snc_read_only`). Because it holds `snc_read_only`, the server lists only the 12 read-only tools; with a user that can write, all 19 appear and your client decides when to ask. Add `--read-only` for a writable identity on a client without approval prompts (opencode, pi) or on a shared HTTP server. You need [uv](https://docs.astral.sh/uv/getting-started/installation/) (`uvx` runs the server without installing it): `curl -LsSf https://astral.sh/uv/install.sh | sh` on macOS/Linux, `winget install astral-sh.uv` on Windows.
+Every snippet below assumes the [start-here](../README.md#2-create-an-integration-user) identity: user `mcp.integration` (*Web service access only*, roles `itil` + `snc_read_only`). Because it holds `snc_read_only`, the server lists only the 13 read-only tools; with a user that can write, all 20 appear and your client decides when to ask. Add `--read-only` for a writable identity on a client without approval prompts (opencode, pi) or on a shared HTTP server. You need [uv](https://docs.astral.sh/uv/getting-started/installation/) (`uvx` runs the server without installing it): `curl -LsSf https://astral.sh/uv/install.sh | sh` on macOS/Linux, `winget install astral-sh.uv` on Windows.
 
 Basic auth is the default (`SERVICENOW_AUTH_TYPE=basic`). OAuth, API keys, multiple instances and a launcher that reads secrets from your OS store: [configuration.md](configuration.md).
 
@@ -90,7 +90,7 @@ Add to `.vscode/mcp.json` in your workspace, or run **MCP: Open User Configurati
 }
 ```
 
-Click **Start** above the server in `mcp.json` (or run **MCP: List Servers**), then use Copilot Chat in **Agent** mode; the 12 read-only tools appear in the tools picker. Tools annotated `readOnlyHint` run without a prompt; write tools get a **Run …** confirmation, which you can allow for the session, the workspace or always. Copilot does not read the skills on its own: attach one with **Add Context › MCP Resources** (for example `skill://servicenow-cmdb/SKILL.md`) when you want the guided workflow.
+Click **Start** above the server in `mcp.json` (or run **MCP: List Servers**), then use Copilot Chat in **Agent** mode; the 13 read-only tools appear in the tools picker. Tools annotated `readOnlyHint` run without a prompt; write tools get a **Run …** confirmation, which you can allow for the session, the workspace or always. Copilot does not read the skills on its own: attach one with **Add Context › MCP Resources** (for example `skill://servicenow-cmdb/SKILL.md`) when you want the guided workflow.
 
 ## Cursor
 
@@ -171,7 +171,7 @@ pi mcp add servicenow --exposure direct \
   --env SERVICENOW_USERNAME=mcp.integration \
   --env 'SERVICENOW_PASSWORD=${SERVICENOW_PASSWORD}' \
   -- uvx mcp-server-servicenow
-pi mcp list   # connects and lists 12 tools, 19 resources
+pi mcp list   # connects and lists 13 tools, 19 resources
 ```
 
 `--exposure direct` lets the model call the tools by name (pi's default, `codemode`, wraps them in scripts). pi has no permission prompts: the start-here user already hides the write tools; with a writable identity add `--read-only` unless you want the model to write unasked.

@@ -18,6 +18,7 @@ READ_TOOLS = frozenset(
         "get_system_properties",
         "get_current_user",
         "get_table_schema",
+        "find_references",
         # Update sets
         "list_update_sets",
         "get_update_set",

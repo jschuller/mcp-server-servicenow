@@ -291,6 +291,132 @@
       }
     },
     {
+      "name": "find_references",
+      "title": "Find References",
+      "description": "Where-used for a table or one of its fields: the business rules, client scripts, UI policies, ACLs, script includes and reference fields that touch it.\n\nReturns names, sys_ids and flags only, never script, condition or ACL\nbodies. Script-include matches are text matches on the name. A source this\nidentity can't read is listed in not_assessable; 0 matches may also mean\nrows hidden by an ACL. complete=false means the source hit the limit.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "table_name": {
+            "description": "The table to look up (e.g., 'incident')",
+            "type": "string"
+          },
+          "field_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Narrow to one field of the table (e.g., 'assigned_to')"
+          },
+          "limit": {
+            "default": 50,
+            "description": "Maximum matches to return per source",
+            "maximum": 100,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "table_name"
+        ],
+        "type": "object"
+      },
+      "outputSchema": {
+        "properties": {
+          "table": {
+            "type": "string"
+          },
+          "field": {
+            "type": "string"
+          },
+          "groups": {
+            "items": {
+              "properties": {
+                "source": {
+                  "type": "string"
+                },
+                "table": {
+                  "type": "string"
+                },
+                "count": {
+                  "type": "integer"
+                },
+                "complete": {
+                  "type": "boolean"
+                },
+                "items": {
+                  "items": {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  "type": "array"
+                }
+              },
+              "required": [
+                "source",
+                "table",
+                "count",
+                "complete",
+                "items"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "not_assessable": {
+            "items": {
+              "properties": {
+                "source": {
+                  "type": "string"
+                },
+                "table": {
+                  "type": "string"
+                },
+                "reason": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "source",
+                "table",
+                "reason"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "truncated": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "table",
+          "groups",
+          "not_assessable"
+        ],
+        "type": "object"
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "_meta": {
+        "fastmcp": {
+          "tags": [
+            "admin",
+            "read"
+          ]
+        }
+      }
+    },
+    {
       "name": "get_ci",
       "title": "Get Ci",
       "description": "Get a single CMDB configuration item by sys_id",

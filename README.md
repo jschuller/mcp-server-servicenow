@@ -137,7 +137,7 @@ Codex, opencode, Antigravity, Cursor, pi, the Claude Code plugin and keeping the
 
 ### 4. Check it works
 
-Ask: *"List the 5 most recent incidents."* The start-here user holds `snc_read_only`, so the server lists only the 12 read-only tools. Give the user write roles (and remove `snc_read_only`) and the 7 write tools appear; your client asks before each write.
+Ask: *"List the 5 most recent incidents."* The start-here user holds `snc_read_only`, so the server lists only the 13 read-only tools. Give the user write roles (and remove `snc_read_only`) and the 7 write tools appear; your client asks before each write.
 
 No answer? Run the same configuration with `--check`. It makes read-only requests, prints one line per check (instance reachable, identity, roles, table read, schema, aggregates) and never prints a secret:
 
@@ -160,7 +160,7 @@ Everything else: run `--check` ([above](#4-check-it-works)), then [TROUBLESHOOTI
 
 ## Tools
 
-19 tools, 5 resources and 4 skills. Full reference: [tools, resources and skills](https://github.com/jschuller/mcp-server-servicenow/blob/main/docs/tools.md).
+20 tools, 5 resources and 4 skills. Full reference: [tools, resources and skills](https://github.com/jschuller/mcp-server-servicenow/blob/main/docs/tools.md).
 
 | Group | Tools |
 |---|---|

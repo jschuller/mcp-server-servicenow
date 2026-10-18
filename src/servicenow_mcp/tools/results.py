@@ -71,6 +71,28 @@ class TableSchema(TypedDict):
     truncated: NotRequired[bool]
 
 
+class ReferenceGroup(TypedDict):
+    source: str
+    table: str
+    count: int
+    complete: bool
+    items: List[Row]
+
+
+class NotAssessable(TypedDict):
+    source: str
+    table: str
+    reason: str
+
+
+class ReferenceReport(TypedDict):
+    table: str
+    field: NotRequired[str]
+    groups: List[ReferenceGroup]
+    not_assessable: List[NotAssessable]
+    truncated: NotRequired[bool]
+
+
 # Tool name -> the list the limiter may cut, and whether the tool pages with
 # ``offset`` (then a cut result says where to continue).
 LIST_KEYS: Dict[str, tuple[str, bool]] = {
@@ -81,4 +103,5 @@ LIST_KEYS: Dict[str, tuple[str, bool]] = {
     "list_update_sets": ("update_sets", False),
     "list_update_set_changes": ("changes", False),
     "get_table_schema": ("fields", False),
+    "find_references": ("groups", False),
 }
