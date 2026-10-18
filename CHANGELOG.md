@@ -27,8 +27,8 @@ fixes from an independent review of the repository.
   reference fields, by name and sys_id only, never script or ACL bodies. Script matches
   are text matches, and only the exact table is matched (run it again for a parent
   table). A source the identity can't read (403, or a 401 from an access policy that leaves
-  its table out, for an API key) is reported in `not_assessable`, and the others still
-  answer; any other 401, or a timeout, is an error, raised at the first source so a bad
+  its table out) is reported in `not_assessable`, and the others still answer; a refused
+  password or OAuth secret, or a timeout, is an error, raised at the first source so a bad
   password costs one failed login. The exploring-tables skill drives it (workflow 7).
 - **Record history** in the exploring-tables skill (workflow 6): a record's work notes and
   comments (`sys_journal_field`) and field changes (`sys_audit`) as one timeline. Without

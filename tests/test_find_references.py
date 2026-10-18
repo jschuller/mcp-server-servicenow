@@ -135,7 +135,7 @@ def test_a_401_is_the_identity_failing_not_a_gap(sn: Mock) -> None:
 
 
 def test_a_policy_401_on_one_source_is_a_gap(monkeypatch, sn: Mock) -> None:
-    monkeypatch.setattr(system_tools, "_per_table_401s", lambda: True)  # API key
+    monkeypatch.setattr(system_tools, "_login_failed", lambda message: False)
 
     def respond(method: str, url: str, timeout: int, params: Dict[str, Any]) -> Any:
         if url.endswith("/sys_security_acl"):
@@ -158,7 +158,7 @@ def test_a_policy_401_on_one_source_is_a_gap(monkeypatch, sn: Mock) -> None:
 
 
 def test_a_password_401_stops_at_the_first_source(monkeypatch, sn: Mock) -> None:
-    monkeypatch.setattr(system_tools, "_per_table_401s", lambda: False)
+    monkeypatch.setattr(system_tools, "_login_failed", lambda message: True)
     sn.side_effect = ServiceNowAPIError("Authentication failed (401). Bad password.")
     with pytest.raises(ServiceNowAPIError, match="401"):
         system_tools.find_references(table_name="incident")
@@ -166,7 +166,22 @@ def test_a_password_401_stops_at_the_first_source(monkeypatch, sn: Mock) -> None
 
 
 def test_an_api_key_401_on_every_source_is_an_error(monkeypatch, sn: Mock) -> None:
-    monkeypatch.setattr(system_tools, "_per_table_401s", lambda: True)
+    monkeypatch.setattr(system_tools, "_login_failed", lambda message: False)
     sn.side_effect = ServiceNowAPIError("Authentication failed (401). Check the key.")
     with pytest.raises(ServiceNowAPIError, match="401"):
         system_tools.find_references(table_name="incident")
+
+
+def test_which_401s_are_a_failed_login(monkeypatch) -> None:
+    from types import SimpleNamespace
+
+    def manager(kind: str) -> Any:
+        return SimpleNamespace(config=SimpleNamespace(type=SimpleNamespace(value=kind)))
+
+    monkeypatch.setattr(system_tools, "get_sn_bearer_token", lambda: None)
+    for kind, failed in (("basic", True), ("oauth", False), ("api_key", False)):
+        monkeypatch.setattr(system_tools, "get_auth_manager", lambda k=kind: manager(k))
+        assert system_tools._login_failed("Authentication failed (401).") is failed
+    assert system_tools._login_failed(
+        "Authentication failed (401) and token refresh also failed."
+    )

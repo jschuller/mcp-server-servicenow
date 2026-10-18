@@ -105,20 +105,23 @@ def get_table_schema(
     )
 
 
-def _per_table_401s() -> bool:
-    """Whether a 401 can mean one table, not the identity.
+def _login_failed(message: str) -> bool:
+    """Whether a 401 means the login itself failed, not one table.
 
-    An API key authenticates per REST API access policy, which can leave a
-    table out, and retrying a key locks no one out. A password or OAuth 401 is
-    the login failing: stop at the first, or every source costs a failed login
+    A REST API access policy can leave one table out for an API key, an OAuth
+    token or a proxied bearer token, and another try costs no failed login. A
+    basic-auth 401, or an OAuth refresh that fails, is the password or secret
+    being refused: stop at the first, or every source costs a failed login
     (and ServiceNow may lock the integration user).
     """
+    if "token refresh also failed" in message:
+        return True
     if get_sn_bearer_token():
         return False
     try:
-        return get_auth_manager().config.type.value == "api_key"
+        return get_auth_manager().config.type.value == "basic"
     except RuntimeError:
-        return False
+        return True
 
 
 # (source, table, encoded query, fields). Fields are names and flags only:
@@ -185,8 +188,9 @@ def find_references(
     in field mode) are text matches, so expect false positives. Only this exact
     table is matched: run it again for a parent table (get_table_schema's
     hierarchy) to find rules and ACLs defined there. A source this identity
-    can't read (403, or for an API key a 401 from an access policy that leaves
-    its table out) is listed in not_assessable; any other 401 is an error; rows hidden by an ACL
+    can't read (403, or a 401 from an access policy that leaves its table out)
+    is listed in not_assessable; a refused password or OAuth secret is an
+    error at the first source; rows hidden by an ACL
     are simply missing. complete=false means the source hit the limit.
     """
     for name, value in (("table name", table_name), ("field_name", field_name)):
@@ -215,10 +219,10 @@ def find_references(
         except ServiceNowAPIError as exc:
             reason = str(exc).split(". ", 1)[0]
             if "(401)" in reason:
-                if not _per_table_401s():
+                if _login_failed(str(exc)):
                     raise
-                # An API key's access policy may leave out one table: a gap,
-                # unless every source says the same.
+                # An access policy may leave out one table: a gap, unless
+                # every source says the same.
                 unauthenticated.append(exc)
             elif "(403)" not in reason:
                 raise  # a timeout or a dead instance is an error, not a gap
