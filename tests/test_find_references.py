@@ -187,12 +187,22 @@ def test_which_401s_are_a_failed_login(monkeypatch) -> None:
     )
 
 
-def test_oauth_stops_after_two_refused_fresh_tokens(monkeypatch, sn: Mock) -> None:
+def test_an_oauth_policy_gap_on_the_first_two_sources_still_answers(
+    monkeypatch, sn: Mock
+) -> None:
     monkeypatch.setattr(system_tools, "_login_failed", lambda message: False)
-    sn.side_effect = ServiceNowAPIError(
-        "Authentication failed (401) even after token refresh. Check your OAuth "
-        "credentials. URL: x"
-    )
-    with pytest.raises(ServiceNowAPIError, match="even after token refresh"):
-        system_tools.find_references(table_name="incident")
-    assert sn.call_count == 2  # not one new token per source
+
+    def respond(method: str, url: str, timeout: int, params: Dict[str, Any]) -> Any:
+        if url.endswith(("/sys_script", "/sys_script_client")):
+            raise ServiceNowAPIError(
+                "Authentication failed (401) even after token refresh. URL: " + url
+            )
+        return sn_response({"result": [{"sys_id": "1"}]})
+
+    sn.side_effect = respond
+    report = system_tools.find_references(table_name="incident")
+    assert len(report["groups"]) == 4
+    assert [n["table"] for n in report["not_assessable"]] == [
+        "sys_script",
+        "sys_script_client",
+    ]
