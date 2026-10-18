@@ -12,17 +12,22 @@ fixes from an independent review of the repository.
   JSON text block is unchanged. A client that validates results gets typed data; with the
   FastMCP client, `result.data` becomes a typed object, so read `result.structured_content`
   for the plain dict.
+- **Static tokens: an entry with a `:` is now `name:token`.** If one of your tokens
+  contains `:` and the part before it looks like a name (letters, digits, `.`, `_`, `-`),
+  only the part after it is accepted: replace that token (`openssl rand -hex 32` never
+  contains `:`). A repeated token or name, or a name with nothing after the `:`, now stops
+  startup. Tokens under 32 characters, and an HTTP listener without `--read-only`, only
+  log a warning.
 - **Regenerate your eval mocks** (`--eval-mocks`): `_tools.json` now carries the output
   schemas and `find_references`, and the validator compares them.
-- **An HTTP listener without `--read-only` logs a warning** at startup, and so does a
-  static token under 32 characters. Nothing is refused.
 
 ### Added
 - **`find_references`**: where-used for a table or one field. It lists business rules,
-  client scripts, UI policies (or their field actions), ACLs, script includes (by text
-  match) and reference fields, by name and sys_id only, never script or ACL bodies. A
-  source the identity can't read is reported in `not_assessable`, and the others still
-  answer. The exploring-tables skill drives it (workflow 7).
+  client scripts, UI policies (or their field actions), ACLs, script includes and
+  reference fields, by name and sys_id only, never script or ACL bodies. Script matches
+  are text matches, and only the exact table is matched (run it again for a parent
+  table). A source the identity can't read is reported in `not_assessable`, and the others
+  still answer. The exploring-tables skill drives it (workflow 7).
 - **Record history** in the exploring-tables skill (workflow 6): a record's work notes and
   comments (`sys_journal_field`) and field changes (`sys_audit`) as one timeline. Without
   `audit_viewer` the journal returns 0 rows rather than a 403, and the skill reports that
@@ -30,44 +35,51 @@ fixes from an independent review of the repository.
 - **`response_format`** on `list_records` and `list_ci`: `concise` returns reference
   fields as bare sys_ids, without instance URLs. The default, `detailed`, is unchanged.
 - **Structured output that survives the size limit**: a list over 500 KB keeps its
-  shape, holding the rows that fit, with `truncated: true` and `next_offset`. Other
+  shape, holding the rows that fit, with `truncated: true` and `next_offset`; when not
+  even one row fits, the list is empty and a `note` says to ask for fewer fields. Other
   tools are cut to text as before. The audit log flags both.
 - **An API key's 401 names the read that still works**: on the Stats API, count with
-  `list_records`; on a single-record read, `list_records` with `sys_id=`. In a 599-case
-  eval run, agents gave up on 26 of 69 aggregation cases without trying the fallback.
+  `list_records`; on a single-record read, `list_records` with `sys_id=`. With the old
+  wording the eval's tools-only agent never fell back (0 of 5 runs); with the new one it
+  did in 4.5 of 5.
 - **Named static tokens**: `MCP_STATIC_TOKENS` entries may be `name:token`, and the name
-  is the audit log's `client_id`, so attribution survives reordering.
+  is what the audit log records as `user`, so attribution survives reordering.
 - The skill validator warns on a mock `expect` for a parameter with a default (such a
   call aborts the case), and on an `expect` the tool doesn't take.
 - Eval cases: record-history, stats-refused-fallback, where-used.
+- [docs/privacy.md](docs/privacy.md): the server talks only to your instance and sends no
+  telemetry; what the audit log keeps.
 
 ### Changed
-- **The Claude Code plugin pins its server** (`uvx mcp-server-servicenow==0.9.1`), as
-  Anthropic's plugin directory requires. Plugin users get a new server when the plugin
-  updates, so the skills and the server always come from the same release. CI checks
-  the pin with the other version fields, and RELEASING.md now publishes to PyPI before
-  main (the marketplace) moves.
+- **The Claude Code plugin pins its server** to the same release
+  (`uvx mcp-server-servicenow==0.9.2`), as Anthropic's plugin directory requires. Plugin
+  users get a new server when the plugin updates, so the skills and the server always
+  come from the same release. CI checks the pin with the other version fields, and
+  RELEASING.md now publishes to PyPI before main (the marketplace) moves.
 - One description everywhere: pyproject, server.json, the plugin and the marketplace.
 - The plugin manifest carries the directory listing fields (`displayName`,
   `documentationUrl`, `supportUrl`, `privacyPolicyUrl`), and the skill validator accepts
   them, plus `termsOfServiceUrl`, in a skills wrapper.
-
-- **Renovate auto-merges GitHub Actions updates only**, after a 3-day release age;
-  Python dependency bumps are reviewed PRs.
-- The plugin and `server.json` pass `SERVICENOW_TOKEN_URL` and `SERVICENOW_DEBUG`.
-- Tests count tools from one list (`tests/inventory.py`), and CONTRIBUTING lists every
-  step of adding a tool.
-- [docs/privacy.md](docs/privacy.md): the server talks only to your instance and sends no
-  telemetry; what the audit log keeps.
+- **Renovate auto-merges GitHub Actions updates only**, after a 3-day release age, and
+  never this repository's own Action; Python dependency bumps are reviewed PRs.
+- The plugin passes `SERVICENOW_TOKEN_URL` and `SERVICENOW_DEBUG`; `server.json` lists
+  `SERVICENOW_DEBUG`.
+- The server turns off FastMCP's startup check for a newer FastMCP on PyPI, so it makes no
+  request except to your instance.
+- Tests count tools from one list (`tests/inventory.py`), and CONTRIBUTING lists the steps
+  of adding a tool.
 
 ### Fixed
+- **The audit log names static-token callers.** Behind MultiAuth (every static-token
+  deployment) the audit `user` had been FastMCP's internal verifier list, not the token's
+  name.
 - Deployment docs: the from-source HTTP example shows the token it generates, Docker
   passes secrets from the environment, Cloud Run uses Secret Manager, and the Cloud Run
   check sends the Google identity token in `X-Serverless-Authorization`.
 - The audit log is described as it is: written values are never logged, and encoded
   queries are logged with secret-like values masked, so they can hold filter values.
-- SECURITY.md supports 0.9.x and names GitHub's private reporting as the only channel.
-- The configuration examples no longer show literal production passwords.
+- SECURITY.md supports 0.9.x.
+- The configuration examples no longer show literal passwords.
 
 ## [0.9.1] - 2026-10-13
 

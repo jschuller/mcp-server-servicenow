@@ -25,7 +25,7 @@ The list tools (`list_records`, `list_ci`, `get_ci_relationships`, `get_system_p
 | `update_ci` | Update a configuration item |
 | `get_ci_relationships` | Parent/child relationships for a CI (paged: `limit`, `offset`) |
 
-### System (3)
+### System (4)
 | Tool | Description |
 |------|-------------|
 | `get_system_properties` | Query system properties |
@@ -62,7 +62,7 @@ ServiceNow's ACLs decide what the user can do; the server adds nothing on top. B
 | `list_ci`, `get_ci`, `get_ci_relationships`, `servicenow://cmdb/classes` | `itil` or `cmdb_read` | 403, or rows filtered out |
 | `create_ci`, `update_ci` | write access to the CI class | 403 |
 | `get_table_schema`, `servicenow://schema/{table}` | `personalize_dictionary` | 403 naming the role |
-| `find_references` | `admin`, or read access to `sys_script`, `sys_script_client`, `sys_ui_policy`, `sys_security_acl` (`security_admin`), `sys_script_include` and `sys_dictionary` | that source in `not_assessable`; the others still answer |
+| `find_references` | `admin`, or read access to `sys_script`, `sys_script_client`, `sys_ui_policy`, `sys_ui_policy_action`, `sys_security_acl` (`security_admin`), `sys_script_include` and `sys_dictionary` | that source in `not_assessable`; the others still answer |
 | `get_system_properties` | `admin` | **an empty list, no error** |
 | `get_current_user`, `servicenow://instance`, `servicenow://update-set/current` | any user | `instance` omits the platform version without `admin` |
 | update-set tools | `admin` | 403 |
@@ -89,7 +89,7 @@ Four [Agent Skills](https://agentskills.io) for the Now Platform — guided, mul
 |-------|-----|----------------|
 | **servicenow-cmdb** | `skill://servicenow-cmdb/SKILL.md` | The CMDB as a data model: class hierarchy, raw relationships, health scorecards, data quality (duplicates, orphans, staleness), CSDM taxonomy, CSDM 5 conformance by stage |
 | **reviewing-update-sets** | `skill://reviewing-update-sets/SKILL.md` | Deep review, batch review, comparison and pre-promotion checks for update sets; preview problems and collisions of retrieved sets (admin) |
-| **exploring-tables** | `skill://exploring-tables/SKILL.md` | Schema discovery (with a sampling fallback when the schema is refused), choice lists, data profiling, table search and comparison, a record's journal and audit history, the encoded-query reference |
+| **exploring-tables** | `skill://exploring-tables/SKILL.md` | Schema discovery (with a sampling fallback when the schema is refused), choice lists, data profiling, table search and comparison, a record's journal and audit history, where-used for a table or field (`find_references`), the encoded-query reference |
 | **analyzing-access** | `skill://analyzing-access/SKILL.md` | Who holds admin and security_admin, roles granted outside groups or left on inactive users, and what a 401, 403, empty result or missing field means |
 
 Each skill states the tables it reads and the roles they need, in its text and in two frontmatter metadata keys (`io.github.jschuller/servicenow-roles`, `io.github.jschuller/servicenow-tables`). A 403 is reported as "not assessable with this identity"; 0 rows or missing fields as "possibly hidden by an ACL".

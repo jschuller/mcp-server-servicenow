@@ -15,9 +15,9 @@ with values in a file:
 
 Profiles:
   readonly  the identity has snc_read_only (the default): without any flag the
-            write tools are hidden (12 tools) and a write call is refused
+            write tools are hidden (13 tools) and a write call is refused
             before it reaches ServiceNow. An identity that cannot read its own
-            sys_user_has_role rows sees all 19 (the check fails open) and the
+            sys_user_has_role rows sees all 20 (the check fails open) and the
             write comes back as ServiceNow's refusal. Changes nothing.
   write     the identity can create, update and delete incidents and update
             sets (admin by default). Creates and deletes scratch incidents and

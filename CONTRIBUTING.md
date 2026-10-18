@@ -36,8 +36,9 @@ Skills for your own organisation or domain belong in your own repository: see [E
 
 ```python
 from servicenow_mcp.server import mcp, get_config, get_auth_manager
+from servicenow_mcp.tools import annotations
 
-@mcp.tool()
+@mcp.tool(tags={"read", "table"}, annotations=annotations.READ)
 def my_tool(
     param: Annotated[str, Field(description="...")],
 ) -> dict:
@@ -47,10 +48,12 @@ def my_tool(
     # ...
 ```
 
-4. Tag it `read` or `write` and add its name to `READ_TOOLS` or `WRITE_TOOLS` in `tests/inventory.py`; every test that counts tools, and `scripts/stdio_smoke.py`, reads that list
-5. Add a schema test in `tests/test_tools.py`
-6. Update the counts in prose: `README.md`, `docs/tools.md`, `docs/clients.md` and `docs/configuration.md` (`grep -rnE "[0-9]+ (read-only |write )?tools" README.md docs`)
-7. Refresh the eval mocks: `mcp-server-servicenow --eval-mocks .` and each `examples/*` plugin (CI fails on a stale `_tools.json`)
+4. Tag it `read` or `write`, give it the matching preset from `tools/annotations.py` (`tests/test_annotations.py` checks every tool), and add its name to `READ_TOOLS` or `WRITE_TOOLS` in `tests/inventory.py`; every test that counts tools, and `scripts/stdio_smoke.py`, reads that list
+5. A tool that returns a list envelope: give it a `TypedDict` return type in `tools/results.py` and an entry in `LIST_KEYS`, or the response limiter hides its `outputSchema`
+6. A new argument that names a table, field or record goes in `IDENTIFIER_ARGS` (or the field-list or query lists) in `middleware/policy.py`, so the policy middleware validates it
+7. Add a schema test in `tests/test_tools.py`
+8. Update the counts in prose (`grep -rnE "[0-9]+ (read-only |write )?tools" README.md docs RELEASING.md .github src/servicenow_mcp/__init__.py scripts`), the tables in `README.md` and `docs/tools.md`, and the roles table in `docs/tools.md`
+9. Refresh the eval mocks: `mcp-server-servicenow --eval-mocks .` and each `examples/*` plugin (CI fails on a stale `_tools.json`)
 
 ## Running Integration Tests
 

@@ -6,7 +6,7 @@ If you discover a security vulnerability in this project, please report it respo
 
 **Do NOT open a public GitHub issue for security vulnerabilities.**
 
-Instead, use [GitHub's private vulnerability reporting](https://github.com/jschuller/mcp-server-servicenow/security/advisories/new). It is the only channel; it reaches the maintainer privately.
+Instead, use [GitHub's private vulnerability reporting](https://github.com/jschuller/mcp-server-servicenow/security/advisories/new), which reaches the maintainer privately. If that page says private reporting is unavailable, open a [Discussion](https://github.com/jschuller/mcp-server-servicenow/discussions/categories/q-a) titled "Security contact request" with no details, and the maintainer will reply with a private channel.
 
 ### What to include
 

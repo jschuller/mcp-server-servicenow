@@ -22,7 +22,7 @@ echo "${MCP_STATIC_TOKENS#local:}"                 # the bearer token for your c
 uv run mcp-server-servicenow --transport streamable-http --port 8080 --read-only
 ```
 
-Each static token is `token` or `name:token`; the name is the audit log's `client_id`, so it stays the same when you
+Each static token is `token` or `name:token`; the name is what the audit log records as `user`, so it stays the same when you
 reorder the list. A token shorter than 32 characters logs a warning at startup. Without `--read-only`, an HTTP
 listener also warns at startup: the server doesn't confirm writes, the MCP client does, and every static token writes
 as the one service account.
@@ -86,17 +86,19 @@ gcloud run deploy servicenow-mcp \
   --set-secrets "MCP_OAUTH_CLIENT_SECRET=mcp-oauth-client-secret:latest"
 ```
 
-Create each secret once with `gcloud secrets create <name> --data-file=-` (the value on stdin), and give the Cloud Run
-service account `roles/secretmanager.secretAccessor` on it.
+Before those deploys, create each secret once with `gcloud secrets create <name> --data-file=-` (the value on
+stdin), and give the Cloud Run service account `roles/secretmanager.secretAccessor` on it.
 
 ## Verify HTTP Transport
 
 ```bash
 # Local testing — an Authorization header is always required now
 # (unauthenticated HTTP listeners no longer exist; the server fails closed).
-# The bearer is the token part of MCP_STATIC_TOKENS, without its `name:`.
-curl -X POST http://localhost:8080/mcp \
-  -H "Authorization: Bearer ${MCP_STATIC_TOKENS#*:}" \
+# The bearer is the token part of MCP_STATIC_TOKENS (one entry), without its
+# `name:`. curl reads the header from stdin (-H @-), so the token stays out of
+# the process list.
+printf 'Authorization: Bearer %s\n' "${MCP_STATIC_TOKENS#*:}" | curl -X POST http://localhost:8080/mcp \
+  -H @- \
   -H "Content-Type: application/json" \
   -H "Accept: application/json, text/event-stream" \
   -d '{"jsonrpc":"2.0","method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"test","version":"1.0"}},"id":1}'
@@ -155,4 +157,4 @@ MCP_TRANSPORT=streamable-http
 
 ### Guardrails in HTTP deployments
 
-All safety flags work over HTTP. The audit log records the OAuth user (`claims.user_name`), the static token's `client_id`, or `oauth-client:<client_id>` for a client-credentials service account; send it to a file or let the platform collect stderr (Cloud Run → Cloud Logging).
+All safety flags work over HTTP. The audit log records the OAuth user (`claims.user_name`), the static token's name, or `oauth-client:<client_id>` for a client-credentials service account; send it to a file or let the platform collect stderr (Cloud Run → Cloud Logging).

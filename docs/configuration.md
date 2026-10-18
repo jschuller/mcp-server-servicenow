@@ -28,7 +28,7 @@ Copy `.mcp.json.example` to `.mcp.json` and fill in your credentials. The JSON f
         "SERVICENOW_INSTANCE_URL": "https://your-instance.service-now.com",
         "SERVICENOW_AUTH_TYPE": "basic",
         "SERVICENOW_USERNAME": "mcp.integration",
-        "SERVICENOW_PASSWORD": "your-password"
+        "SERVICENOW_PASSWORD": "<from your secret store: see below>"
       }
     }
   }
@@ -49,7 +49,7 @@ No username or password: the server uses the client credentials grant, and every
         "SERVICENOW_INSTANCE_URL": "https://your-instance.service-now.com",
         "SERVICENOW_AUTH_TYPE": "oauth",
         "SERVICENOW_CLIENT_ID": "your-client-id",
-        "SERVICENOW_CLIENT_SECRET": "your-client-secret"
+        "SERVICENOW_CLIENT_SECRET": "<from your secret store: see below>"
       }
     }
   }
@@ -80,9 +80,9 @@ The password grant sends a user's password to the token endpoint and skips MFA. 
         "SERVICENOW_INSTANCE_URL": "https://your-instance.service-now.com",
         "SERVICENOW_AUTH_TYPE": "oauth",
         "SERVICENOW_CLIENT_ID": "your-client-id",
-        "SERVICENOW_CLIENT_SECRET": "your-client-secret",
+        "SERVICENOW_CLIENT_SECRET": "<from your secret store: see below>",
         "SERVICENOW_USERNAME": "mcp.integration",
-        "SERVICENOW_PASSWORD": "your-password"
+        "SERVICENOW_PASSWORD": "<from your secret store: see below>"
       }
     }
   }
@@ -121,7 +121,7 @@ The password grant sends a user's password to the token endpoint and skips MFA. 
         "SERVICENOW_INSTANCE_URL": "https://dev12345.service-now.com",
         "SERVICENOW_AUTH_TYPE": "basic",
         "SERVICENOW_USERNAME": "mcp.integration",
-        "SERVICENOW_PASSWORD": "dev-password"
+        "SERVICENOW_PASSWORD": "<from your secret store: see below>"
       }
     },
     "servicenow-prod": {
@@ -178,7 +178,7 @@ All settings can be passed as CLI args or environment variables. See `.env.examp
 | `MCP_TRANSPORT` | `--transport` | `stdio` (default) or `streamable-http` |
 | `MCP_HOST` | `--host` | HTTP bind address (default: `127.0.0.1`; set `0.0.0.0` to listen on all interfaces) |
 | `PORT` | `--port` | HTTP port (default: 8080) |
-| `MCP_STATIC_TOKENS` | `--mcp-static-tokens` | Comma-separated static bearer tokens for MCP endpoint auth (CI/CD), each `token` or `name:token`; the name is the audit log's `client_id` (default `static-client-<position>`). Tokens under 32 characters log a warning |
+| `MCP_STATIC_TOKENS` | `--mcp-static-tokens` | Comma-separated static bearer tokens for MCP endpoint auth (CI/CD), each `token` or `name:token`; the name (letters, digits, `.`, `_`, `-`; up to 64) is what the audit log records as `user` (default `static-client-<position>`). Tokens must not contain `:` or `,`; under 32 characters logs a warning; a repeated token or name stops startup |
 | `MCP_OAUTH_CLIENT_ID` | `--mcp-oauth-client-id` | SN OAuth app client ID for MCP endpoint auth |
 | `MCP_OAUTH_CLIENT_SECRET` | `--mcp-oauth-client-secret` | SN OAuth app client secret for MCP endpoint auth |
 | `MCP_BASE_URL` | `--mcp-base-url` | Public URL of this MCP server |
