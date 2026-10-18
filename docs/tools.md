@@ -2,6 +2,8 @@
 
 19 tools, 5 resources and 4 Agent Skills. Every tool carries MCP annotations (`readOnlyHint`, `destructiveHint`, `idempotentHint`, `openWorldHint`), so your client decides which calls need your approval. `--read-only` hides the 7 write tools, and so does an identity with `snc_read_only`.
 
+The list tools (`list_records`, `list_ci`, `get_ci_relationships`, `get_system_properties`, `list_update_sets`, `list_update_set_changes`, `get_table_schema`) publish an `outputSchema` and return `structuredContent` next to the same JSON as text. A result over the 500 KB limit keeps that shape: it holds the first rows that fit and says `"truncated": true`, plus `next_offset` for the tools that take `offset`. Other tools are cut to text at the limit.
+
 ## Tools
 
 ### Table API (6)

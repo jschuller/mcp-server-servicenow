@@ -122,7 +122,9 @@ async def section_b(results, profile, audit):
     """Default mode: identifier and javascript: policy, schema, paging, then writes."""
     async with Client(transport("--audit-log", audit)) as c:
         tools = await c.list_tools()
-        roles = (await c.call_tool("get_current_user", {})).data.get("roles")
+        roles = (await c.call_tool("get_current_user", {})).structured_content.get(
+            "roles"
+        )
         if profile == "readonly" and roles is None:
             info("identity cannot read its own role rows: hiding fails open")
         want = (
@@ -172,12 +174,14 @@ async def section_b(results, profile, audit):
                 "limit": 1,
             },
         )
-        results.append(ok("JS policy allows gs.daysAgo()", "records" in r.data))
-        existing = (r.data.get("records") or [{}])[0].get("sys_id")
+        results.append(
+            ok("JS policy allows gs.daysAgo()", "records" in r.structured_content)
+        )
+        existing = (r.structured_content.get("records") or [{}])[0].get("sys_id")
         try:
             schema = (
                 await c.call_tool("get_table_schema", {"table_name": "incident"})
-            ).data
+            ).structured_content
             by_name = {f["name"]: f for f in schema["fields"]}
             results.append(
                 ok(
@@ -199,7 +203,10 @@ async def section_b(results, profile, audit):
                 "get_ci_relationships", {"sys_id": "0" * 32, "limit": 5}
             )
             results.append(
-                ok("get_ci_relationships paging arg accepted", rel.data["count"] == 0)
+                ok(
+                    "get_ci_relationships paging arg accepted",
+                    rel.structured_content["count"] == 0,
+                )
             )
         except ToolError as e:
             # cmdb_rel_ci needs itil or a CMDB read role.
@@ -208,7 +215,9 @@ async def section_b(results, profile, audit):
             agg = await c.call_tool(
                 "aggregate_records", {"table_name": "incident", "group_by": "priority"}
             )
-            info("aggregate_records", f"ok, {agg.data.get('count')} groups")
+            info(
+                "aggregate_records", f"ok, {agg.structured_content.get('count')} groups"
+            )
         except ToolError as e:
             # API keys need a REST API access policy for the Aggregate API too.
             info("aggregate_records refused", str(e).splitlines()[0][:140])
@@ -246,7 +255,7 @@ async def section_b(results, profile, audit):
                     },
                 },
             )
-        ).data
+        ).structured_content
         sid = created["sys_id"]
         results.append(
             ok("create scratch incident", bool(sid), created["record"].get("number"))
@@ -256,7 +265,7 @@ async def section_b(results, profile, audit):
                 "update_record",
                 {"table_name": "incident", "sys_id": sid, "data": {"urgency": "2"}},
             )
-        ).data
+        ).structured_content
         results.append(
             ok(
                 "default: update_record single call, no prompt",
@@ -267,7 +276,7 @@ async def section_b(results, profile, audit):
             await c.call_tool(
                 "delete_record", {"table_name": "incident", "sys_id": sid}
             )
-        ).data
+        ).structured_content
         results.append(
             ok(
                 "default: delete_record returns dict",
@@ -378,7 +387,7 @@ def pref_rows(data):
 async def section_e(results, profile):
     """Caller identity; in the write profile, the caller-scoped update-set pick."""
     async with Client(transport("--audit-log", "off")) as c:
-        me = (await c.call_tool("get_current_user", {})).data
+        me = (await c.call_tool("get_current_user", {})).structured_content
         # Blank under client credentials, where the OAuth application user answers.
         expected = os.environ.get("SERVICENOW_USERNAME") or None
         results.append(
@@ -417,7 +426,7 @@ async def section_e(results, profile):
                             "limit": 50,
                         },
                     )
-                ).data
+                ).structured_content
             )
 
         before_mine, before_default = await prefs(mine_q), await prefs(default_q)
@@ -426,7 +435,7 @@ async def section_e(results, profile):
                 "create_update_set",
                 {"name": "mcp smoke (safe to delete)", "description": "stdio smoke"},
             )
-        ).data
+        ).structured_content
         us = created["sys_id"]
         results.append(ok("create_update_set", bool(us)))
         try:
@@ -446,10 +455,12 @@ async def section_e(results, profile):
             results.append(
                 ok("update-set/current resource follows", cur.get("sys_id") == us)
             )
-            got = (await c.call_tool("get_update_set", {"sys_id": us})).data
+            got = (
+                await c.call_tool("get_update_set", {"sys_id": us})
+            ).structured_content
             changes = (
                 await c.call_tool("list_update_set_changes", {"update_set_sys_id": us})
-            ).data
+            ).structured_content
             results.append(
                 ok(
                     "get_update_set + list_update_set_changes",

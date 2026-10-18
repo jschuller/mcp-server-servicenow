@@ -155,10 +155,13 @@ async def test_tool_and_resource_share_shape(monkeypatch) -> None:
         tool = await client.call_tool("get_table_schema", {"table_name": "incident"})
         resource = await client.read_resource("servicenow://schema/incident")
     via_resource = json.loads(resource[0].text)
-    assert tool.data["hierarchy"] == via_resource["hierarchy"] == ["incident", "task"]
-    assert tool.data["fields"][1]["defined_in"] == "task"
+    # The tool publishes an outputSchema, so .data is a typed object; compare
+    # the structured content, which is the wire JSON.
+    data = tool.structured_content
+    assert data["hierarchy"] == via_resource["hierarchy"] == ["incident", "task"]
+    assert data["fields"][1]["defined_in"] == "task"
     assert (
-        set(tool.data)
+        set(data)
         == set(via_resource)
         == {"table", "hierarchy", "field_count", "fields"}
     )

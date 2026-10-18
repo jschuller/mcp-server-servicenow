@@ -1147,12 +1147,15 @@ def test_tools_json_drift(tmp_path: Path) -> None:
     tools["tools"] = [t for t in tools["tools"] if t["name"] != "get_ci"]
     tools["tools"][0]["inputSchema"] = {}
     tools["tools"][1]["description"] = "STALE"
+    listing = next(t for t in tools["tools"] if t["name"] == "list_records")
+    del listing["outputSchema"]  # a _tools.json from before 0.9.2
     tools["tools"].append({"name": "old_tool", "inputSchema": {}})
     path.write_text(json.dumps(tools))
     (warning,) = plugin_messages(lint_skills([plugin]), "warning")
     assert "missing: get_ci" in warning and "unknown: old_tool" in warning
     changed = warning.split("changed: ")[1].split(")")[0].split()
-    assert len(changed) == 2 and "--eval-mocks" in warning
+    assert len(changed) == 3 and "list_records" in changed
+    assert "--eval-mocks" in warning
 
 
 def test_eval_frontmatter_must_parse(tmp_path: Path) -> None:

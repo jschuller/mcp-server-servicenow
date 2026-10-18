@@ -4,12 +4,13 @@ Provides system information and property queries.
 """
 
 import logging
-from typing import Annotated, Any, Dict, Optional
+from typing import Annotated, Any, Dict, Optional, cast
 
 from pydantic import Field
 
 from servicenow_mcp.server import mcp, get_config, make_sn_request
 from servicenow_mcp.tools import annotations
+from servicenow_mcp.tools.results import PropertyList, TableSchema
 from servicenow_mcp.utils.http import build_url, parse_json_response
 from servicenow_mcp.utils.schema import fetch_table_schema
 from servicenow_mcp.utils.user import fetch_current_user
@@ -28,7 +29,7 @@ def get_system_properties(
     limit: Annotated[
         int, Field(ge=1, le=100, description="Maximum number of properties to return")
     ] = 20,
-) -> Dict[str, Any]:
+) -> PropertyList:
     """Query ServiceNow system properties"""
     config = get_config()
 
@@ -77,13 +78,16 @@ def get_table_schema(
             description="Include fields inherited from parent tables (e.g. cmdb_ci fields on cmdb_ci_server)"
         ),
     ] = True,
-) -> Dict[str, Any]:
+) -> TableSchema:
     """Get the data dictionary (field definitions) for a ServiceNow table, including inherited fields"""
     config = get_config()
-    return fetch_table_schema(
-        table_name,
-        limit=limit,
-        timeout=config.timeout,
-        api_url=config.api_url,
-        include_inherited=include_inherited,
+    return cast(
+        TableSchema,
+        fetch_table_schema(
+            table_name,
+            limit=limit,
+            timeout=config.timeout,
+            api_url=config.api_url,
+            include_inherited=include_inherited,
+        ),
     )

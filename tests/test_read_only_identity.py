@@ -74,7 +74,7 @@ async def test_failed_lookup_fails_open_and_retries(monkeypatch) -> None:
 
 async def test_write_call_is_refused_before_servicenow(monkeypatch, tmp_path) -> None:
     _lookup(monkeypatch, True)
-    sn = Mock(return_value=sn_response({"result": {"sys_id": "1"}}))
+    sn = Mock(return_value=sn_response({"result": [{"sys_id": "1"}]}))
     monkeypatch.setattr(table_tools, "make_sn_request", sn)
     init_test_services()
     log = tmp_path / "audit.jsonl"

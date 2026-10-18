@@ -369,6 +369,31 @@
         ],
         "type": "object"
       },
+      "outputSchema": {
+        "properties": {
+          "count": {
+            "type": "integer"
+          },
+          "relationships": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "truncated": {
+            "type": "boolean"
+          },
+          "next_offset": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "count",
+          "relationships"
+        ],
+        "type": "object"
+      },
       "annotations": {
         "readOnlyHint": true,
         "destructiveHint": false,
@@ -499,6 +524,28 @@
         },
         "type": "object"
       },
+      "outputSchema": {
+        "properties": {
+          "count": {
+            "type": "integer"
+          },
+          "properties": {
+            "type": "array",
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            }
+          },
+          "truncated": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "count",
+          "properties"
+        ],
+        "type": "object"
+      },
       "annotations": {
         "readOnlyHint": true,
         "destructiveHint": false,
@@ -540,6 +587,39 @@
         },
         "required": [
           "table_name"
+        ],
+        "type": "object"
+      },
+      "outputSchema": {
+        "properties": {
+          "table": {
+            "type": "string"
+          },
+          "hierarchy": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "field_count": {
+            "type": "integer"
+          },
+          "fields": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "truncated": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "table",
+          "hierarchy",
+          "field_count",
+          "fields"
         ],
         "type": "object"
       },
@@ -651,6 +731,35 @@
         },
         "type": "object"
       },
+      "outputSchema": {
+        "properties": {
+          "count": {
+            "type": "integer"
+          },
+          "class": {
+            "type": "string"
+          },
+          "records": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "truncated": {
+            "type": "boolean"
+          },
+          "next_offset": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "count",
+          "class",
+          "records"
+        ],
+        "type": "object"
+      },
       "annotations": {
         "readOnlyHint": true,
         "destructiveHint": false,
@@ -741,6 +850,34 @@
         ],
         "type": "object"
       },
+      "outputSchema": {
+        "properties": {
+          "count": {
+            "type": "integer"
+          },
+          "records": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "warning": {
+            "type": "string"
+          },
+          "truncated": {
+            "type": "boolean"
+          },
+          "next_offset": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "count",
+          "records"
+        ],
+        "type": "object"
+      },
       "annotations": {
         "readOnlyHint": true,
         "destructiveHint": false,
@@ -777,6 +914,28 @@
         },
         "required": [
           "update_set_sys_id"
+        ],
+        "type": "object"
+      },
+      "outputSchema": {
+        "properties": {
+          "count": {
+            "type": "integer"
+          },
+          "changes": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "truncated": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "count",
+          "changes"
         ],
         "type": "object"
       },
@@ -834,6 +993,28 @@
             "type": "integer"
           }
         },
+        "type": "object"
+      },
+      "outputSchema": {
+        "properties": {
+          "count": {
+            "type": "integer"
+          },
+          "update_sets": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "truncated": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "count",
+          "update_sets"
+        ],
         "type": "object"
       },
       "annotations": {

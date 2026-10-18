@@ -1277,10 +1277,10 @@ def _check_tools_json(
         return
 
     def shape(tool: Dict[str, Any]) -> Tuple[str, ...]:
-        # What the agent sees of a tool: its description, schema and hints.
+        # What the agent sees of a tool: its description, schemas and hints.
         return tuple(
             json.dumps(tool.get(k), sort_keys=True)
-            for k in ("description", "inputSchema", "annotations")
+            for k in ("description", "inputSchema", "outputSchema", "annotations")
         )
 
     want = {t["name"]: shape(t) for t in catalog_tools}

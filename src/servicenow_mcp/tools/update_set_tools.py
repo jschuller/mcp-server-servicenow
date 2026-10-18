@@ -10,6 +10,7 @@ from pydantic import Field
 
 from servicenow_mcp.server import mcp, get_config, make_sn_request
 from servicenow_mcp.tools import annotations
+from servicenow_mcp.tools.results import UpdateSetChangeList, UpdateSetList
 from servicenow_mcp.utils.http import ServiceNowAPIError, build_url, parse_json_response
 from servicenow_mcp.utils.user import fetch_current_user
 
@@ -36,7 +37,7 @@ def list_update_sets(
     limit: Annotated[
         int, Field(ge=1, le=100, description="Maximum number of update sets to return")
     ] = 20,
-) -> Dict[str, Any]:
+) -> UpdateSetList:
     """List update sets with optional state and query filtering"""
     config = get_config()
 
@@ -170,7 +171,7 @@ def list_update_set_changes(
     limit: Annotated[
         int, Field(ge=1, le=500, description="Maximum number of changes to return")
     ] = 50,
-) -> Dict[str, Any]:
+) -> UpdateSetChangeList:
     """List all customer updates (changes) within an update set"""
     config = get_config()
 

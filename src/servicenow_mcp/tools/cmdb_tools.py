@@ -10,6 +10,7 @@ from pydantic import Field
 
 from servicenow_mcp.server import get_config, make_sn_request, mcp
 from servicenow_mcp.tools import annotations
+from servicenow_mcp.tools.results import CIList, RelationshipList
 from servicenow_mcp.tools.table_tools import ResponseFormat, response_format_params
 from servicenow_mcp.utils.http import build_url, parse_json_response
 
@@ -36,7 +37,7 @@ def list_ci(
     ] = 20,
     offset: Annotated[int, Field(ge=0, description="Number of records to skip")] = 0,
     response_format: ResponseFormat = "detailed",
-) -> Dict[str, Any]:
+) -> CIList:
     """List CMDB configuration items with optional class and query filtering"""
     config = get_config()
 
@@ -118,7 +119,7 @@ def get_ci_relationships(
     offset: Annotated[
         int, Field(ge=0, description="Number of relationships to skip")
     ] = 0,
-) -> Dict[str, Any]:
+) -> RelationshipList:
     """Get relationships for a CMDB configuration item (parent and child)"""
     config = get_config()
 

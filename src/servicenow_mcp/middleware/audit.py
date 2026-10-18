@@ -22,6 +22,7 @@ from fastmcp.server.middleware import CallNext, Middleware, MiddlewareContext
 from mcp.types import TextContent
 
 from servicenow_mcp.middleware.policy import SCHEMA_URI_RE, PolicyError, resolve_table
+from servicenow_mcp.middleware.response_limit import TRUNCATED_META
 
 AUDIT_LOGGER_NAME = "servicenow_mcp.audit"
 TRUNCATION_SUFFIX = "\n\n[Response truncated due to size limit]"
@@ -141,6 +142,8 @@ def _classify_exception(exc: BaseException) -> Tuple[str, str]:
 
 
 def _is_truncated(result: Any) -> bool:
+    if (getattr(result, "meta", None) or {}).get(TRUNCATED_META):
+        return True  # a list cut to fit, structure kept
     content = getattr(result, "content", None) or []
     return any(
         isinstance(block, TextContent) and block.text.endswith(TRUNCATION_SUFFIX)

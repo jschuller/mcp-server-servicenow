@@ -6,13 +6,14 @@ import logging
 from typing import TYPE_CHECKING
 
 from fastmcp import FastMCP
-from fastmcp.server.middleware.response_limiting import ResponseLimitingMiddleware
 
 from servicenow_mcp import __version__
 from servicenow_mcp.auth.auth_manager import AuthManager
 from servicenow_mcp.middleware.audit import TRUNCATION_SUFFIX, AuditMiddleware
 from servicenow_mcp.middleware.policy import PolicyMiddleware
 from servicenow_mcp.middleware.read_only_identity import ReadOnlyIdentityMiddleware
+from servicenow_mcp.middleware.response_limit import StructuredResponseLimiter
+from servicenow_mcp.tools.results import LIST_KEYS
 from servicenow_mcp.utils.config import ServerConfig
 
 if TYPE_CHECKING:
@@ -83,7 +84,9 @@ mcp.add_middleware(AuditMiddleware())
 mcp.add_middleware(PolicyMiddleware())
 mcp.add_middleware(ReadOnlyIdentityMiddleware())
 mcp.add_middleware(
-    ResponseLimitingMiddleware(max_size=500_000, truncation_suffix=TRUNCATION_SUFFIX)
+    StructuredResponseLimiter(
+        list_keys=LIST_KEYS, max_size=500_000, truncation_suffix=TRUNCATION_SUFFIX
+    )
 )
 
 
