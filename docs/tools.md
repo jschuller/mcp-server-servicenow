@@ -101,7 +101,7 @@ All off by default except the audit log; flags and environment variables are in 
 - `--read-only` hides the write tools from `tools/list` **and** refuses any non-GET request at the HTTP layer. It is the only guarantee the server itself gives.
 - When the identity holds `snc_read_only`, the write tools are hidden without any flag: ServiceNow would refuse them anyway, admin included. The server checks the caller's own `sys_user_has_role` rows once (5-second limit) for the configured account, or per token behind the OAuth proxy. This is a convenience, not a security control: if the check fails or times out, the write tools stay listed and ServiceNow refuses the write. One edge: `set_current_update_set` writes a `sys_user_preference` row, which `snc_read_only` may allow, but it is hidden with the other write tools.
 - Table names, sys_ids, field lists and `order_by` are always validated; `javascript:` in caller queries is limited to `gs.*` date helpers unless `--allow-js-queries`.
-- One JSON audit line per tool call or resource read (keys only, never values):
+- One JSON audit line per tool call or resource read. Written field values are never logged, only their names (`data_keys`); the encoded query is logged with password-, secret- and token-like values masked, so it can hold filter values such as names or emails:
 
 ```json
 {"ts":"2026-08-22T19:04:11.512+00:00","run_id":"…","event":"tool_call","name":"update_record","user":"admin","auth_mode":"service-account","transport":"stdio","table":"incident","sys_id":"9d385017c611228701d22104cc95c371","data_keys":["state"],"tags":["table","write"],"outcome":"ok","duration_ms":212.4}

@@ -26,7 +26,8 @@ the release (see Failure modes).
    - `.claude-plugin/plugin.json` → `version` (missed in v0.6.1 — hence the check)
 
    Then `uv lock` (the lockfile records the project's own version), a
-   `CHANGELOG.md` section (`## [X.Y.Z] - YYYY-MM-DD`).
+   `CHANGELOG.md` section (`## [X.Y.Z] - YYYY-MM-DD`). On a new minor (0.X.0), move
+   the supported line in `SECURITY.md` to `0.X.x` (it was left at 0.7.x until 0.9.2).
 
    This repo's plugin, the template and the examples pin the release too, and CI checks
    those pins:
@@ -201,7 +202,9 @@ package uninstallable):
 ## Security posture
 
 Current: OIDC trusted publishing (no long-lived secrets), all Actions pinned
-to commit SHAs, fail-closed HTTP serving, Dependabot + Renovate, strict twine
+to commit SHAs, fail-closed HTTP serving, Dependabot + Renovate (Renovate
+auto-merges GitHub Actions updates only, after a 3-day release age; runtime and dev
+dependency bumps are reviewed PRs), strict twine
 metadata check, ruff rule set and mypy major version bounded so unpinned CI
 installs can't shift behavior underneath previously-clean code.
 

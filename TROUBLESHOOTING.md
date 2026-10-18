@@ -63,7 +63,7 @@ Caller-supplied `query` / `having` values may only use GlideSystem date helpers 
 These tables fail API-level ACL validation over REST regardless of role. Use `v_plugin` (installed plugins), `sys_scope` (applications) or `sys_db_object` (tables) instead.
 
 ## Audit log noise in stdio clients
-One JSON line per tool call goes to stderr by default (Claude Desktop: `~/Library/Logs/Claude/mcp-server-servicenow.log`; Claude Code: debug logs only). Use `--audit-log off` to silence it or `--audit-log /path/audit.jsonl` to write a file. Values are never logged — only field names and a redacted, 200-character query.
+One JSON line per tool call goes to stderr by default (Claude Desktop: `~/Library/Logs/Claude/mcp-server-servicenow.log`; Claude Code: debug logs only). Use `--audit-log off` to silence it or `--audit-log /path/audit.jsonl` to write a file. Written field values are never logged, only their names. The encoded query is logged (password-, secret- and token-like values masked, 200 characters at most), so it can hold filter values such as names or email addresses; turn the log off or keep the file private if that matters.
 
 ## `get_current_user` fields
 Since 0.8.0 `get_current_user` reads the caller's `sys_user` row through the Table API for every auth type (basic, OAuth, API key), so the shape no longer depends on how you sign in: `user_name`, `user_display_name`, `user_email`, `user_sys_id`, `roles`, plus any extra columns passed in `fields`. `roles` lists the caller's directly assigned, active roles from `sys_user_has_role` (roles inherited through other roles or groups are left out); it is `null` when the caller cannot read its own role rows. An empty result means the caller cannot read its own `sys_user` row.
