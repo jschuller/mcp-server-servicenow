@@ -196,7 +196,7 @@ Find the business rules, client scripts, UI policies, ACLs and script includes t
 2. Name every source in `not_assessable`: the answer is incomplete without them.
 3. For a match you need to explain, read its record by `sys_id` from the source's `table`, without the body: request the fields `find_references` returned for that source plus `sys_updated_on,sys_updated_by`, and never a body field (`script`, `script_true`, `script_false`, `condition`, `conditions`, `filter_condition`). For a business rule:
    ```
-   list_records(table_name="sys_script", query="sys_id=<sys_id>", fields="name,collection,when,active,sys_updated_on,sys_updated_by", limit=1)
+   list_records(table_name="sys_script", query="sys_id=<sys_id>", fields="name,active,when,sys_updated_on,sys_updated_by", limit=1)
    ```
    Script matches (script includes; business rules and client scripts with a field) are text matches: say they may be false positives.
 

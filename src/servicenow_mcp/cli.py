@@ -369,8 +369,16 @@ def create_config(
     )
 
 
-# Up to 32 characters, so a 64-hex token with a stray ':' never reads as a name.
+# Up to 32 characters, so a 64-hex token with a stray ':' doesn't read as a
+# name. _TOKEN_LIKE catches a shorter token prefix before a ':' (8+ hex, or
+# 16+ base64 characters with digits, upper and lower case, no separators): the
+# audit log records a name on every line, so such an entry stays one unnamed
+# token.
 _TOKEN_NAME = re.compile(r"\A[A-Za-z0-9][A-Za-z0-9._-]{0,31}\Z")
+_TOKEN_LIKE = re.compile(
+    r"\A(?:[0-9a-fA-F]{8,}"
+    r"|(?=[^:]*\d)(?=[^:]*[a-z])(?=[^:]*[A-Z])[A-Za-z0-9+/=]{16,})\Z"
+)
 MIN_STATIC_TOKEN_LENGTH = 32
 
 
@@ -395,7 +403,7 @@ def _parse_static_tokens(args: argparse.Namespace) -> dict[str, dict[str, Any]] 
         # Messages name an entry by its position: its text may be a token.
         name, sep, token = entry.partition(":")
         name, token = name.strip(), token.strip()
-        if sep and _TOKEN_NAME.match(name):
+        if sep and _TOKEN_NAME.match(name) and not _TOKEN_LIKE.match(name):
             if not token:
                 raise ValueError(
                     f"MCP_STATIC_TOKENS entry {i} has a name but no token after ':'"

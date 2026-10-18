@@ -135,6 +135,12 @@ class TestParseStaticTokens:
         assert "entry 1 contains ':'" in caplog.text
         assert token not in caplog.text
 
+    @pytest.mark.parametrize("prefix", ["8619857f35", "abcdEFGH12345678"])
+    def test_a_token_looking_prefix_is_not_a_name(self, prefix):
+        entry = prefix + ":" + "b" * 40
+        tokens = cli._parse_static_tokens(_args(mcp_static_tokens=entry))
+        assert tokens[entry]["client_id"] == "static-client-1"
+
     def test_spaces_around_the_colon_are_ignored(self):
         tokens = cli._parse_static_tokens(_args(mcp_static_tokens=" ci : tok-a "))
         assert tokens == {

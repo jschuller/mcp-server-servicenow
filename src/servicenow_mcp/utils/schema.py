@@ -76,14 +76,16 @@ def _walk_hierarchy(
             )
             data = parse_json_response(response, url)
             row = data.get("result") if isinstance(data, dict) else None
-            if not isinstance(row, dict):
-                break
-            name = row.get("name")
-            if not name or name in chain:
-                break
+            name = row.get("name") if isinstance(row, dict) else None
+            if not isinstance(row, dict) or not isinstance(name, str) or not name:
+                return chain, True  # a parent we can't read: say so
+            if name in chain:
+                break  # a cycle
             chain.append(name)
             parent_id = _reference_value(row.get("super_class"))
             depth += 1
+        if parent_id and depth >= MAX_DEPTH:
+            return chain, True  # deeper than the cap: the rest is unchecked
     except ServiceNowAPIError as exc:
         logger.debug("super_class walk unavailable for %s: %s", table_name, exc)
         return chain, True

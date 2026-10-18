@@ -134,7 +134,9 @@ def test_a_401_is_the_identity_failing_not_a_gap(sn: Mock) -> None:
         system_tools.find_references(table_name="incident")
 
 
-def test_a_policy_401_on_one_source_is_a_gap(sn: Mock) -> None:
+def test_a_policy_401_on_one_source_is_a_gap(monkeypatch, sn: Mock) -> None:
+    monkeypatch.setattr(system_tools, "_per_table_401s", lambda: True)  # API key
+
     def respond(method: str, url: str, timeout: int, params: Dict[str, Any]) -> Any:
         if url.endswith("/sys_security_acl"):
             raise ServiceNowAPIError(
@@ -153,3 +155,18 @@ def test_a_policy_401_on_one_source_is_a_gap(sn: Mock) -> None:
             "reason": "Authentication failed (401)",
         }
     ]
+
+
+def test_a_password_401_stops_at_the_first_source(monkeypatch, sn: Mock) -> None:
+    monkeypatch.setattr(system_tools, "_per_table_401s", lambda: False)
+    sn.side_effect = ServiceNowAPIError("Authentication failed (401). Bad password.")
+    with pytest.raises(ServiceNowAPIError, match="401"):
+        system_tools.find_references(table_name="incident")
+    assert sn.call_count == 1  # one failed login, not six
+
+
+def test_an_api_key_401_on_every_source_is_an_error(monkeypatch, sn: Mock) -> None:
+    monkeypatch.setattr(system_tools, "_per_table_401s", lambda: True)
+    sn.side_effect = ServiceNowAPIError("Authentication failed (401). Check the key.")
+    with pytest.raises(ServiceNowAPIError, match="401"):
+        system_tools.find_references(table_name="incident")

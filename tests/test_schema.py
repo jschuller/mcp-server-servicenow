@@ -182,3 +182,20 @@ def test_dictionary_refusal_names_the_role(monkeypatch) -> None:
         fetch_table_schema(
             "incident", limit=10, timeout=30, api_url=API, include_inherited=False
         )
+
+
+@pytest.mark.parametrize("parent", [{"name": 5}, {"label": "no name"}, None])
+def test_an_unreadable_parent_is_noted(monkeypatch, parent) -> None:
+    def fake(method, url, timeout, params=None, json_data=None):
+        if url.endswith("/sys_db_object"):
+            return sn_response(
+                {"result": [{"name": "incident", "super_class": "TASKID"}]}
+            )
+        if url.endswith("/TASKID"):
+            return sn_response({"result": parent})
+        return sn_response({"result": []})
+
+    monkeypatch.setattr("servicenow_mcp.server.make_sn_request", fake)
+    result = fetch_table_schema("incident", limit=50, timeout=30, api_url=API)
+    assert result["hierarchy"] == ["incident"]
+    assert "Parent tables could not be read" in result["note"]

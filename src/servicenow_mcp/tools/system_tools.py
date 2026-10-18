@@ -8,7 +8,13 @@ from typing import Annotated, Any, Dict, List, Optional, Tuple, cast
 
 from pydantic import Field
 
-from servicenow_mcp.server import mcp, get_config, make_sn_request
+from servicenow_mcp.server import (
+    get_auth_manager,
+    get_config,
+    get_sn_bearer_token,
+    make_sn_request,
+    mcp,
+)
 from servicenow_mcp.tools import annotations
 from servicenow_mcp.middleware.policy import check_identifier
 from servicenow_mcp.tools.results import PropertyList, ReferenceReport, TableSchema
@@ -99,6 +105,22 @@ def get_table_schema(
     )
 
 
+def _per_table_401s() -> bool:
+    """Whether a 401 can mean one table, not the identity.
+
+    An API key authenticates per REST API access policy, which can leave a
+    table out, and retrying a key locks no one out. A password or OAuth 401 is
+    the login failing: stop at the first, or every source costs a failed login
+    (and ServiceNow may lock the integration user).
+    """
+    if get_sn_bearer_token():
+        return False
+    try:
+        return get_auth_manager().config.type.value == "api_key"
+    except RuntimeError:
+        return False
+
+
 # (source, table, encoded query, fields). Fields are names and flags only:
 # script, condition and ACL bodies are never requested.
 _Query = Tuple[str, str, str, str]
@@ -163,8 +185,8 @@ def find_references(
     in field mode) are text matches, so expect false positives. Only this exact
     table is matched: run it again for a parent table (get_table_schema's
     hierarchy) to find rules and ACLs defined there. A source this identity
-    can't read (403, or a 401 from an access policy that leaves its table out)
-    is listed in not_assessable; a 401 on every source is an error; rows hidden by an ACL
+    can't read (403, or for an API key a 401 from an access policy that leaves
+    its table out) is listed in not_assessable; any other 401 is an error; rows hidden by an ACL
     are simply missing. complete=false means the source hit the limit.
     """
     for name, value in (("table name", table_name), ("field_name", field_name)):
@@ -193,8 +215,10 @@ def find_references(
         except ServiceNowAPIError as exc:
             reason = str(exc).split(". ", 1)[0]
             if "(401)" in reason:
-                # An access policy may leave out one table (API keys, securely
-                # scoped OAuth): a gap, unless every source says the same.
+                if not _per_table_401s():
+                    raise
+                # An API key's access policy may leave out one table: a gap,
+                # unless every source says the same.
                 unauthenticated.append(exc)
             elif "(403)" not in reason:
                 raise  # a timeout or a dead instance is an error, not a gap
