@@ -81,6 +81,12 @@
           "format": "number"
         },
         {
+          "name": "SERVICENOW_DEBUG",
+          "isRequired": false,
+          "description": "Debug logging (default false)",
+          "format": "boolean"
+        },
+        {
           "name": "SERVICENOW_READ_ONLY",
           "isRequired": false,
           "description": "Hide write tools and refuse non-GET requests",

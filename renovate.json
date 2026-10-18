@@ -4,17 +4,18 @@
     "config:recommended",
     "helpers:pinGitHubActionDigests"
   ],
+  "minimumReleaseAge": "3 days",
   "packageRules": [
     {
-      "description": "Auto-merge non-major GitHub Actions updates",
+      "description": "Auto-merge non-major GitHub Actions updates (SHA-pinned)",
       "matchManagers": ["github-actions"],
       "matchUpdateTypes": ["patch", "minor", "digest"],
       "automerge": true
     },
     {
-      "description": "Auto-merge non-major dependency updates",
-      "matchUpdateTypes": ["patch", "minor"],
-      "automerge": true
+      "description": "Python dependency updates are reviewed PRs (RELEASING.md triage protocol): main is also the plugin marketplace",
+      "matchManagers": ["pep621"],
+      "automerge": false
     }
   ],
   "platformAutomerge": true
