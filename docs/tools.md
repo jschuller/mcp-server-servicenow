@@ -7,7 +7,7 @@
 ### Table API (6)
 | Tool | Description |
 |------|-------------|
-| `list_records` | List records from any table with filtering, field selection and pagination; adds a `warning` when a requested field is missing from every row (it doesn't exist or an ACL hides it) |
+| `list_records` | List records from any table with filtering, field selection and pagination; adds a `warning` when a requested field is missing from every row (it doesn't exist or an ACL hides it). `response_format="concise"` returns reference fields as bare sys_ids, without their instance links |
 | `get_record` | Get a single record by sys_id |
 | `create_record` | Create a record in any table |
 | `update_record` | Update a record |
@@ -17,7 +17,7 @@
 ### CMDB (5)
 | Tool | Description |
 |------|-------------|
-| `list_ci` | List configuration items with class and query filtering |
+| `list_ci` | List configuration items with class and query filtering. Takes `response_format` like `list_records` |
 | `get_ci` | Get a single CI by sys_id |
 | `create_ci` | Create a configuration item |
 | `update_ci` | Update a configuration item |

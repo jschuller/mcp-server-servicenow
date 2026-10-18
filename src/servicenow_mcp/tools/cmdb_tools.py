@@ -10,6 +10,7 @@ from pydantic import Field
 
 from servicenow_mcp.server import get_config, make_sn_request, mcp
 from servicenow_mcp.tools import annotations
+from servicenow_mcp.tools.table_tools import ResponseFormat, response_format_params
 from servicenow_mcp.utils.http import build_url, parse_json_response
 
 logger = logging.getLogger(__name__)
@@ -34,6 +35,7 @@ def list_ci(
         int, Field(ge=1, le=1000, description="Maximum number of CIs to return")
     ] = 20,
     offset: Annotated[int, Field(ge=0, description="Number of records to skip")] = 0,
+    response_format: ResponseFormat = "detailed",
 ) -> Dict[str, Any]:
     """List CMDB configuration items with optional class and query filtering"""
     config = get_config()
@@ -47,6 +49,7 @@ def list_ci(
         query_params["sysparm_query"] = query
     if fields:
         query_params["sysparm_fields"] = fields
+    query_params.update(response_format_params(response_format))
 
     response = make_sn_request("GET", url, config.timeout, params=query_params)
     data = parse_json_response(response, url)

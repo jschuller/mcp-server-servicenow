@@ -7,6 +7,7 @@ import pytest
 
 from servicenow_mcp.tools import table_tools
 from servicenow_mcp.tools.table_tools import _add_order_clause
+from tests.conftest import sn_response
 
 
 @pytest.mark.parametrize(
@@ -116,3 +117,43 @@ def test_list_records_no_warning(
     result = _list_with_rows(monkeypatch, rows, fields)
     assert "warning" not in result
     assert result == {"count": len(rows), "records": rows}
+
+
+@pytest.mark.parametrize(
+    ("response_format", "extra"),
+    [("detailed", {}), ("concise", {"sysparm_exclude_reference_link": "true"})],
+)
+def test_list_records_response_format(
+    monkeypatch: pytest.MonkeyPatch, response_format: str, extra: dict
+) -> None:
+    make_sn_request = Mock(return_value=sn_response({"result": []}))
+    monkeypatch.setattr(
+        table_tools,
+        "get_config",
+        lambda: SimpleNamespace(
+            api_url="https://test.service-now.com/api/now", timeout=30
+        ),
+    )
+    monkeypatch.setattr(table_tools, "make_sn_request", make_sn_request)
+    table_tools.list_records(table_name="incident", response_format=response_format)
+    assert make_sn_request.call_args.kwargs["params"] == {
+        "sysparm_limit": 20,
+        "sysparm_offset": 0,
+        **extra,
+    }
+
+
+@pytest.mark.asyncio
+async def test_response_format_is_an_enum_on_the_wire() -> None:
+    from fastmcp import Client
+
+    from servicenow_mcp.server import mcp
+    from tests.conftest import init_test_services
+
+    init_test_services()
+    async with Client(mcp) as client:
+        tools = {t.name: t for t in await client.list_tools()}
+    for name in ("list_records", "list_ci"):
+        prop = tools[name].input_schema["properties"]["response_format"]
+        assert prop["enum"] == ["concise", "detailed"]
+        assert prop["default"] == "detailed"

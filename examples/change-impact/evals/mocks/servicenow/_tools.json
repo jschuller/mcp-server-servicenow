@@ -638,6 +638,15 @@
             "description": "Number of records to skip",
             "minimum": 0,
             "type": "integer"
+          },
+          "response_format": {
+            "default": "detailed",
+            "description": "'detailed' (default) returns each reference field as {link, value}; 'concise' drops the link (an instance URL) and returns the sys_id alone",
+            "enum": [
+              "concise",
+              "detailed"
+            ],
+            "type": "string"
           }
         },
         "type": "object"
@@ -716,6 +725,15 @@
             ],
             "default": null,
             "description": "Field to order results by (prefix with '-' for descending)"
+          },
+          "response_format": {
+            "default": "detailed",
+            "description": "'detailed' (default) returns each reference field as {link, value}; 'concise' drops the link (an instance URL) and returns the sys_id alone",
+            "enum": [
+              "concise",
+              "detailed"
+            ],
+            "type": "string"
           }
         },
         "required": [

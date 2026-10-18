@@ -63,3 +63,16 @@ async def test_get_ci_relationships_schema_bounds() -> None:
     props = tools["get_ci_relationships"].input_schema["properties"]
     assert props["limit"]["default"] == 100 and props["limit"]["maximum"] == 1000
     assert props["offset"]["default"] == 0
+
+
+@pytest.mark.parametrize(
+    ("response_format", "extra"),
+    [("detailed", {}), ("concise", {"sysparm_exclude_reference_link": "true"})],
+)
+def test_list_ci_response_format(cfg: Mock, response_format: str, extra: dict) -> None:
+    cmdb_tools.list_ci(class_name="cmdb_ci_server", response_format=response_format)
+    assert cfg.call_args.kwargs["params"] == {
+        "sysparm_limit": 20,
+        "sysparm_offset": 0,
+        **extra,
+    }

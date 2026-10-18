@@ -4,7 +4,7 @@ Provides CRUD operations on any ServiceNow table via /api/now/table/{table_name}
 """
 
 import logging
-from typing import Annotated, Any, Dict, List, Optional
+from typing import Annotated, Any, Dict, List, Literal, Optional
 
 from pydantic import Field
 
@@ -13,6 +13,24 @@ from servicenow_mcp.tools import annotations
 from servicenow_mcp.utils.http import build_url, parse_json_response
 
 logger = logging.getLogger(__name__)
+
+
+ResponseFormat = Annotated[
+    Literal["concise", "detailed"],
+    Field(
+        description=(
+            "'detailed' (default) returns each reference field as {link, value}; "
+            "'concise' drops the link (an instance URL) and returns the sys_id alone"
+        )
+    ),
+]
+
+
+def response_format_params(response_format: str) -> Dict[str, Any]:
+    """Table API parameters for a list tool's ``response_format``."""
+    if response_format == "concise":
+        return {"sysparm_exclude_reference_link": "true"}
+    return {}
 
 
 def _add_order_clause(query: str, order_by: str) -> str:
@@ -76,6 +94,7 @@ def list_records(
         Optional[str],
         Field(description="Field to order results by (prefix with '-' for descending)"),
     ] = None,
+    response_format: ResponseFormat = "detailed",
 ) -> Dict[str, Any]:
     """List records from any ServiceNow table with optional filtering, field selection, and pagination"""
     config = get_config()
@@ -93,6 +112,7 @@ def list_records(
         query_params["sysparm_query"] = _add_order_clause(
             query_params.get("sysparm_query", ""), order_by
         )
+    query_params.update(response_format_params(response_format))
 
     response = make_sn_request("GET", url, config.timeout, params=query_params)
     data = parse_json_response(response, url)
