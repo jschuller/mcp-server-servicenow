@@ -12,7 +12,12 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict, List
 
-from servicenow_mcp.utils.http import ServiceNowAPIError, build_url, parse_json_response
+from servicenow_mcp.utils.http import (
+    ServiceNowAPIError,
+    build_url,
+    parse_json_response,
+    result_rows,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +42,13 @@ def table_hierarchy(api_url: str, table_name: str, timeout: int) -> List[str]:
     Degrades to ``[table_name]`` when ``sys_db_object`` is unreadable (403 for
     non-admin OAuth users) or the table is unknown.
     """
+    return _walk_hierarchy(api_url, table_name, timeout)[0]
+
+
+def _walk_hierarchy(
+    api_url: str, table_name: str, timeout: int
+) -> tuple[List[str], bool]:
+    """The hierarchy, and whether the walk was refused part-way."""
     from servicenow_mcp.server import make_sn_request
 
     chain = [table_name]
@@ -52,9 +64,9 @@ def table_hierarchy(api_url: str, table_name: str, timeout: int) -> List[str]:
                 "sysparm_limit": 1,
             },
         )
-        rows = parse_json_response(response, url).get("result", [])
+        rows = result_rows(parse_json_response(response, url))
         if not rows:
-            return chain
+            return chain, False
         parent_id = _reference_value(rows[0].get("super_class"))
         depth = 0
         while parent_id and depth < MAX_DEPTH:
@@ -71,7 +83,8 @@ def table_hierarchy(api_url: str, table_name: str, timeout: int) -> List[str]:
             depth += 1
     except ServiceNowAPIError as exc:
         logger.debug("super_class walk unavailable for %s: %s", table_name, exc)
-    return chain
+        return chain, True
+    return chain, False
 
 
 def fetch_table_schema(
@@ -90,10 +103,10 @@ def fetch_table_schema(
     """
     from servicenow_mcp.server import make_sn_request
 
-    hierarchy = (
-        table_hierarchy(api_url, table_name, timeout)
+    hierarchy, walk_refused = (
+        _walk_hierarchy(api_url, table_name, timeout)
         if include_inherited
-        else [table_name]
+        else ([table_name], False)
     )
 
     fields: List[Dict[str, Any]] = []
@@ -124,7 +137,7 @@ def fetch_table_schema(
                 f"{exc} | Hint: reading table schemas (sys_dictionary) needs the "
                 "personalize_dictionary role"
             ) from exc
-        rows = parse_json_response(response, url).get("result", [])
+        rows = result_rows(parse_json_response(response, url))
         kept = 0
         for row in rows:
             if not row.get("element"):
@@ -157,4 +170,9 @@ def fetch_table_schema(
     }
     if truncated:
         result["truncated"] = True
+    if walk_refused:
+        result["note"] = (
+            "Parent tables could not be read (sys_db_object refused), so the "
+            "hierarchy may be incomplete and inherited fields are missing."
+        )
     return result

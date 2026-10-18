@@ -123,8 +123,17 @@ class TestParseStaticTokens:
         }
 
     def test_a_name_without_a_token_is_refused(self):
-        with pytest.raises(ValueError, match="'ci' has no token after ':'"):
+        with pytest.raises(ValueError, match="entry 1 has a name but no token"):
             cli._parse_static_tokens(_args(mcp_static_tokens="ci:"))
+
+    def test_a_token_with_a_stray_colon_is_never_echoed(self, caplog):
+        token = "a" * 64
+        with caplog.at_level("WARNING"):
+            tokens = cli._parse_static_tokens(_args(mcp_static_tokens=token + ":"))
+        # 64 characters can't be a name, so the whole entry is the token.
+        assert list(tokens) == [token + ":"]
+        assert "entry 1 contains ':'" in caplog.text
+        assert token not in caplog.text
 
     def test_spaces_around_the_colon_are_ignored(self):
         tokens = cli._parse_static_tokens(_args(mcp_static_tokens=" ci : tok-a "))
@@ -133,7 +142,7 @@ class TestParseStaticTokens:
         }
 
     def test_duplicate_name_is_refused(self):
-        with pytest.raises(ValueError, match="names 'ci' twice"):
+        with pytest.raises(ValueError, match="entry 2 repeats a name"):
             cli._parse_static_tokens(_args(mcp_static_tokens="ci:tok-a,ci:tok-b"))
 
     def test_duplicate_token_is_refused_without_echoing_it(self):

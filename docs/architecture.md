@@ -6,7 +6,7 @@ graph TD
     subgraph SERVER["FastMCP 4"]
         TT["table_tools (6)"]
         CT["cmdb_tools (5)"]
-        ST["system_tools (3)"]
+        ST["system_tools (4)"]
         UT["update_set_tools (5)"]
         RS["resources (5)"]
         SK["skills (4)"]

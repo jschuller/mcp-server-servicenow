@@ -65,8 +65,11 @@ def _missing_fields_warning(
     ]
     if not missing:
         return None
+    shown = ", ".join(missing[:20]) + (
+        f" and {len(missing) - 20} more" if len(missing) > 20 else ""
+    )
     return (
-        f"Fields missing from every row: {', '.join(missing)}. They don't exist on "
+        f"Fields missing from every row: {shown}. They don't exist on "
         f"{table_name} or an ACL hides them from this identity; query conditions "
         "on them may have been ignored."
     )

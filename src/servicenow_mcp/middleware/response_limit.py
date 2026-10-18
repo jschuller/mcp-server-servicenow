@@ -18,10 +18,13 @@ from typing import Any
 
 import mcp_types as mt
 import pydantic_core
+from pydantic import TypeAdapter, ValidationError
 from fastmcp.server.middleware.middleware import CallNext, MiddlewareContext
 from fastmcp.server.middleware.response_limiting import ResponseLimitingMiddleware
 from fastmcp.tools.base import InputRequiredToolResult, Tool, ToolResult
 from mcp_types import TextContent
+
+from servicenow_mcp.tools.results import ListKey
 
 logger = logging.getLogger(__name__)
 
@@ -33,7 +36,7 @@ class StructuredResponseLimiter(ResponseLimitingMiddleware):
     def __init__(
         self,
         *,
-        list_keys: Mapping[str, tuple[str, bool]],
+        list_keys: Mapping[str, ListKey],
         max_size: int,
         truncation_suffix: str,
     ) -> None:
@@ -68,11 +71,14 @@ class StructuredResponseLimiter(ResponseLimitingMiddleware):
             return result
         if len(pydantic_core.to_json(result, fallback=str)) <= self.max_size:
             return result
-        key, pages = self.list_keys[name]
+        spec = self.list_keys[name]
+        key = spec.key
         payload = result.structured_content
         items = payload.get(key) if isinstance(payload, dict) else None
         cut = (
-            self._cut(result, payload, key, items, _offset(context) if pages else None)
+            self._cut(
+                result, payload, spec, items, _offset(context) if spec.pages else None
+            )
             if isinstance(payload, dict) and isinstance(items, list)
             else None
         )
@@ -100,23 +106,25 @@ class StructuredResponseLimiter(ResponseLimitingMiddleware):
         self,
         result: ToolResult,
         payload: dict[str, Any],
-        key: str,
+        spec: ListKey,
         items: list[Any],
         offset: int | None,
     ) -> ToolResult | None:
         """The largest prefix of ``items`` whose result fits, or None if even
         the empty list doesn't fit."""
 
+        key = spec.key
+
         def build(n: int) -> ToolResult:
             trimmed = {**payload, key: items[:n], "truncated": True}
-            if "count" in payload:
-                trimmed["count"] = n
+            if spec.count_key and spec.count_key in payload:
+                trimmed[spec.count_key] = n
             if offset is not None:
                 trimmed["next_offset"] = offset + n
             if n == 0:
                 trimmed["note"] = (
                     f"The first item alone is over the {self.max_size // 1000} KB "
-                    "response limit: ask for fewer fields (fields=)."
+                    f"response limit: {spec.narrow}."
                 )
             return ToolResult(
                 content=[
@@ -146,15 +154,14 @@ class StructuredResponseLimiter(ResponseLimitingMiddleware):
         return build(low)
 
 
+_INT = TypeAdapter(int)
+
+
 def _offset(context: MiddlewareContext[mt.CallToolRequestParams]) -> int:
-    """The call's ``offset`` as the tool saw it (pydantic accepts "40")."""
+    """The call's ``offset`` as the tool saw it: pydantic's own int parsing
+    ("40", "+40", 40.0, True all mean what the tool used)."""
     raw = (context.message.arguments or {}).get("offset", 0)
-    if isinstance(raw, bool):
+    try:
+        return max(_INT.validate_python(raw), 0)
+    except (ValidationError, ValueError, TypeError):
         return 0
-    if isinstance(raw, int):
-        return raw
-    if isinstance(raw, float) and raw.is_integer():
-        return int(raw)
-    if isinstance(raw, str) and raw.strip().isdigit():
-        return int(raw.strip())
-    return 0

@@ -124,3 +124,11 @@ def test_a_timeout_is_an_error_not_a_gap(monkeypatch, sn: Mock) -> None:
     with pytest.raises(ServiceNowAPIError, match="timed out"):
         system_tools.find_references(table_name="incident")
     assert sn.call_count == 1
+
+
+def test_a_401_is_the_identity_failing_not_a_gap(sn: Mock) -> None:
+    sn.side_effect = ServiceNowAPIError(
+        "Authentication failed (401) for the bearer-token request. URL: x"
+    )
+    with pytest.raises(ServiceNowAPIError, match="401"):
+        system_tools.find_references(table_name="incident")

@@ -111,6 +111,7 @@ def test_include_inherited_false_is_one_query(monkeypatch) -> None:
 
     assert result["hierarchy"] == ["incident"]
     assert [f["name"] for f in result["fields"]] == ["a"]
+    assert "note" not in result  # not asked to walk, nothing refused
     assert len(mock.calls) == 1
 
 
@@ -122,6 +123,8 @@ def test_db_object_forbidden_degrades_to_direct_fields(monkeypatch) -> None:
 
     assert result["hierarchy"] == ["incident"]
     assert [f["name"] for f in result["fields"]] == ["a"]
+    # Say so: an agent reading the hierarchy would think incident has no parent.
+    assert "Parent tables could not be read" in result["note"]
 
 
 def test_depth_cap_and_cycle_protection(monkeypatch) -> None:

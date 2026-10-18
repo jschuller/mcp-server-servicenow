@@ -52,6 +52,8 @@ ServiceNow's ACLs decide what the user can do; the server adds nothing on top. B
 | …and create or update incidents and CIs | `itil` (no `snc_read_only`) | no flag; the client asks before writes (`--read-only` on clients that don't ask) |
 | …and delete incidents, problems, changes | add `itil_admin` | |
 | Table schemas (`get_table_schema`, `servicenow://schema/*`) | add `personalize_dictionary` | |
+| A record's work notes, comments and field changes (exploring-tables workflow 6) | add `audit_viewer` | without it the journal returns 0 rows, not a 403 |
+| Where-used (`find_references`) | `admin` (`security_admin` for ACLs) | each unreadable source is listed in `not_assessable` |
 | Update sets, system properties | `admin` — on a PDI only | |
 
 | Tool or resource | Needs | Without it |

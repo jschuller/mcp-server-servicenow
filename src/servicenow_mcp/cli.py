@@ -369,7 +369,8 @@ def create_config(
     )
 
 
-_TOKEN_NAME = re.compile(r"\A[A-Za-z0-9][A-Za-z0-9._-]{0,63}\Z")
+# Up to 32 characters, so a 64-hex token with a stray ':' never reads as a name.
+_TOKEN_NAME = re.compile(r"\A[A-Za-z0-9][A-Za-z0-9._-]{0,31}\Z")
 MIN_STATIC_TOKEN_LENGTH = 32
 
 
@@ -378,7 +379,8 @@ def _parse_static_tokens(args: argparse.Namespace) -> dict[str, dict[str, Any]] 
 
     Each entry is ``token`` or ``name:token``. A name is what the audit log
     records as ``user``, so attribution survives reordering the list; unnamed
-    tokens are ``static-client-<position>``. Tokens must not contain ``:``. Returns None if no tokens are configured.
+    tokens are ``static-client-<position>`` and must not contain ``:``. Returns
+    None if no tokens are configured.
     ``sn_auth: service-account`` tells ``get_sn_bearer_token`` that this is an
     MCP credential, not a ServiceNow token to forward.
     """
@@ -390,21 +392,29 @@ def _parse_static_tokens(args: argparse.Namespace) -> dict[str, dict[str, Any]] 
         entry = entry.strip()
         if not entry:
             continue
+        # Messages name an entry by its position: its text may be a token.
         name, sep, token = entry.partition(":")
         name, token = name.strip(), token.strip()
         if sep and _TOKEN_NAME.match(name):
             if not token:
                 raise ValueError(
-                    f"MCP_STATIC_TOKENS entry {name!r} has no token after ':'"
+                    f"MCP_STATIC_TOKENS entry {i} has a name but no token after ':'"
                 )
         else:
+            if sep:
+                logger.warning(
+                    "MCP_STATIC_TOKENS entry %d contains ':' but does not start with "
+                    "a name (up to 32 letters, digits, '.', '_', '-'): the whole "
+                    "entry is the token",
+                    i,
+                )
             name, token = f"static-client-{i}", entry
         if name in {meta["client_id"] for meta in tokens.values()}:
             raise ValueError(
-                f"MCP_STATIC_TOKENS names {name!r} twice; names must be unique"
+                f"MCP_STATIC_TOKENS entry {i} repeats a name; names must be unique"
             )
         if token in tokens:
-            raise ValueError(f"MCP_STATIC_TOKENS lists the token for {name!r} twice")
+            raise ValueError(f"MCP_STATIC_TOKENS entry {i} repeats a token")
         if len(token) < MIN_STATIC_TOKEN_LENGTH:
             # Name and length only: the token itself is never logged.
             logger.warning(

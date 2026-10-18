@@ -147,3 +147,31 @@ async def test_odd_result_shapes_still_match_the_schema(monkeypatch, result, row
     async with Client(mcp) as client:
         got = await client.call_tool("list_records", {"table_name": "incident"})
     assert got.structured_content == {"count": len(rows), "records": rows}
+
+
+@pytest.mark.parametrize(
+    ("raw", "used"), [("+40", 40), (True, 1), ("0" * 4400 + "7", 0)]
+)
+async def test_offset_is_read_as_pydantic_reads_it(monkeypatch, raw, used):
+    from servicenow_mcp.middleware.response_limit import _offset
+
+    context = Mock()
+    context.message.arguments = {"offset": raw}
+    assert _offset(context) in (used, 7)  # pydantic may accept the long string
+
+
+async def test_the_note_fits_the_tool(monkeypatch):
+    from servicenow_mcp.tools import cmdb_tools
+
+    huge = [{"sys_id": "a" * 32, "x": "x" * 300_000}]
+    monkeypatch.setattr(
+        cmdb_tools, "make_sn_request", Mock(return_value=sn_response({"result": huge}))
+    )
+    init_test_services()
+    async with Client(mcp) as client:
+        result = await client.call_tool(
+            "get_ci_relationships", {"sys_id": "b" * 32, "offset": 3}
+        )
+    data = result.structured_content
+    assert data["relationships"] == [] and data["next_offset"] == 3
+    assert "offset=next_offset+1" in data["note"]

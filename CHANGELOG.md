@@ -13,8 +13,8 @@ fixes from an independent review of the repository.
   FastMCP client, `result.data` becomes a typed object, so read `result.structured_content`
   for the plain dict.
 - **Static tokens: an entry with a `:` is now `name:token`.** If one of your tokens
-  contains `:` and the part before it looks like a name (letters, digits, `.`, `_`, `-`),
-  only the part after it is accepted: replace that token (`openssl rand -hex 32` never
+  contains `:` and the part before it looks like a name (up to 32 letters, digits, `.`, `_`,
+  `-`), only the part after it is accepted: replace that token (`openssl rand -hex 32` never
   contains `:`). A repeated token or name, or a name with nothing after the `:`, now stops
   startup. Tokens under 32 characters, and an HTTP listener without `--read-only`, only
   log a warning.
@@ -26,8 +26,8 @@ fixes from an independent review of the repository.
   client scripts, UI policies (or their field actions), ACLs, script includes and
   reference fields, by name and sys_id only, never script or ACL bodies. Script matches
   are text matches, and only the exact table is matched (run it again for a parent
-  table). A source the identity can't read is reported in `not_assessable`, and the others
-  still answer. The exploring-tables skill drives it (workflow 7).
+  table). A source the identity can't read (403) is reported in `not_assessable`, and the
+  others still answer; a 401 or a timeout is an error. The exploring-tables skill drives it (workflow 7).
 - **Record history** in the exploring-tables skill (workflow 6): a record's work notes and
   comments (`sys_journal_field`) and field changes (`sys_audit`) as one timeline. Without
   `audit_viewer` the journal returns 0 rows rather than a 403, and the skill reports that

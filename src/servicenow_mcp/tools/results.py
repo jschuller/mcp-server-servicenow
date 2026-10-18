@@ -10,7 +10,7 @@ the response limiter when it cuts a list to fit the size limit
 on Python < 3.12.
 """
 
-from typing import Any, Dict, List
+from typing import Any, Dict, List, NamedTuple, Optional
 
 from typing_extensions import NotRequired, TypedDict
 
@@ -101,15 +101,28 @@ class ReferenceReport(TypedDict):
     note: NotRequired[str]
 
 
-# Tool name -> the list the limiter may cut, and whether the tool pages with
-# ``offset`` (then a cut result says where to continue).
-LIST_KEYS: Dict[str, tuple[str, bool]] = {
-    "list_records": ("records", True),
-    "list_ci": ("records", True),
-    "get_ci_relationships": ("relationships", True),
-    "get_system_properties": ("properties", False),
-    "list_update_sets": ("update_sets", False),
-    "list_update_set_changes": ("changes", False),
-    "get_table_schema": ("fields", False),
-    "find_references": ("groups", False),
+class ListKey(NamedTuple):
+    """How the response limiter cuts one list tool's result."""
+
+    key: str  # the list it may cut
+    pages: bool  # the tool takes ``offset``, so a cut says where to continue
+    count_key: Optional[str]  # holds len(key); rewritten after a cut
+    narrow: str  # what a caller can do when not even one item fits
+
+
+LIST_KEYS: Dict[str, ListKey] = {
+    "list_records": ListKey("records", True, "count", "ask for fewer fields (fields=)"),
+    "list_ci": ListKey("records", True, "count", "ask for fewer fields (fields=)"),
+    "get_ci_relationships": ListKey(
+        "relationships", True, "count", "skip it with offset=next_offset+1"
+    ),
+    "get_system_properties": ListKey("properties", False, "count", "narrow the query"),
+    "list_update_sets": ListKey("update_sets", False, "count", "narrow the query"),
+    "list_update_set_changes": ListKey(
+        "changes", False, "count", "read the changes with list_records and fields="
+    ),
+    "get_table_schema": ListKey(
+        "fields", False, "field_count", "lower limit= or set include_inherited=false"
+    ),
+    "find_references": ListKey("groups", False, None, "lower limit="),
 }

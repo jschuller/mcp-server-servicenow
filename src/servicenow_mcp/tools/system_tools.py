@@ -163,7 +163,7 @@ def find_references(
     in field mode) are text matches, so expect false positives. Only this exact
     table is matched: run it again for a parent table (get_table_schema's
     hierarchy) to find rules and ACLs defined there. A source this identity
-    can't read (401 or 403) is listed in not_assessable; rows hidden by an ACL
+    can't read (403) is listed in not_assessable; rows hidden by an ACL
     are simply missing. complete=false means the source hit the limit.
     """
     for name, value in (("table name", table_name), ("field_name", field_name)):
@@ -190,8 +190,10 @@ def find_references(
             rows = result_rows(parse_json_response(response, url))
         except ServiceNowAPIError as exc:
             reason = str(exc).split(". ", 1)[0]
-            if "(401)" not in reason and "(403)" not in reason:
-                raise  # a dead instance or a timeout is an error, not a gap
+            if "(403)" not in reason:
+                # 401 is the whole identity failing, a timeout a dead instance:
+                # errors, not one unreadable source.
+                raise
             report["not_assessable"].append(
                 {"source": source, "table": table, "reason": reason}
             )
