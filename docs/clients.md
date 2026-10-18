@@ -171,7 +171,7 @@ pi mcp add servicenow --exposure direct \
   --env SERVICENOW_USERNAME=mcp.integration \
   --env 'SERVICENOW_PASSWORD=${SERVICENOW_PASSWORD}' \
   -- uvx mcp-server-servicenow
-pi mcp list   # connects and lists 12 tools, 18 resources
+pi mcp list   # connects and lists 12 tools, 19 resources
 ```
 
 `--exposure direct` lets the model call the tools by name (pi's default, `codemode`, wraps them in scripts). pi has no permission prompts: the start-here user already hides the write tools; with a writable identity add `--read-only` unless you want the model to write unasked.

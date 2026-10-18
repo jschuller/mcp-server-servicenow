@@ -1,6 +1,6 @@
 """Registry regression tests for tools, resources, and skills.
 
-Safety net: the tools in tests/inventory.py, 21 static resources (4 hand-written + 17 skill:// entries)
+Safety net: the tools in tests/inventory.py, 22 static resources (4 hand-written + 18 skill:// entries)
 and 1 resource template must stay registered exactly.
 """
 
@@ -35,6 +35,7 @@ EXPECTED_RESOURCES = {
     "skill://analyzing-access/references/access-errors.md",
     "skill://analyzing-access/references/acl-evaluation.md",
     "skill://exploring-tables/references/query-syntax.md",
+    "skill://exploring-tables/references/record-history.md",
     "skill://reviewing-update-sets/references/update-set-fields.md",
     "skill://servicenow-cmdb/references/cmdb-tables.md",
     "skill://servicenow-cmdb/references/csdm5.md",
@@ -111,7 +112,7 @@ class TestToolRegistry:
 class TestResourceRegistry:
     @pytest.mark.asyncio
     async def test_exact_resource_set(self) -> None:
-        """Exactly the 21 static resources — no extras, none missing."""
+        """Exactly the 22 static resources — no extras, none missing."""
         async with Client(mcp) as client:
             registered = {str(r.uri) for r in await client.list_resources()}
         assert registered == EXPECTED_RESOURCES, (

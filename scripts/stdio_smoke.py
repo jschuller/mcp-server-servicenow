@@ -101,9 +101,9 @@ async def section_a(results):
         res = await c.list_resources()
         results.append(
             ok(
-                "read-only: 18 resources incl. 14 skill://",
-                len(res) == 18
-                and sum(str(r.uri).startswith("skill://") for r in res) == 14,
+                "read-only: 19 resources incl. 15 skill://",
+                len(res) == 19
+                and sum(str(r.uri).startswith("skill://") for r in res) == 15,
                 str(len(res)),
             )
         )

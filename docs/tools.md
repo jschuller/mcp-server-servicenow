@@ -85,7 +85,7 @@ Four [Agent Skills](https://agentskills.io) for the Now Platform — guided, mul
 |-------|-----|----------------|
 | **servicenow-cmdb** | `skill://servicenow-cmdb/SKILL.md` | The CMDB as a data model: class hierarchy, raw relationships, health scorecards, data quality (duplicates, orphans, staleness), CSDM taxonomy, CSDM 5 conformance by stage |
 | **reviewing-update-sets** | `skill://reviewing-update-sets/SKILL.md` | Deep review, batch review, comparison and pre-promotion checks for update sets; preview problems and collisions of retrieved sets (admin) |
-| **exploring-tables** | `skill://exploring-tables/SKILL.md` | Schema discovery (with a sampling fallback when the schema is refused), choice lists, data profiling, table search and comparison, the encoded-query reference |
+| **exploring-tables** | `skill://exploring-tables/SKILL.md` | Schema discovery (with a sampling fallback when the schema is refused), choice lists, data profiling, table search and comparison, a record's journal and audit history, the encoded-query reference |
 | **analyzing-access** | `skill://analyzing-access/SKILL.md` | Who holds admin and security_admin, roles granted outside groups or left on inactive users, and what a 401, 403, empty result or missing field means |
 
 Each skill states the tables it reads and the roles they need, in its text and in two frontmatter metadata keys (`io.github.jschuller/servicenow-roles`, `io.github.jschuller/servicenow-tables`). A 403 is reported as "not assessable with this identity"; 0 rows or missing fields as "possibly hidden by an ACL".

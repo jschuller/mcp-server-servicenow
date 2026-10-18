@@ -27,7 +27,10 @@ _auth_manager: AuthManager | None = None
 _SKILL_HINTS = (
     ("servicenow-cmdb", "CMDB health, data quality, CI classes, relationships, CSDM"),
     ("reviewing-update-sets", 'update sets, promotion, "is this safe to promote"'),
-    ("exploring-tables", "table schemas, fields, choice lists, data profiling"),
+    (
+        "exploring-tables",
+        "table schemas, fields, choice lists, data profiling, a record's work notes, comments and audit history",
+    ),
     ("analyzing-access", "who has admin, role reviews, 403s, missing rows or fields"),
 )
 
