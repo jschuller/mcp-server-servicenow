@@ -2,6 +2,7 @@
 
 import json
 import logging
+import re
 from typing import Any, List
 from unittest.mock import Mock
 
@@ -89,10 +90,8 @@ async def test_error_denied_and_unknown_outcomes(
             await client.call_tool("no_such_tool", {})
     outcomes = [line["outcome"] for line in captured.lines]
     assert outcomes == ["error", "denied", "unknown_tool"]
-    assert (
-        captured.lines[0]["error"].startswith("ToolError")
-        or "boom" in captured.lines[0]["error"]
-    )
+    # The class FastMCP raised, then the underlying message: both must survive.
+    assert re.fullmatch(r"ToolError: .*\bboom", captured.lines[0]["error"])
     assert "Invalid table name" in captured.lines[1]["error"]
 
 

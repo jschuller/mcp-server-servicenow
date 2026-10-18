@@ -47,8 +47,10 @@ def my_tool(
     # ...
 ```
 
-4. Add a schema test in `tests/test_tools.py`
-5. Update the tool count assertion in `tests/test_registry.py`
+4. Tag it `read` or `write` and add its name to `READ_TOOLS` or `WRITE_TOOLS` in `tests/inventory.py`; every test that counts tools, and `scripts/stdio_smoke.py`, reads that list
+5. Add a schema test in `tests/test_tools.py`
+6. Update the counts in prose: `README.md`, `docs/tools.md`, `docs/clients.md` and `docs/configuration.md` (`grep -rnE "[0-9]+ (read-only |write )?tools" README.md docs`)
+7. Refresh the eval mocks: `mcp-server-servicenow --eval-mocks .` and each `examples/*` plugin (CI fails on a stale `_tools.json`)
 
 ## Running Integration Tests
 
@@ -66,7 +68,7 @@ python scripts/stdio_smoke.py --profile readonly
 ## Code Style
 
 - Python 3.11+, type hints on all functions
-- `ruff` for linting
+- `ruff check src/ tests/` and `ruff format --check src/ tests/` (CI runs both)
 - Follow existing patterns in the codebase
 
 ## Releases

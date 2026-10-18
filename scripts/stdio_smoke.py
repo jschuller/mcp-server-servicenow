@@ -38,6 +38,9 @@ from fastmcp.client.transports import StdioTransport
 from fastmcp.exceptions import ToolError
 
 REPO = str(Path(__file__).resolve().parents[1])
+sys.path.insert(0, REPO)
+from tests.inventory import ALL_TOOLS, READ_TOOLS  # noqa: E402  (the one tool list)
+
 SKILLS = (
     "analyzing-access",
     "exploring-tables",
@@ -81,7 +84,11 @@ async def section_a(results):
     async with Client(transport("--read-only", "--audit-log", "off")) as c:
         tools = await c.list_tools()
         results.append(
-            ok("read-only: 12 tools listed", len(tools) == 12, str(len(tools)))
+            ok(
+                f"read-only: {len(READ_TOOLS)} tools listed",
+                {t.name for t in tools} == READ_TOOLS,
+                str(len(tools)),
+            )
         )
         ann = {t.name: t.annotations for t in tools}
         results.append(
@@ -118,7 +125,11 @@ async def section_b(results, profile, audit):
         roles = (await c.call_tool("get_current_user", {})).data.get("roles")
         if profile == "readonly" and roles is None:
             info("identity cannot read its own role rows: hiding fails open")
-        want = 12 if profile == "readonly" and roles is not None else 19
+        want = (
+            len(READ_TOOLS)
+            if profile == "readonly" and roles is not None
+            else len(ALL_TOOLS)
+        )
         results.append(
             ok(
                 f"no flag: {want} tools for this identity",

@@ -18,6 +18,7 @@ from servicenow_mcp.eval_kit import (
     write_tools_only,
 )
 from servicenow_mcp.skill_lint import TABLES_KEY
+from tests.inventory import ALL_TOOLS
 
 MANIFEST = {
     "name": "my-skills",
@@ -94,7 +95,7 @@ def _not_in_ci(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_tools_list_is_the_wire_shape() -> None:
     listed = tools_list("9.9.9")
     names = [t["name"] for t in listed["tools"]]
-    assert names == sorted(names) and "list_records" in names and len(names) == 19
+    assert names == sorted(names) and set(names) == ALL_TOOLS
     assert {"name", "description", "inputSchema"} <= set(listed["tools"][0])
     assert listed["_meta"] == {TOOLS_META_KEY: "9.9.9"}
 
