@@ -65,8 +65,9 @@ claude mcp add servicenow \
 
 Or install the Claude Code plugin, which adds the four skills as slash commands. It reads the same `SERVICENOW_*` variables from the shell that starts Claude Code ([details](https://github.com/jschuller/mcp-server-servicenow/blob/main/docs/clients.md#claude-code-plugin)):
 
-```
-/plugin install servicenow --marketplace jschuller/mcp-server-servicenow
+```bash
+claude plugin marketplace add jschuller/mcp-server-servicenow
+claude plugin install servicenow@mcp-server-servicenow
 ```
 
 <details>
