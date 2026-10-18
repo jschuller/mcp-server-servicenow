@@ -111,7 +111,7 @@ class TestParseStaticTokens:
         assert tokens["tok-a"]["client_id"] == "ci"
         assert tokens["tok-b"]["client_id"] == "static-client-2"
 
-    @pytest.mark.parametrize("entry", ["bad name:tok", ":tok", "ci:"])
+    @pytest.mark.parametrize("entry", ["bad name:tok", ":tok", "-ci:tok"])
     def test_entry_without_a_valid_name_is_one_whole_token(self, entry):
         tokens = cli._parse_static_tokens(_args(mcp_static_tokens=entry))
         assert tokens == {
@@ -120,6 +120,16 @@ class TestParseStaticTokens:
                 "scopes": [],
                 "sn_auth": "service-account",
             }
+        }
+
+    def test_a_name_without_a_token_is_refused(self):
+        with pytest.raises(ValueError, match="'ci' has no token after ':'"):
+            cli._parse_static_tokens(_args(mcp_static_tokens="ci:"))
+
+    def test_spaces_around_the_colon_are_ignored(self):
+        tokens = cli._parse_static_tokens(_args(mcp_static_tokens=" ci : tok-a "))
+        assert tokens == {
+            "tok-a": {"client_id": "ci", "scopes": [], "sn_auth": "service-account"}
         }
 
     def test_duplicate_name_is_refused(self):
@@ -262,6 +272,15 @@ class TestFailClosed:
         with patch("servicenow_mcp.server.mcp.run"), caplog.at_level("WARNING"):
             cli.main()
         assert "write tools are enabled" not in caplog.text
+
+    def test_startup_turns_off_fastmcp_update_check(self, monkeypatch):
+        import fastmcp
+
+        monkeypatch.setattr(fastmcp.settings, "check_for_updates", "stable")
+        monkeypatch.setattr("sys.argv", list(_BASIC_ARGV))
+        with patch("servicenow_mcp.server.mcp.run"):
+            cli.main()
+        assert fastmcp.settings.check_for_updates == "off"
 
     def test_stdio_does_not_warn_about_writes(self, monkeypatch, caplog):
         monkeypatch.setattr("sys.argv", list(_BASIC_ARGV))

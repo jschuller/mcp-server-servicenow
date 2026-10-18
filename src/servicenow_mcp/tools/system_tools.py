@@ -16,6 +16,7 @@ from servicenow_mcp.utils.http import (
     ServiceNowAPIError,
     build_url,
     parse_json_response,
+    result_rows,
 )
 from servicenow_mcp.utils.schema import fetch_table_schema
 from servicenow_mcp.utils.user import fetch_current_user
@@ -48,7 +49,7 @@ def get_system_properties(
 
     response = make_sn_request("GET", url, config.timeout, params=query_params)
     data = parse_json_response(response, url)
-    result = data.get("result", [])
+    result = result_rows(data)
     return {"count": len(result), "properties": result}
 
 
@@ -141,11 +142,15 @@ def _reference_queries(table: str, field: Optional[str]) -> List[_Query]:
 @mcp.tool(tags={"read", "admin"}, annotations=annotations.READ)
 def find_references(
     table_name: Annotated[
-        str, Field(description="The table to look up (e.g., 'incident')")
+        str,
+        Field(max_length=80, description="The table to look up (e.g., 'incident')"),
     ],
     field_name: Annotated[
         Optional[str],
-        Field(description="Narrow to one field of the table (e.g., 'assigned_to')"),
+        Field(
+            max_length=80,
+            description="Narrow to one field of the table (e.g., 'assigned_to')",
+        ),
     ] = None,
     limit: Annotated[
         int, Field(ge=1, le=100, description="Maximum matches to return per source")
@@ -154,9 +159,12 @@ def find_references(
     """Where-used for a table or one of its fields: the business rules, client scripts, UI policies, ACLs, script includes and reference fields that touch it.
 
     Returns names, sys_ids and flags only, never script, condition or ACL
-    bodies. Script-include matches are text matches on the name. A source this
-    identity can't read is listed in not_assessable; 0 matches may also mean
-    rows hidden by an ACL. complete=false means the source hit the limit.
+    bodies. Script matches (script includes; business rules and client scripts
+    in field mode) are text matches, so expect false positives. Only this exact
+    table is matched: run it again for a parent table (get_table_schema's
+    hierarchy) to find rules and ACLs defined there. A source this identity
+    can't read (401 or 403) is listed in not_assessable; rows hidden by an ACL
+    are simply missing. complete=false means the source hit the limit.
     """
     for name, value in (("table name", table_name), ("field_name", field_name)):
         check_identifier(name, value)
@@ -179,9 +187,11 @@ def find_references(
         }
         try:
             response = make_sn_request("GET", url, config.timeout, params=params)
-            rows = parse_json_response(response, url).get("result", [])
+            rows = result_rows(parse_json_response(response, url))
         except ServiceNowAPIError as exc:
             reason = str(exc).split(". ", 1)[0]
+            if "(401)" not in reason and "(403)" not in reason:
+                raise  # a dead instance or a timeout is an error, not a gap
             report["not_assessable"].append(
                 {"source": source, "table": table, "reason": reason}
             )

@@ -71,18 +71,18 @@ class StructuredResponseLimiter(ResponseLimitingMiddleware):
         key, pages = self.list_keys[name]
         payload = result.structured_content
         items = payload.get(key) if isinstance(payload, dict) else None
-        offset = (context.message.arguments or {}).get("offset", 0)
         cut = (
-            self._cut(result, payload, key, items, offset if pages else None)
+            self._cut(result, payload, key, items, _offset(context) if pages else None)
             if isinstance(payload, dict) and isinstance(items, list)
             else None
         )
         if cut is None:
-            # Not even one item fits: fall back to the text cut.
+            # No list to cut, or the rest of the payload alone is too big.
+            texts = [b.text for b in result.content if isinstance(b, TextContent)]
             return self._truncate_to_result(
-                "\n\n".join(
-                    b.text for b in result.content if isinstance(b, TextContent)
-                ),
+                "\n\n".join(texts)
+                if texts
+                else pydantic_core.to_json(result, fallback=str).decode(),
                 meta=result.meta,
                 is_error=result.is_error,
             )
@@ -104,7 +104,8 @@ class StructuredResponseLimiter(ResponseLimitingMiddleware):
         items: list[Any],
         offset: int | None,
     ) -> ToolResult | None:
-        """The largest prefix of ``items`` whose result fits, or None."""
+        """The largest prefix of ``items`` whose result fits, or None if even
+        the empty list doesn't fit."""
 
         def build(n: int) -> ToolResult:
             trimmed = {**payload, key: items[:n], "truncated": True}
@@ -112,6 +113,11 @@ class StructuredResponseLimiter(ResponseLimitingMiddleware):
                 trimmed["count"] = n
             if offset is not None:
                 trimmed["next_offset"] = offset + n
+            if n == 0:
+                trimmed["note"] = (
+                    f"The first item alone is over the {self.max_size // 1000} KB "
+                    "response limit: ask for fewer fields (fields=)."
+                )
             return ToolResult(
                 content=[
                     TextContent(
@@ -129,7 +135,7 @@ class StructuredResponseLimiter(ResponseLimitingMiddleware):
 
         high = len(items) - 1  # the full list is known not to fit
         if high < 1 or not fits(1):
-            return None
+            return build(0) if fits(0) else None
         low = 1
         while low < high:
             mid = (low + high + 1) // 2
@@ -138,3 +144,17 @@ class StructuredResponseLimiter(ResponseLimitingMiddleware):
             else:
                 high = mid - 1
         return build(low)
+
+
+def _offset(context: MiddlewareContext[mt.CallToolRequestParams]) -> int:
+    """The call's ``offset`` as the tool saw it (pydantic accepts "40")."""
+    raw = (context.message.arguments or {}).get("offset", 0)
+    if isinstance(raw, bool):
+        return 0
+    if isinstance(raw, int):
+        return raw
+    if isinstance(raw, float) and raw.is_integer():
+        return int(raw)
+    if isinstance(raw, str) and raw.strip().isdigit():
+        return int(raw.strip())
+    return 0

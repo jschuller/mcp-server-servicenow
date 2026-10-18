@@ -117,3 +117,10 @@ def test_query_injection_is_refused(sn: Mock, table: str, field: Any) -> None:
     with pytest.raises(PolicyError):
         system_tools.find_references(table_name=table, field_name=field)
     sn.assert_not_called()
+
+
+def test_a_timeout_is_an_error_not_a_gap(monkeypatch, sn: Mock) -> None:
+    sn.side_effect = ServiceNowAPIError("Request to https://x timed out after 30s")
+    with pytest.raises(ServiceNowAPIError, match="timed out"):
+        system_tools.find_references(table_name="incident")
+    assert sn.call_count == 1

@@ -11,7 +11,12 @@ from pydantic import Field
 from servicenow_mcp.server import mcp, get_config, make_sn_request
 from servicenow_mcp.tools import annotations
 from servicenow_mcp.tools.results import UpdateSetChangeList, UpdateSetList
-from servicenow_mcp.utils.http import ServiceNowAPIError, build_url, parse_json_response
+from servicenow_mcp.utils.http import (
+    ServiceNowAPIError,
+    build_url,
+    parse_json_response,
+    result_rows,
+)
 from servicenow_mcp.utils.user import fetch_current_user
 
 logger = logging.getLogger(__name__)
@@ -58,7 +63,7 @@ def list_update_sets(
 
     response = make_sn_request("GET", url, config.timeout, params=query_params)
     data = parse_json_response(response, url)
-    result = data.get("result", [])
+    result = result_rows(data)
     return {"count": len(result), "update_sets": result}
 
 
@@ -184,5 +189,5 @@ def list_update_set_changes(
 
     response = make_sn_request("GET", url, config.timeout, params=query_params)
     data = parse_json_response(response, url)
-    result = data.get("result", [])
+    result = result_rows(data)
     return {"count": len(result), "changes": result}

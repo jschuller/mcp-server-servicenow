@@ -95,3 +95,55 @@ async def test_other_tools_keep_the_text_cut(monkeypatch, audit_lines):
     assert result.structured_content is None
     assert result.content[0].text.endswith(audit.TRUNCATION_SUFFIX)
     assert audit_lines[-1]["truncated"] is True
+
+
+async def test_a_row_too_big_to_keep_leaves_a_valid_empty_list(
+    monkeypatch, audit_lines
+):
+    huge = [{"sys_id": "a" * 32, "script": "x" * 300_000}] + BIG[:5]
+    monkeypatch.setattr(
+        table_tools, "make_sn_request", Mock(return_value=sn_response({"result": huge}))
+    )
+    init_test_services()
+    async with Client(mcp) as client:
+        result = await client.call_tool(
+            "list_records", {"table_name": "sys_script_include", "offset": "7"}
+        )
+    data = result.structured_content
+    assert data["records"] == [] and data["count"] == 0
+    assert data["truncated"] is True and data["next_offset"] == 7
+    assert "fields=" in data["note"]
+    assert audit_lines[-1]["truncated"] is True
+
+
+async def test_a_string_offset_pages_like_an_int(monkeypatch):
+    monkeypatch.setattr(
+        table_tools, "make_sn_request", Mock(return_value=sn_response({"result": BIG}))
+    )
+    init_test_services()
+    async with Client(mcp) as client:
+        result = await client.call_tool(
+            "list_records", {"table_name": "incident", "offset": "40", "limit": 1000}
+        )
+    data = result.structured_content
+    assert data["next_offset"] == 40 + len(data["records"])
+
+
+@pytest.mark.parametrize(
+    ("result", "rows"),
+    [
+        ({"sys_id": "a"}, [{"sys_id": "a"}]),
+        (None, []),
+        (["a", {"sys_id": "b"}], [{"sys_id": "b"}]),
+    ],
+)
+async def test_odd_result_shapes_still_match_the_schema(monkeypatch, result, rows):
+    monkeypatch.setattr(
+        table_tools,
+        "make_sn_request",
+        Mock(return_value=sn_response({"result": result})),
+    )
+    init_test_services()
+    async with Client(mcp) as client:
+        got = await client.call_tool("list_records", {"table_name": "incident"})
+    assert got.structured_content == {"count": len(rows), "records": rows}

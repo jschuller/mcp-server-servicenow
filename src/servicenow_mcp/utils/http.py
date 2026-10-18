@@ -255,6 +255,21 @@ def api_request(
     return response
 
 
+def result_rows(data: Any) -> list:
+    """The ``result`` of a Table API list call as a list of records.
+
+    ServiceNow returns a list of objects. Anything else (a single object, null,
+    stray scalars) is normalised so the list tools' published outputSchema
+    still holds: one object becomes a one-row list, everything else is dropped.
+    """
+    result = data.get("result") if isinstance(data, dict) else None
+    if isinstance(result, dict):
+        return [result]
+    if not isinstance(result, list):
+        return []
+    return [row for row in result if isinstance(row, dict)]
+
+
 def parse_json_response(response: requests.Response, url: str) -> Dict[str, Any]:
     """Parse a JSON response, raising ServiceNowAPIError on failure."""
     if not response.text or not response.text.strip():

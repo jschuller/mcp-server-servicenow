@@ -11,7 +11,7 @@ from pydantic import Field
 from servicenow_mcp.server import get_config, make_sn_request, mcp
 from servicenow_mcp.tools import annotations
 from servicenow_mcp.tools.results import RecordList
-from servicenow_mcp.utils.http import build_url, parse_json_response
+from servicenow_mcp.utils.http import build_url, parse_json_response, result_rows
 
 logger = logging.getLogger(__name__)
 
@@ -117,7 +117,7 @@ def list_records(
 
     response = make_sn_request("GET", url, config.timeout, params=query_params)
     data = parse_json_response(response, url)
-    result = data.get("result", [])
+    result = result_rows(data)
     payload: RecordList = {"count": len(result), "records": result}
     if fields:
         warning = _missing_fields_warning(table_name, fields, result)

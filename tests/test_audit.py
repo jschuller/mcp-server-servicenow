@@ -192,6 +192,16 @@ def test_identity_for_static_and_oauth_tokens(monkeypatch) -> None:
     )
     monkeypatch.setattr("fastmcp.server.dependencies.get_access_token", lambda: static)
     assert audit._identity() == ("static-token", "static-client-1")
+    # Behind MultiAuth the configured name survives as original_client_id.
+    multi = AccessToken(
+        token="t",
+        client_id='["configured:abc", "ci", null, null]',
+        original_client_id="ci",
+        scopes=[],
+        claims={"sn_auth": "service-account"},
+    )
+    monkeypatch.setattr("fastmcp.server.dependencies.get_access_token", lambda: multi)
+    assert audit._identity() == ("static-token", "ci")
     user = AccessToken(
         token="t", client_id="c", scopes=[], claims={"user_name": "jane"}
     )

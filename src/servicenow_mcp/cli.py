@@ -208,8 +208,10 @@ def parse_args() -> argparse.Namespace:
         default=_env_str("MCP_STATIC_TOKENS"),
         help=(
             "Comma-separated static bearer tokens for CI/CD auth, each `token` or "
-            "`name:token` (the name is the audit log's client_id). Callers share "
-            "the configured ServiceNow service-account credentials."
+            "`name:token` (the audit log's user; default static-client-<position>). "
+            "Tokens under 32 characters log a warning. Callers share the "
+            "configured ServiceNow service-account credentials (MCP_STATIC_TOKENS; "
+            "prefer the variable to the flag)."
         ),
     )
 
@@ -367,16 +369,16 @@ def create_config(
     )
 
 
-_TOKEN_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
+_TOKEN_NAME = re.compile(r"\A[A-Za-z0-9][A-Za-z0-9._-]{0,63}\Z")
 MIN_STATIC_TOKEN_LENGTH = 32
 
 
 def _parse_static_tokens(args: argparse.Namespace) -> dict[str, dict[str, Any]] | None:
     """Parse comma-separated static bearer tokens into StaticTokenVerifier format.
 
-    Each entry is ``token`` or ``name:token``. A name becomes the audit log's
-    ``client_id``, so attribution survives reordering the list; unnamed tokens
-    are ``static-client-<position>``. Returns None if no tokens are configured.
+    Each entry is ``token`` or ``name:token``. A name is what the audit log
+    records as ``user``, so attribution survives reordering the list; unnamed
+    tokens are ``static-client-<position>``. Tokens must not contain ``:``. Returns None if no tokens are configured.
     ``sn_auth: service-account`` tells ``get_sn_bearer_token`` that this is an
     MCP credential, not a ServiceNow token to forward.
     """
@@ -389,7 +391,13 @@ def _parse_static_tokens(args: argparse.Namespace) -> dict[str, dict[str, Any]] 
         if not entry:
             continue
         name, sep, token = entry.partition(":")
-        if not (sep and _TOKEN_NAME.match(name) and token):
+        name, token = name.strip(), token.strip()
+        if sep and _TOKEN_NAME.match(name):
+            if not token:
+                raise ValueError(
+                    f"MCP_STATIC_TOKENS entry {name!r} has no token after ':'"
+                )
+        else:
             name, token = f"static-client-{i}", entry
         if name in {meta["client_id"] for meta in tokens.values()}:
             raise ValueError(
@@ -548,6 +556,12 @@ def main() -> None:
 
         if getattr(args, "check", False):
             sys.exit(run_check(args))
+
+        # FastMCP's startup banner asks PyPI for a newer FastMCP; this server
+        # makes no requests except to the instance (docs/privacy.md).
+        import fastmcp
+
+        fastmcp.settings.check_for_updates = "off"
 
         use_mcp_oauth = _has_mcp_oauth(args) and args.transport != "stdio"
         static_tokens = _parse_static_tokens(args)
