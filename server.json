@@ -3,7 +3,7 @@
   "name": "io.github.jschuller/mcp-server-servicenow",
   "title": "ServiceNow MCP Server",
   "description": "ServiceNow MCP server: Table API, CMDB, schema, aggregates, update sets and four Agent Skills.",
-  "version": "0.9.1",
+  "version": "0.9.2",
   "repository": {
     "url": "https://github.com/jschuller/mcp-server-servicenow",
     "source": "github"
@@ -12,7 +12,7 @@
     {
       "registryType": "pypi",
       "identifier": "mcp-server-servicenow",
-      "version": "0.9.1",
+      "version": "0.9.2",
       "transport": {
         "type": "stdio"
       },

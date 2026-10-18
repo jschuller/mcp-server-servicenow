@@ -31,7 +31,7 @@ jobs:
     env:
       # Pin both. Bump SERVER_VERSION together with validate-skills.yml's server-version
       # and plugin.json; the Action's SHA pin moves only when the Action changes.
-      SERVER_VERSION: "0.9.1"
+      SERVER_VERSION: "0.9.2"
       CLAUDE_CODE_VERSION: "2.1.296"
     # One of two repository secrets: an Anthropic API key (billed per call), or a token
     # from `claude setup-token` (counts against that Claude subscription). Only the steps

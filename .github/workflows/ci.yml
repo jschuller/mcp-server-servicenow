@@ -144,8 +144,8 @@ jobs:
           names = zipfile.ZipFile(glob.glob("dist/*.whl")[0]).namelist()
           skills = [n for n in names if n.startswith("servicenow_mcp/skills/") and n.endswith("/SKILL.md")]
           refs = [n for n in names if "/skills/" in n and "/references/" in n]
-          if len(skills) != 4 or len(refs) != 6:
-              print(f"::error::Wheel has {len(skills)} SKILL.md and {len(refs)} reference files (want 4 and 6)")
+          if len(skills) != 4 or len(refs) != 7:
+              print(f"::error::Wheel has {len(skills)} SKILL.md and {len(refs)} reference files (want 4 and 7)")
               sys.exit(1)
           print(f"Wheel carries {len(skills)} skills and {len(refs)} reference files")
           EOF
