@@ -185,3 +185,14 @@ def test_which_401s_are_a_failed_login(monkeypatch) -> None:
     assert system_tools._login_failed(
         "Authentication failed (401) and token refresh also failed."
     )
+
+
+def test_oauth_stops_after_two_refused_fresh_tokens(monkeypatch, sn: Mock) -> None:
+    monkeypatch.setattr(system_tools, "_login_failed", lambda message: False)
+    sn.side_effect = ServiceNowAPIError(
+        "Authentication failed (401) even after token refresh. Check your OAuth "
+        "credentials. URL: x"
+    )
+    with pytest.raises(ServiceNowAPIError, match="even after token refresh"):
+        system_tools.find_references(table_name="incident")
+    assert sn.call_count == 2  # not one new token per source

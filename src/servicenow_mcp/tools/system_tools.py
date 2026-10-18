@@ -189,8 +189,9 @@ def find_references(
     table is matched: run it again for a parent table (get_table_schema's
     hierarchy) to find rules and ACLs defined there. A source this identity
     can't read (403, or a 401 from an access policy that leaves its table out)
-    is listed in not_assessable; a refused password or OAuth secret is an
-    error at the first source; rows hidden by an ACL
+    is listed in not_assessable. Under basic auth any 401 is an error at the
+    first source (a refused password looks the same), and so is a refused
+    OAuth secret; rows hidden by an ACL
     are simply missing. complete=false means the source hit the limit.
     """
     for name, value in (("table name", table_name), ("field_name", field_name)):
@@ -220,6 +221,15 @@ def find_references(
             reason = str(exc).split(". ", 1)[0]
             if "(401)" in reason:
                 if _login_failed(str(exc)):
+                    raise
+                if (
+                    "even after token refresh" in str(exc)
+                    and unauthenticated
+                    and not report["groups"]
+                    and len(unauthenticated) == len(report["not_assessable"])
+                ):
+                    # Two fresh OAuth tokens refused and nothing answered yet:
+                    # stop before every source mints another token.
                     raise
                 # An access policy may leave out one table: a gap, unless
                 # every source says the same.

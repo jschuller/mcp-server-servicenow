@@ -53,7 +53,7 @@ ServiceNow's ACLs decide what the user can do; the server adds nothing on top. B
 | …and delete incidents, problems, changes | add `itil_admin` | |
 | Table schemas (`get_table_schema`, `servicenow://schema/*`) | add `personalize_dictionary` | |
 | A record's work notes, comments and field changes (exploring-tables workflow 6) | add `audit_viewer` | without it the journal returns 0 rows, not a 403 |
-| Where-used (`find_references`) | `admin` (`security_admin` for ACLs) | each source refused with 403, or with 401 by an access policy that leaves its table out, is listed in `not_assessable` |
+| Where-used (`find_references`) | `admin` (`security_admin` for ACLs) | each source refused with 403, or with 401 by an access policy that leaves its table out, is listed in `not_assessable`; under basic auth any 401 is an error |
 | Update sets, system properties | `admin` — on a PDI only | |
 
 | Tool or resource | Needs | Without it |
