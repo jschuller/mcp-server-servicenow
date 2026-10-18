@@ -2,6 +2,45 @@
 
 ## [Unreleased]
 
+Read-only developer-loop tools (where-used, record history, structured output) and the
+fixes from an independent review of the repository.
+
+### Upgrade notes
+- **Eight read tools now publish an `outputSchema`**: `list_records`, `list_ci`,
+  `get_ci_relationships`, `get_system_properties`, `list_update_sets`,
+  `list_update_set_changes`, `get_table_schema` and the new `find_references`. The
+  JSON text block is unchanged. A client that validates results gets typed data; with the
+  FastMCP client, `result.data` becomes a typed object, so read `result.structured_content`
+  for the plain dict.
+- **Regenerate your eval mocks** (`--eval-mocks`): `_tools.json` now carries the output
+  schemas and `find_references`, and the validator compares them.
+- **An HTTP listener without `--read-only` logs a warning** at startup, and so does a
+  static token under 32 characters. Nothing is refused.
+
+### Added
+- **`find_references`**: where-used for a table or one field. It lists business rules,
+  client scripts, UI policies (or their field actions), ACLs, script includes (by text
+  match) and reference fields, by name and sys_id only, never script or ACL bodies. A
+  source the identity can't read is reported in `not_assessable`, and the others still
+  answer. The exploring-tables skill drives it (workflow 7).
+- **Record history** in the exploring-tables skill (workflow 6): a record's work notes and
+  comments (`sys_journal_field`) and field changes (`sys_audit`) as one timeline. Without
+  `audit_viewer` the journal returns 0 rows rather than a 403, and the skill reports that
+  as not assessable.
+- **`response_format`** on `list_records` and `list_ci`: `concise` returns reference
+  fields as bare sys_ids, without instance URLs. The default, `detailed`, is unchanged.
+- **Structured output that survives the size limit**: a list over 500 KB keeps its
+  shape, holding the rows that fit, with `truncated: true` and `next_offset`. Other
+  tools are cut to text as before. The audit log flags both.
+- **An API key's 401 names the read that still works**: on the Stats API, count with
+  `list_records`; on a single-record read, `list_records` with `sys_id=`. In a 599-case
+  eval run, agents gave up on 26 of 69 aggregation cases without trying the fallback.
+- **Named static tokens**: `MCP_STATIC_TOKENS` entries may be `name:token`, and the name
+  is the audit log's `client_id`, so attribution survives reordering.
+- The skill validator warns on a mock `expect` for a parameter with a default (such a
+  call aborts the case), and on an `expect` the tool doesn't take.
+- Eval cases: record-history, stats-refused-fallback, where-used.
+
 ### Changed
 - **The Claude Code plugin pins its server** (`uvx mcp-server-servicenow==0.9.1`), as
   Anthropic's plugin directory requires. Plugin users get a new server when the plugin
@@ -13,9 +52,22 @@
   `documentationUrl`, `supportUrl`, `privacyPolicyUrl`), and the skill validator accepts
   them, plus `termsOfServiceUrl`, in a skills wrapper.
 
-### Added
+- **Renovate auto-merges GitHub Actions updates only**, after a 3-day release age;
+  Python dependency bumps are reviewed PRs.
+- The plugin and `server.json` pass `SERVICENOW_TOKEN_URL` and `SERVICENOW_DEBUG`.
+- Tests count tools from one list (`tests/inventory.py`), and CONTRIBUTING lists every
+  step of adding a tool.
 - [docs/privacy.md](docs/privacy.md): the server talks only to your instance and sends no
   telemetry; what the audit log keeps.
+
+### Fixed
+- Deployment docs: the from-source HTTP example shows the token it generates, Docker
+  passes secrets from the environment, Cloud Run uses Secret Manager, and the Cloud Run
+  check sends the Google identity token in `X-Serverless-Authorization`.
+- The audit log is described as it is: written values are never logged, and encoded
+  queries are logged with secret-like values masked, so they can hold filter values.
+- SECURITY.md supports 0.9.x and names GitHub's private reporting as the only channel.
+- The configuration examples no longer show literal production passwords.
 
 ## [0.9.1] - 2026-10-13
 
