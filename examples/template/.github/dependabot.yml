@@ -1,0 +1,14 @@
+# Weekly update pull requests for the SHA-pinned Actions (the "# vX.Y.Z" comments follow).
+# Each update waits out a 7-day cooldown, so a release is a week old before it is proposed.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    ignore:
+      # The validate-skills Action moves with server-version and plugin.json, by hand,
+      # and only when the Action changes (see validate-skills.yml).
+      - dependency-name: "jschuller/mcp-server-servicenow*"

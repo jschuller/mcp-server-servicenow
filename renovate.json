@@ -4,7 +4,7 @@
     "config:recommended",
     "helpers:pinGitHubActionDigests"
   ],
-  "minimumReleaseAge": "3 days",
+  "minimumReleaseAge": "7 days",
   "packageRules": [
     {
       "description": "Auto-merge non-major GitHub Actions updates (SHA-pinned)",
