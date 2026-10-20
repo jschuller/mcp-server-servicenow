@@ -135,7 +135,7 @@ jobs:
 
       - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
         with:
-          # uv by exact version (>= pyproject's required-version), with the sha256 of
+          # uv by exact version, with the sha256 of
           # uv-x86_64-unknown-linux-gnu.tar.gz (the release digest, checked 2026-10-20),
           # since this Action's built-in list stops at 0.12.17. Bump both together.
           version: "0.12.24"
@@ -146,7 +146,7 @@ jobs:
       # a stale or hand-edited lockfile (or a broken dependency change like
       # PR #10's conflicting fastmcp pins) would land unnoticed.
       - name: Validate lockfile resolves and matches pyproject
-        run: uv lock --check  # its exclude-newer cooldown included
+        run: uv lock --check
 
       - name: Build and validate distribution
         run: |
