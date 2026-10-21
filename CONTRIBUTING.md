@@ -65,8 +65,10 @@ SERVICENOW_USERNAME=mcp.integration SERVICENOW_PASSWORD=... \
 python -m pytest tests/integration/ -v
 
 # End-to-end over stdio, both protocol eras (the readonly profile changes nothing)
-python scripts/stdio_smoke.py --profile readonly
+python scripts/stdio_smoke.py --profile readonly --expect-tools 13
 ```
+
+Which identities to test with, how many tools each should list and which refusals to expect: [docs/testing.md](docs/testing.md).
 
 ## Code Style
 

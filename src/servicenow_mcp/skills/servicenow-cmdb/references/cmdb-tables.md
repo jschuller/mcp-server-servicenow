@@ -61,7 +61,7 @@ Installed with CMDB Health (`com.snc.cmdb`); see ServiceNow's [components instal
 
 ## Data Quality Checks
 
-The fields behind workflow 4 in SKILL.md, and how ServiceNow's dashboards define the same checks. The filters in workflow 4 were run with `list_ci` and `list_records` on a Brazil developer instance, with an `itil` + `snc_read_only` identity. The Aggregate API was refused there (401 under API-key auth), so the `group_by` and `having` forms follow the Aggregate API documentation and were not run.
+The fields behind workflow 4 in SKILL.md, and how ServiceNow's dashboards define the same checks. The filters in workflow 4 were run with `list_ci` and `list_records` on a Brazil developer instance, with an `itil` + `snc_read_only` identity. The Aggregate API was refused there (401 under API-key auth). The `group_by` and `having` forms were verified on 2026-10-21 on the same instance as admin over OAuth: `group_by=sys_class_name` returned 7 class groups, and `having=count^name^>^1` returned 0 groups, which was correct there because no two CIs shared a name.
 
 | Check | Field or condition | What it means |
 |-------|--------------------|---------------|

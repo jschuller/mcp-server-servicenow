@@ -929,6 +929,9 @@
           "warning": {
             "type": "string"
           },
+          "display_note": {
+            "type": "string"
+          },
           "truncated": {
             "type": "boolean"
           },
@@ -1059,6 +1062,9 @@
             "type": "array"
           },
           "warning": {
+            "type": "string"
+          },
+          "display_note": {
             "type": "string"
           },
           "truncated": {

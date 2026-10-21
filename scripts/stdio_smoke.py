@@ -22,6 +22,9 @@ Profiles:
   write     the identity can create, update and delete incidents and update
             sets (admin by default). Creates and deletes scratch incidents and
             one empty update set; the caller's current update set is restored.
+
+--expect-tools N asserts how many tools the identity lists with no flag, as
+docs/testing.md gives it per identity tier, so a fail-open is a FAIL.
 """
 
 import argparse
@@ -118,7 +121,7 @@ async def section_a(results):
             )
 
 
-async def section_b(results, profile, audit):
+async def section_b(results, profile, audit, expect_tools=None):
     """Default mode: identifier and javascript: policy, schema, paging, then writes."""
     async with Client(transport("--audit-log", audit)) as c:
         tools = await c.list_tools()
@@ -127,16 +130,23 @@ async def section_b(results, profile, audit):
         )
         if profile == "readonly" and roles is None:
             info("identity cannot read its own role rows: hiding fails open")
-        want = (
-            len(READ_TOOLS)
-            if profile == "readonly" and roles is not None
-            else len(ALL_TOOLS)
-        )
+        if expect_tools is not None:
+            # The count docs/testing.md gives for this identity tier: a
+            # fail-open the tier should not see becomes a FAIL, not an INFO.
+            want, how = expect_tools, " (--expect-tools)"
+        else:
+            want = (
+                len(READ_TOOLS)
+                if profile == "readonly" and roles is not None
+                else len(ALL_TOOLS)
+            )
+            how = ""
         results.append(
             ok(
-                f"no flag: {want} tools for this identity",
+                f"no flag: {want} tools for this identity{how}",
                 len(tools) == want,
-                str(len(tools)),
+                str(len(tools))
+                + (", role lookup failed open" if roles is None else ""),
             )
         )
         try:
@@ -260,29 +270,45 @@ async def section_b(results, profile, audit):
         results.append(
             ok("create scratch incident", bool(sid), created["record"].get("number"))
         )
-        upd = (
-            await c.call_tool(
-                "update_record",
-                {"table_name": "incident", "sys_id": sid, "data": {"urgency": "2"}},
+        deleted = False
+        try:
+            upd = (
+                await c.call_tool(
+                    "update_record",
+                    {"table_name": "incident", "sys_id": sid, "data": {"urgency": "2"}},
+                )
+            ).structured_content
+            results.append(
+                ok(
+                    "default: update_record single call, no prompt",
+                    upd["record"].get("urgency") == "2",
+                )
             )
-        ).structured_content
-        results.append(
-            ok(
-                "default: update_record single call, no prompt",
-                upd["record"].get("urgency") == "2",
+            dele = (
+                await c.call_tool(
+                    "delete_record", {"table_name": "incident", "sys_id": sid}
+                )
+            ).structured_content
+            deleted = True
+            results.append(
+                ok(
+                    "default: delete_record returns dict",
+                    dele == {"deleted": True, "table": "incident", "sys_id": sid},
+                )
             )
-        )
-        dele = (
-            await c.call_tool(
-                "delete_record", {"table_name": "incident", "sys_id": sid}
-            )
-        ).structured_content
-        results.append(
-            ok(
-                "default: delete_record returns dict",
-                dele == {"deleted": True, "table": "incident", "sys_id": sid},
-            )
-        )
+        finally:
+            # A failed step must not leave the scratch incident behind.
+            if not deleted:
+                try:
+                    await c.call_tool(
+                        "delete_record", {"table_name": "incident", "sys_id": sid}
+                    )
+                    info("scratch incident deleted after a failed step", sid)
+                except ToolError as e:
+                    info(
+                        f"scratch incident {sid} NOT deleted: delete it by hand",
+                        str(e).splitlines()[0][:120],
+                    )
         return
 
 
@@ -498,7 +524,7 @@ async def section_e(results, profile):
         )
 
 
-async def main(profile):
+async def main(profile, expect_tools=None):
     if not os.environ.get("SERVICENOW_INSTANCE_URL"):
         sys.exit("SERVICENOW_INSTANCE_URL is not set (see the module docstring)")
     print(
@@ -509,7 +535,7 @@ async def main(profile):
     with tempfile.TemporaryDirectory() as tmp:
         audit = f"{tmp}/audit.jsonl"
         await section_a(results)
-        await section_b(results, profile, audit)
+        await section_b(results, profile, audit, expect_tools)
         check_audit(results, profile, audit)
         await section_d(results, f"{tmp}/skills-audit.jsonl")
         await section_e(results, profile)
@@ -520,5 +546,10 @@ async def main(profile):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--profile", choices=("readonly", "write"), default="readonly")
+    parser.add_argument(
+        "--expect-tools",
+        type=int,
+        help="tools this identity must list with no flag (docs/testing.md)",
+    )
     args = parser.parse_args()
-    sys.exit(0 if asyncio.run(main(args.profile)) else 1)
+    sys.exit(0 if asyncio.run(main(args.profile, args.expect_tools)) else 1)

@@ -551,4 +551,133 @@ async def test_display_value_all_rows_match_the_output_schema(
     assert data == {
         "count": 1,
         "records": [{key: rows[0][key] for key in ("number", "caller_id")}],
+        "display_note": table_tools.DISPLAY_NOTE,
     }
+    props = tools["list_records"].output_schema["properties"]
+    assert props["display_note"]["type"] == "string"
+    assert (
+        tools["list_ci"].output_schema["properties"]["display_note"]["type"] == "string"
+    )
+
+
+@pytest.mark.parametrize(
+    ("display_value", "rows", "noted"),
+    [
+        ("true", [{"number": "INC1"}], True),
+        ("all", [{"number": {"display_value": "INC1", "value": "INC1"}}], True),
+        ("false", [{"number": "INC1"}], False),
+        # Nothing to read: no note.
+        ("true", [], False),
+    ],
+)
+def test_display_note(
+    monkeypatch: pytest.MonkeyPatch, display_value: str, rows: list, noted: bool
+) -> None:
+    _setup(monkeypatch, rows)
+    result = table_tools.list_records(
+        table_name="incident", fields="number", display_value=display_value
+    )
+    assert ("display_note" in result) is noted
+    if noted:
+        assert "UTC" in result["display_note"]
+        assert "servicenow://instance" in result["display_note"]
+
+
+def test_missing_field_warning_names_subclasses(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    rows = [{"name": "SAP Controlling"}]
+    _setup(monkeypatch, rows)
+    result = table_tools.list_records(
+        table_name="cmdb_ci", fields="name,busines_criticality"
+    )
+    assert "a table that extends cmdb_ci, such as a CMDB subclass" in result["warning"]
+
+
+def _history(
+    monkeypatch: pytest.MonkeyPatch,
+    table_name: str,
+    rows: list,
+    roles: dict,
+    offset: int = 0,
+) -> tuple:
+    _setup(monkeypatch, rows)
+    has_role = Mock(side_effect=lambda api_url, timeout, role: roles.get(role))
+    monkeypatch.setattr(table_tools, "has_role", has_role)
+    result = table_tools.list_records(
+        table_name=table_name, query="element_id=abc", offset=offset
+    )
+    return result, has_role
+
+
+def test_history_warning_without_the_roles(monkeypatch: pytest.MonkeyPatch) -> None:
+    result, has_role = _history(
+        monkeypatch,
+        "sys_journal_field",
+        [],
+        {"admin": False, "audit_viewer": False},
+    )
+    warning = result["warning"]
+    assert warning.startswith("0 rows: this identity holds neither admin nor")
+    assert "not assessable here, not empty" in warning
+    assert 'fields="work_notes,comments" and display_value="true"' in warning
+    assert [call.args[2] for call in has_role.call_args_list] == [
+        "admin",
+        "audit_viewer",
+    ]
+    # The lookup is bounded: it never waits the tool's full timeout.
+    assert all(call.args[1] == 5 for call in has_role.call_args_list)
+
+
+def test_history_warning_when_the_lookup_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    result, _ = _history(
+        monkeypatch, "sys_journal_field", [], {"admin": None, "audit_viewer": False}
+    )
+    assert result["warning"].startswith(
+        "0 rows may mean this identity can't read sys_journal_field rows"
+    )
+
+
+@pytest.mark.parametrize("role", ["admin", "audit_viewer"])
+def test_history_no_warning_with_a_reading_role(
+    monkeypatch: pytest.MonkeyPatch, role: str
+) -> None:
+    result, has_role = _history(
+        monkeypatch, "sys_journal_field", [], {"admin": False, role: True}
+    )
+    assert "warning" not in result
+    # admin answers first: no second lookup.
+    assert has_role.call_count == (1 if role == "admin" else 2)
+
+
+@pytest.mark.parametrize(
+    "table_name", ["sys_audit", "sys_history_set", "sys_history_line"]
+)
+def test_history_warning_for_audit_tables(
+    monkeypatch: pytest.MonkeyPatch, table_name: str
+) -> None:
+    result, _ = _history(
+        monkeypatch, table_name, [], {"admin": False, "audit_viewer": False}
+    )
+    assert table_name in result["warning"]
+    assert "field changes asked for are not assessable" in result["warning"]
+    assert "work_notes" not in result["warning"]
+
+
+@pytest.mark.parametrize(
+    ("table_name", "rows", "offset"),
+    [
+        ("sys_journal_field", [{"element_id": "abc", "element": "work_notes"}], 0),
+        # Paging past the end is not a hidden journal.
+        ("sys_journal_field", [], 20),
+        ("incident", [], 0),
+    ],
+)
+def test_history_no_lookup(
+    monkeypatch: pytest.MonkeyPatch, table_name: str, rows: list, offset: int
+) -> None:
+    result, has_role = _history(monkeypatch, table_name, rows, {}, offset=offset)
+    assert "warning" not in result
+    has_role.assert_not_called()

@@ -161,3 +161,101 @@ async def test_cmdb_classes_says_when_it_stops_at_the_bound(monkeypatch) -> None
     payload = json.loads(content[0].text)
     assert payload["count"] == 6 and payload["truncated"] is True
     assert mock.call_count == 3
+
+
+def _instance(monkeypatch, props, user=None, props_error=None) -> dict:
+    """Read servicenow://instance with sys_properties and the caller mocked."""
+    import asyncio
+    import json
+    from unittest.mock import Mock
+
+    from servicenow_mcp import resources
+    from servicenow_mcp.utils.http import ServiceNowAPIError
+    from tests.conftest import sn_response
+
+    if props_error:
+        mock = Mock(side_effect=ServiceNowAPIError(props_error))
+    else:
+        mock = Mock(return_value=sn_response({"result": props}))
+    monkeypatch.setattr(resources, "make_sn_request", mock)
+    caller = {
+        "user_name": "svc.reader",
+        "user_display_name": "Reader",
+        "user_email": "",
+        "roles": ["itil"],
+        "time_zone": "",
+        **(user or {}),
+    }
+    monkeypatch.setattr(resources, "fetch_current_user", Mock(return_value=caller))
+
+    async def read() -> dict:
+        async with Client(mcp) as client:
+            content = await client.read_resource("servicenow://instance")
+        return json.loads(content[0].text)
+
+    payload = asyncio.run(read())
+    assert mock.call_args.kwargs["params"]["sysparm_query"] == (
+        "nameINglide.war,glide.sys.default.tz,glide.product.version,glide.sys.timezone"
+    )
+    return payload
+
+
+class TestInstanceResource:
+    def test_reads_the_build_and_zones(self, monkeypatch) -> None:
+        payload = _instance(
+            monkeypatch,
+            [
+                {
+                    "name": "glide.war",
+                    "value": "glide-brazil-08-25-2026__patch0-08-26-2026_09-22-2026_1636.zip",
+                },
+                {"name": "glide.sys.default.tz", "value": "America/New_York"},
+            ],
+            user={"time_zone": "Europe/Berlin"},
+        )
+        assert payload["version"] == (
+            "glide-brazil-08-25-2026__patch0-08-26-2026_09-22-2026_1636"
+        )
+        assert payload["release_family"] == "brazil"
+        assert payload["timezone"] == "America/New_York"
+        assert payload["user"]["time_zone"] == "Europe/Berlin"
+        assert "unavailable" not in payload
+
+    def test_falls_back_to_the_older_names(self, monkeypatch) -> None:
+        payload = _instance(
+            monkeypatch,
+            [
+                {"name": "glide.product.version", "value": "Tokyo Patch 4"},
+                {"name": "glide.sys.timezone", "value": "US/Pacific"},
+            ],
+            user={"time_zone": "US/Pacific"},
+        )
+        assert payload["version"] == "Tokyo Patch 4"
+        assert "release_family" not in payload
+        assert payload["timezone"] == "US/Pacific"
+
+    def test_hidden_properties_are_named_not_dropped(self, monkeypatch) -> None:
+        payload = _instance(monkeypatch, [])
+        assert "version" not in payload and "timezone" not in payload
+        unavailable = payload["unavailable"]
+        assert "needs admin" in unavailable["version"]
+        assert "needs admin" in unavailable["timezone"]
+        assert payload["user"]["time_zone"] is None
+        assert "instance default" in unavailable["user.time_zone"]
+
+    def test_an_empty_default_zone(self, monkeypatch) -> None:
+        payload = _instance(
+            monkeypatch,
+            [
+                {"name": "glide.war", "value": "glide-australia-x.zip"},
+                {"name": "glide.sys.default.tz", "value": ""},
+            ],
+        )
+        assert payload["release_family"] == "australia"
+        assert "built-in default" in payload["unavailable"]["timezone"]
+
+    def test_a_failed_read_says_why(self, monkeypatch) -> None:
+        payload = _instance(monkeypatch, [], props_error="Access denied (403). More")
+        assert payload["unavailable"]["version"] == (
+            "sys_properties could not be read: Access denied (403)"
+        )

@@ -87,8 +87,9 @@ Each helper must end the value: at `^`, at the `@` between the two ends of a ran
 ## Pitfalls: conditions that are ignored, not rejected
 
 - **An operator the instance doesn't recognise is dropped.** You get the unfiltered rows. Observed: `opened_atFOOBAR7` returned every incident.
+- **A condition on a field the table doesn't have is ignored.** Observed: `caused_byISEMPTY` and `caused_byISNOTEMPTY` returned the same rows on an instance whose incident table has no `caused_by`, and `problem_idISNOTEMPTY` returned every active incident there.
 - **A condition on a field the identity can't read is ignored or refused,** depending on the field's ACL:
-  - ignored: `caused_byISEMPTY` and `caused_byISNOTEMPTY` returned the same rows;
+  - ignored: the rows come back unfiltered, as for a missing field;
   - refused: a 403 "Field(s) present in the query do not have permission to be read".
 
   `list_records` and `list_ci` check the fields in `query=` for you: if one is hidden or misspelled, the warning names it. A dot-walk in `query=` is checked whole only when you pass `fields=`.

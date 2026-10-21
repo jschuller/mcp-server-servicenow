@@ -14,6 +14,7 @@ from servicenow_mcp.tools.results import CIList, RelationshipList
 from servicenow_mcp.tools.table_tools import (
     DisplayValue,
     ResponseFormat,
+    display_note,
     display_value_params,
     drop_added_fields,
     fields_with_query_fields,
@@ -73,6 +74,9 @@ def list_ci(
     payload: CIList = {"count": len(result), "class": class_name, "records": result}
     if warning:
         payload["warning"] = warning
+    note = display_note(display_value, result)
+    if note:
+        payload["display_note"] = note
     return payload
 
 

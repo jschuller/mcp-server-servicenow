@@ -2,7 +2,8 @@
 
 Five hand-written resources:
 - servicenow://schema/{table_name} — field names, types, references (template)
-- servicenow://instance — instance URL, version, logged-in user, timezone
+- servicenow://instance — instance URL, build, time zones, logged-in user;
+  ``unavailable`` says what this identity couldn't read
 - servicenow://update-set/current — the caller's current update set
 - servicenow://cmdb/classes — CMDB class hierarchy from sys_db_object
 - servicenow://help/query-syntax — encoded query operators; an alias for
@@ -15,6 +16,7 @@ SkillsDirectoryProvider as skill://<name>/SKILL.md, skill://<name>/_manifest
 
 import json
 import logging
+import re
 from functools import lru_cache
 from importlib.resources import files
 from pathlib import Path
@@ -23,7 +25,7 @@ from typing import Any, Dict
 from fastmcp.server.providers.skills import SkillsDirectoryProvider
 
 from servicenow_mcp.server import mcp, get_config, make_sn_request
-from servicenow_mcp.utils.http import build_url, parse_json_response
+from servicenow_mcp.utils.http import build_url, parse_json_response, result_rows
 from servicenow_mcp.utils.schema import _reference_value, fetch_table_schema
 from servicenow_mcp.utils.user import fetch_current_user
 from servicenow_mcp.tools.update_set_tools import CURRENT_UPDATE_SET_PREF_QUERY
@@ -61,48 +63,102 @@ def table_schema(table_name: str) -> str:
 # ---------------------------------------------------------------------------
 
 
+# The build is glide.war (e.g. glide-brazil-08-25-2026__patch0-…zip); the
+# default zone is glide.sys.default.tz. glide.product.version and
+# glide.sys.timezone are older names, kept as a fallback. Only admin can read
+# sys_properties: other identities get 0 rows, not a 403.
+INSTANCE_PROPERTIES = (
+    "glide.war",
+    "glide.sys.default.tz",
+    "glide.product.version",
+    "glide.sys.timezone",
+)
+_RELEASE_FAMILY_RE = re.compile(r"glide-([a-z]+)-")
+_NO_PROPERTIES = "sys_properties returned no such property: reading it needs admin"
+
+
+def _reason(exc: Exception) -> str:
+    """The first sentence of an error, short enough for a JSON value."""
+    return str(exc).split(". ")[0][:120]
+
+
 @mcp.resource(
     "servicenow://instance",
-    description="Instance URL, platform version, logged-in user, and timezone",
+    description="Instance URL, build and release family, default time zone, and the logged-in user with roles and time zone; unavailable names each value this identity can't read, and why",
     mime_type="application/json",
     tags={"read", "admin"},
 )
 def instance_info() -> str:
-    """Return instance metadata: URL, version, timezone, and current user."""
+    """Return instance metadata: URL, build, time zones, and current user.
+
+    A value that can't be read is never dropped silently: ``unavailable``
+    maps its key to the reason.
+    """
     config = get_config()
     result: Dict[str, Any] = {"instance_url": config.instance_url}
+    unavailable: Dict[str, str] = {}
 
-    # Fetch version + timezone in one call
+    props: Dict[str, str] = {}
+    props_error = ""
     props_url = build_url(config.api_url, "table", "sys_properties")
     props_params = {
-        "sysparm_query": "nameINglide.product.version,glide.sys.timezone",
+        "sysparm_query": "nameIN" + ",".join(INSTANCE_PROPERTIES),
         "sysparm_fields": "name,value",
         "sysparm_limit": 10,
     }
     try:
         resp = make_sn_request("GET", props_url, config.timeout, params=props_params)
-        props_data = parse_json_response(resp, props_url)
-        for prop in props_data.get("result", []):
-            name = prop.get("name", "")
-            if name == "glide.product.version":
-                result["version"] = prop.get("value")
-            elif name == "glide.sys.timezone":
-                result["timezone"] = prop.get("value")
-    except Exception:
+        for prop in result_rows(parse_json_response(resp, props_url)):
+            if isinstance(prop, dict) and isinstance(prop.get("name"), str):
+                props[prop["name"]] = str(prop.get("value") or "")
+    except Exception as exc:
         logger.debug("Failed to fetch system properties for instance resource")
+        props_error = f"sys_properties could not be read: {_reason(exc)}"
+
+    war = props.get("glide.war", "")
+    if war:
+        result["version"] = war.removesuffix(".zip")
+        family = _RELEASE_FAMILY_RE.match(war)
+        if family:
+            result["release_family"] = family.group(1)
+    elif props.get("glide.product.version"):
+        result["version"] = props["glide.product.version"]
+    else:
+        unavailable["version"] = props_error or _NO_PROPERTIES
+
+    timezone = props.get("glide.sys.default.tz") or props.get("glide.sys.timezone")
+    if timezone:
+        result["timezone"] = timezone
+    elif "glide.sys.default.tz" in props or "glide.sys.timezone" in props:
+        unavailable["timezone"] = (
+            "glide.sys.default.tz is empty: the instance's built-in default applies"
+        )
+    else:
+        unavailable["timezone"] = props_error or _NO_PROPERTIES
 
     try:
-        user = fetch_current_user(config.api_url, config.timeout)
-        if user:
-            result["user"] = {
-                "user_name": user["user_name"],
-                "name": user["user_display_name"],
-                "email": user["user_email"],
-                "roles": user["roles"],
-            }
-    except Exception:
+        user = fetch_current_user(config.api_url, config.timeout, "time_zone")
+        user_error = "the caller's sys_user row could not be read"
+    except Exception as exc:
         logger.debug("Failed to fetch current user for instance resource")
+        user, user_error = {}, f"sys_user could not be read: {_reason(exc)}"
+    if user:
+        result["user"] = {
+            "user_name": user["user_name"],
+            "name": user["user_display_name"],
+            "email": user["user_email"],
+            "roles": user["roles"],
+            "time_zone": user.get("time_zone") or None,
+        }
+        if not user.get("time_zone"):
+            unavailable["user.time_zone"] = (
+                "the user has no time zone set: display values use the instance default"
+            )
+    else:
+        unavailable["user"] = user_error
 
+    if unavailable:
+        result["unavailable"] = unavailable
     return json.dumps(result)
 
 

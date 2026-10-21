@@ -108,12 +108,13 @@ def test_list_ci_no_warning(cfg: Mock) -> None:
     [("false", {}), ("all", {"sysparm_display_value": "all"})],
 )
 def test_ci_display_value(cfg: Mock, display_value: str, extra: dict) -> None:
-    cmdb_tools.list_ci(display_value=display_value)
+    result = cmdb_tools.list_ci(display_value=display_value)
     assert cfg.call_args.kwargs["params"] == {
         "sysparm_limit": 20,
         "sysparm_offset": 0,
         **extra,
     }
+    assert ("display_note" in result) is bool(extra)
     cfg.return_value = sn_response({"result": {"sys_id": "r1"}})
     cmdb_tools.get_ci(sys_id="r1", display_value=display_value)
     assert cfg.call_args.kwargs["params"] == (extra or None)

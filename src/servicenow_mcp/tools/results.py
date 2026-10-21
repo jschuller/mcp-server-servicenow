@@ -2,7 +2,8 @@
 
 FastMCP publishes each as the tool's ``outputSchema``, so a client can rely on
 the keys. Keep them minimal: records are whatever the instance returns, so
-only the envelope is typed. ``truncated``, ``next_offset`` and ``note`` are set by
+only the envelope is typed. ``display_note`` says which time zone display
+values use. ``truncated``, ``next_offset`` and ``note`` are set by
 the response limiter when it cuts a list to fit the size limit
 (``middleware/response_limit.py``); ``LIST_KEYS`` tells it which key to cut.
 
@@ -21,6 +22,7 @@ class RecordList(TypedDict):
     count: int
     records: List[Row]
     warning: NotRequired[str]
+    display_note: NotRequired[str]
     truncated: NotRequired[bool]
     note: NotRequired[str]
     next_offset: NotRequired[int]
@@ -34,6 +36,7 @@ CIList = TypedDict(
         "class": str,
         "records": List[Row],
         "warning": NotRequired[str],
+        "display_note": NotRequired[str],
         "truncated": NotRequired[bool],
         "note": NotRequired[str],
         "next_offset": NotRequired[int],

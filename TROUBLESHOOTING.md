@@ -18,7 +18,7 @@ Error messages from this MCP server include diagnostic context from ServiceNow's
 
 - **403 with `WebServicePolicyValidator`** → The table needs `ws_access=true` in its dictionary entry
 - **403 with ACL reference** → The user lacks the required role or ACL for that operation
-- **404 with table name** → The table doesn't exist
+- **404** → The table or record doesn't exist, or an ACL hides the record from this identity: a record the user may not read answers 404, not 403
 - **`Invalid table name '…'`** → The name contains characters other than letters, digits and `_` (typos with spaces or slashes are rejected before any request is made)
 - **401 with `X-Is-Logged-In: false`** → Credentials are invalid (not just expired)
 
@@ -58,6 +58,12 @@ The server is running with `--read-only` / `SERVICENOW_READ_ONLY=true`: the 7 wr
 
 ## `Query rejected: unsafe javascript: expression`
 Caller-supplied `query` / `having` values may only use GlideSystem date helpers (`javascript:gs.daysAgo(7)`, `gs.daysAgoStart(1)`, `gs.beginningOfToday()`, `gs.beginningOfLastWeek()`, `gs.monthsAgoStart(1)`, `gs.nowDateTime()` …), and `gs.dateGenerate()` with a literal date, as in the list UI's `ON`/`BETWEEN` ranges. Anything else — `gs.getUserName()`, `gs.getUserID()`, `GlideRecord`, `;`, `new` — is refused, including when it follows a safe helper in the same query. Use the `RELATIVE*` operators or `ON`/`BETWEEN` ranges (see `servicenow://help/query-syntax`), or start the server with `--allow-js-queries` / `SERVICENOW_ALLOW_JS_QUERIES=true`. The server's own internal queries (for example the `gs.getUserName()` lookup behind `get_current_user`) are not affected.
+
+## Warning: `…which no row carries: the instance ignored this condition`
+The Table API drops a condition on a field that the table doesn't have, and often one on a field an ACL hides, instead of refusing the query. The "filtered" rows are then unfiltered. `list_records` and `list_ci` check the fields named in `query=` against the rows that come back and name the ones no row carries. Example: on a Brazil instance whose incident table has no `problem_id` field, `active=true^problem_idISNOTEMPTY` returned all 40 active incidents, and the warning named `problem_id`. To fix the query, find the real column name with `get_table_schema` (needs `personalize_dictionary`), or read one row without `fields=` to see the readable columns. A field defined on a table that extends the one you query (a CMDB subclass such as `cmdb_ci_service`, or a task type) comes back only when you query that table. If the field exists, an ACL hides it from this identity, and the filter can't be applied with it.
+
+## Warning: `0 rows … not assessable here, not empty` (journal and audit)
+Work notes, comments and field history live in `sys_journal_field`, `sys_audit` and `sys_history_set`, which need `admin` or `audit_viewer`. Without them the journal answers with 0 rows rather than a 403, so "no history" and "not allowed to see it" look the same; `list_records` adds this warning. The record's own journal fields still show the entries: `list_records` on the record's table with `query="sys_id=<sys_id>"`, `fields="work_notes,comments"` and `display_value="true"`. Field changes need `audit_viewer`.
 
 ## 403 on `sys_store_app` / `sys_plugins` even as admin
 These tables fail API-level ACL validation over REST regardless of role. Use `v_plugin` (installed plugins), `sys_scope` (applications) or `sys_db_object` (tables) instead.

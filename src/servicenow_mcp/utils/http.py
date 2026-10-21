@@ -241,7 +241,8 @@ def api_request(
     if response.status_code == 404:
         ctx = _error_context(response)
         raise ServiceNowAPIError(
-            f"Not found (404). The table or record may not exist. "
+            f"Not found (404). The table or record doesn't exist, or an ACL "
+            f"hides the record from this identity. "
             f"URL: {url}" + (f" | {ctx}" if ctx else "")
         )
 

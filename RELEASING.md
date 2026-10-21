@@ -84,17 +84,22 @@ the release (see Failure modes).
    with-secrets SERVICENOW_API_KEY=svc/homelab/servicenow-<pdi>-apikey -- env \
      SERVICENOW_INSTANCE_URL=https://<pdi>.service-now.com \
      SERVICENOW_AUTH_TYPE=api_key \
-     sh -c 'uv run pytest tests/integration/ -v -rs && uv run python scripts/stdio_smoke.py --profile readonly && uv run mcp-server-servicenow --check'
+     sh -c 'uv run pytest tests/integration/ -v -rs && uv run python scripts/stdio_smoke.py --profile readonly --expect-tools 13 && uv run mcp-server-servicenow --check'
    ```
 
    The `itil` + `snc_read_only` key must list 13 tools with no flag, and
    `--check` must exit 0 (record, schema and aggregate show as limits under
-   an API key). Repeat the smoke and `--check` with an OAuth
-   client-credentials identity (`SERVICENOW_AUTH_TYPE=oauth`,
-   `SERVICENOW_CLIENT_ID`, the secret from the store, `SERVICENOW_USERNAME=`
-   and `SERVICENOW_PASSWORD=` blank so a local `.env` can't turn it into the
-   password grant), and `--check` with the instance URL as `devNNNNNN`, with
-   a trailing slash and as a pasted UI URL: all must reach the instance.
+   an API key). Then run the smoke for the other three identity tiers in
+   [docs/testing.md](docs/testing.md), each with its `--expect-tools` count:
+   `--profile readonly` for the `snc_read_only` client-credentials tier (20)
+   and the `admin` + `snc_read_only` tier (13), and `--profile write
+   --expect-tools 20` for the `admin` writer, which must leave no scratch
+   incident behind. For the OAuth tiers set `SERVICENOW_AUTH_TYPE=oauth`,
+   `SERVICENOW_CLIENT_ID`, the secret from the store, and
+   `SERVICENOW_USERNAME=` and `SERVICENOW_PASSWORD=` blank so a local `.env`
+   can't turn it into the password grant. Run `--check` with one OAuth tier,
+   and with the instance URL as `devNNNNNN`, with a trailing slash and as a
+   pasted UI URL: all must reach the instance.
    Tools the identity is refused are skipped with the missing grant named.
    The integration suite needs an awake PDI.
    If it fails with `Got HTML instead of JSON`, the instance is

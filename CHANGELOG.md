@@ -85,6 +85,20 @@ the repository.
 - Eval cases: record-history, stats-refused-fallback, where-used.
 - [docs/privacy.md](docs/privacy.md): the server talks only to your instance and sends no
   telemetry; what the audit log keeps.
+- **A warning when history is hidden, not empty.** Without `admin` or `audit_viewer`, the
+  instance answers `sys_journal_field` with 0 rows rather than a 403, so a model reported
+  "no work notes" for an incident that had one. 0 rows from `sys_journal_field`,
+  `sys_audit`, `sys_history_set` or `sys_history_line` now add a `warning` unless the
+  caller holds one of those roles (checked with two role lookups, only on such a read): the
+  entries are not assessable, not empty, and the record's own `work_notes` and `comments`
+  with `display_value="true"` still show every entry with its time and author. The
+  exploring-tables skill's record-history workflow uses that fallback.
+- **`display_note`** on `list_records` and `list_ci` results with `display_value="true"`
+  or `"all"`: display dates are in this identity's time zone and format, while stored
+  values and `query=` use UTC.
+- [docs/testing.md](docs/testing.md): the four identity tiers to test with, the tools each
+  should list, the refusals each should get, and what "0 rows" can mean.
+  `scripts/stdio_smoke.py --expect-tools N` turns a tier's tool count into a check.
 
 ### Changed
 - `get_table_schema` adds a `note` when the parent tables can't be read (`sys_db_object`
@@ -128,6 +142,21 @@ the repository.
   queries are logged with secret-like values masked, so they can hold filter values.
 - SECURITY.md supports 0.9.x.
 - The configuration examples no longer show literal passwords.
+- **`servicenow://instance` never returned a version or time zone.** It read
+  `glide.product.version` and `glide.sys.timezone`, which current releases don't have in
+  `sys_properties` (not even for admin), and dropped them silently. It now reads
+  `glide.war` (the build, plus `release_family`, such as `brazil`) and
+  `glide.sys.default.tz`, falling back to the older names, adds the caller's own time zone,
+  and lists in `unavailable` each value it can't read, and why (`sys_properties` needs
+  `admin`).
+- The 404 error says that an ACL-hidden record answers 404 too, not only a missing one.
+- The missing-fields warning says that a field defined on a table that extends the one
+  queried (a CMDB subclass, a task type) comes back only from that table.
+- The write smoke deletes its scratch incident even when a step fails.
+- The skills' "ignored condition" example (`caused_by`) was a field the instance's incident
+  table doesn't have, not a hidden one; TROUBLESHOOTING explains the ignored-condition and
+  hidden-history warnings. The CMDB skill's `group_by` and `having` forms are now verified
+  live.
 
 ## [0.9.1] - 2026-10-13
 

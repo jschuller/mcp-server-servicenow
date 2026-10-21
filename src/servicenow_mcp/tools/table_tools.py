@@ -13,6 +13,7 @@ from servicenow_mcp.server import get_config, make_sn_request, mcp
 from servicenow_mcp.tools import annotations
 from servicenow_mcp.tools.results import RecordList
 from servicenow_mcp.utils.http import build_url, parse_json_response, result_rows
+from servicenow_mcp.utils.user import has_role
 
 logger = logging.getLogger(__name__)
 
@@ -68,6 +69,23 @@ def display_value_params(display_value: str) -> Dict[str, Any]:
     if display_value in ("true", "all"):
         return {"sysparm_display_value": display_value}
     return {}
+
+
+# Display values carry no time-zone marker, so a list that returns them says
+# which zone they are in. The zone's name is often unknowable: the caller's
+# sys_user.time_zone is usually empty and glide.sys.default.tz needs admin.
+DISPLAY_NOTE = (
+    "Display values use this identity's time zone and date format (the "
+    "instance default when the user has none; see servicenow://instance). "
+    'Stored date-time values and query= use UTC; display_value="all" shows both.'
+)
+
+
+def display_note(display_value: str, records: List[Any]) -> Optional[str]:
+    """The ``display_note`` of a list tool, or None."""
+    if display_value in ("true", "all") and records:
+        return DISPLAY_NOTE
+    return None
 
 
 # A term that starts with one of these names no field of the table: ordering,
@@ -220,12 +238,15 @@ def _missing_fields_warning(table_name: str, missing: List[str]) -> str:
     The Table API drops a field from every row both when the table has no such
     field and when an ACL hides it from the caller, and it silently ignores
     query conditions on hidden fields. The two cases look the same here, so the
-    warning names both.
+    warning names both. A field of a table that extends this one (a CMDB
+    subclass, a task type) is in neither case but looks the same.
     """
     return (
         f"Fields missing from every row: {_shown(missing)}. They don't exist on "
-        f"{table_name} or an ACL hides them from this identity; query conditions "
-        "on them may have been ignored."
+        f"{table_name} (a field defined on a table that extends {table_name}, "
+        "such as a CMDB subclass, comes back only when you query that table) or "
+        "an ACL hides them from this identity; query conditions on them may have "
+        "been ignored."
     )
 
 
@@ -312,6 +333,65 @@ def list_warning(
     return " ".join(parts) or None
 
 
+# Journal and audit tables hide their rows from an identity that may not read
+# them: a read returns 0 rows, not a 403, so "no history" and "not allowed to
+# see it" look the same. Reading them needs admin or audit_viewer.
+_HISTORY_TABLES = {
+    "sys_journal_field": "journal",
+    "sys_audit": "audit",
+    "sys_history_set": "audit",
+    "sys_history_line": "audit",
+}
+_HISTORY_ROLES = ("admin", "audit_viewer")
+_ROLE_LOOKUP_TIMEOUT = 5
+
+
+def _reads_history(api_url: str, timeout: int) -> Optional[bool]:
+    """Whether the caller holds admin or audit_viewer, or None if unknown."""
+    answers = []
+    for role in _HISTORY_ROLES:
+        answer = has_role(api_url, min(timeout, _ROLE_LOOKUP_TIMEOUT), role)
+        if answer:
+            return True
+        answers.append(answer)
+    return None if None in answers else False
+
+
+def history_warning(
+    table_name: str, records: List[Any], offset: int, api_url: str, timeout: int
+) -> Optional[str]:
+    """The warning for 0 rows from a journal or audit table, or None.
+
+    Fires only on the first page, and only when the caller is not known to
+    hold a role that can read the table: then 0 rows means empty.
+    """
+    kind = _HISTORY_TABLES.get(table_name)
+    if kind is None or records or offset:
+        return None
+    reads = _reads_history(api_url, timeout)
+    if reads:
+        return None
+    if reads is False:
+        opening = (
+            "0 rows: this identity holds neither admin nor audit_viewer, and the "
+            f"instance hides {table_name} rows from such identities instead of "
+            "refusing, so "
+        )
+    else:
+        opening = (
+            f"0 rows may mean this identity can't read {table_name} rows (that "
+            "needs admin or audit_viewer): then "
+        )
+    if kind == "journal":
+        return opening + (
+            "the journal entries asked for are not assessable here, not empty. "
+            "A record's own journal fields still show every entry with its time "
+            "and author: list_records on the record's table with query=\"sys_id="
+            '<sys_id>", fields="work_notes,comments" and display_value="true".'
+        )
+    return opening + "the field changes asked for are not assessable here, not empty."
+
+
 @mcp.tool(tags={"read", "table"}, annotations=annotations.READ)
 def list_records(
     table_name: Annotated[
@@ -362,11 +442,18 @@ def list_records(
     response = make_sn_request("GET", url, config.timeout, params=query_params)
     data = parse_json_response(response, url)
     result = result_rows(data)
-    warning = list_warning(table_name, fields, query_names, unknown, result)
+    warnings = [
+        list_warning(table_name, fields, query_names, unknown, result),
+        history_warning(table_name, result, offset, config.api_url, config.timeout),
+    ]
     drop_added_fields(result, added)
     payload: RecordList = {"count": len(result), "records": result}
+    warning = " ".join(text for text in warnings if text)
     if warning:
         payload["warning"] = warning
+    note = display_note(display_value, result)
+    if note:
+        payload["display_note"] = note
     return payload
 
 

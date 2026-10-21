@@ -220,8 +220,10 @@ class TestApiRequest:
         self, mock_request: MagicMock, basic_auth_manager: AuthManager
     ) -> None:
         mock_request.return_value = _mock_response(404)
-        with pytest.raises(ServiceNowAPIError, match="Not found.*404"):
+        with pytest.raises(ServiceNowAPIError, match="Not found.*404") as raised:
             api_request("GET", URL, basic_auth_manager)
+        # An ACL-hidden record answers 404 too, so the text names both.
+        assert "or an ACL hides the record from this identity" in str(raised.value)
 
     @patch("servicenow_mcp.utils.http.requests.request")
     def test_404_includes_response_body(

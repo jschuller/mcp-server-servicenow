@@ -9,7 +9,7 @@ The list tools (`list_records`, `list_ci`, `get_ci_relationships`, `get_system_p
 ### Table API (6)
 | Tool | Description |
 |------|-------------|
-| `list_records` | List records from any table with filtering, field selection and pagination. Adds a `warning` when a requested field is missing from every row (it doesn't exist or an ACL hides it), and when `query=` filters on such a field or on a term that starts with an uppercase letter (a label like `Name`; columns are lowercase): the instance ignores those conditions, so the rows may be unfiltered (a dot-walk can also be missing because only the referenced records are unreadable). The fields in `query=` are checked without adding them to the returned rows; a dot-walk in `query=` is checked whole only when `fields=` is given, and at most 50 query fields are checked. Such terms are counted, never quoted, and a term the server can't parse, or a misspelled operator (`name Like x`), is not detected; field names are echoed in field-name characters only. `response_format="concise"` returns reference fields as bare sys_ids, without their instance links. `display_value="true"` returns labels in place of sys_ids and choice values, `"all"` returns `{display_value, value}` per field |
+| `list_records` | List records from any table with filtering, field selection and pagination. Adds a `warning` when a requested field is missing from every row (it doesn't exist or an ACL hides it), and when `query=` filters on such a field or on a term that starts with an uppercase letter (a label like `Name`; columns are lowercase): the instance ignores those conditions, so the rows may be unfiltered (a dot-walk can also be missing because only the referenced records are unreadable). The fields in `query=` are checked without adding them to the returned rows; a dot-walk in `query=` is checked whole only when `fields=` is given, and at most 50 query fields are checked. Such terms are counted, never quoted, and a term the server can't parse, or a misspelled operator (`name Like x`), is not detected; field names are echoed in field-name characters only. `response_format="concise"` returns reference fields as bare sys_ids, without their instance links. `display_value="true"` returns labels in place of sys_ids and choice values, `"all"` returns `{display_value, value}` per field, and a `display_note` says that display dates are in this identity's time zone while stored values and `query=` use UTC. 0 rows from `sys_journal_field`, `sys_audit` or `sys_history_set` add a `warning` when the identity holds neither `admin` nor `audit_viewer` (or that can't be checked): the instance hides those rows instead of refusing |
 | `get_record` | Get a single record by sys_id. Takes `display_value` like `list_records` |
 | `create_record` | Create a record in any table |
 | `update_record` | Update a record |
@@ -19,7 +19,7 @@ The list tools (`list_records`, `list_ci`, `get_ci_relationships`, `get_system_p
 ### CMDB (5)
 | Tool | Description |
 |------|-------------|
-| `list_ci` | List configuration items with class and query filtering. Takes `response_format` and `display_value`, and adds the same `warning`, like `list_records` |
+| `list_ci` | List configuration items with class and query filtering. Takes `response_format` and `display_value`, and adds the same `warning` and `display_note`, like `list_records` |
 | `get_ci` | Get a single CI by sys_id. Takes `display_value` like `list_records` |
 | `create_ci` | Create a configuration item |
 | `update_ci` | Update a configuration item |
@@ -66,7 +66,7 @@ ServiceNow's ACLs decide what the user can do; the server adds nothing on top. B
 | `get_table_schema`, `servicenow://schema/{table}` | `personalize_dictionary` | 403 naming the role |
 | `find_references` | `admin`, or read access to `sys_script`, `sys_script_client`, `sys_ui_policy`, `sys_ui_policy_action`, `sys_security_acl` (`security_admin`), `sys_script_include` and `sys_dictionary` | that source in `not_assessable`; the others still answer |
 | `get_system_properties` | `admin` | **an empty list, no error** |
-| `get_current_user`, `servicenow://instance`, `servicenow://update-set/current` | any user | `instance` omits the platform version without `admin` |
+| `get_current_user`, `servicenow://instance`, `servicenow://update-set/current` | any user | without `admin`, `instance` has no build or default time zone: `unavailable` names each and why |
 | update-set tools | `admin` | 403 |
 
 The reads, the empty `get_system_properties` and the 403s were checked live on a Brazil PDI on 2026-10-11 as `itil` + `snc_read_only`, and the record writes, schema and update-set tools as `admin`; the `itil` write, `itil_admin` delete and CI write rows follow ServiceNow's base-system role documentation. An instance with custom ACLs can differ — the error text names the API and method. API-key users also need a REST API access policy for each API they call (Table, Aggregate): see [TROUBLESHOOTING](../TROUBLESHOOTING.md#401-unauthorized).
@@ -78,7 +78,7 @@ Read-only context a client can fetch without a tool call.
 | Resource URI | Description |
 |-------------|-------------|
 | `servicenow://schema/{table_name}` | Field definitions (name, type, label, mandatory, reference, defined_in) for any table, parents included |
-| `servicenow://instance` | Instance URL, platform version, logged-in user, timezone |
+| `servicenow://instance` | Instance URL, build (`glide.war`) and release family, default time zone, and the logged-in user with roles and time zone; `unavailable` names each value this identity can't read, and why |
 | `servicenow://update-set/current` | Current update set name, sys_id, state |
 | `servicenow://cmdb/classes` | CMDB CI class hierarchy (names, labels, parent classes) |
 | `servicenow://help/query-syntax` | Encoded query operators, including date ranges (the same file as `skill://exploring-tables/references/query-syntax.md`) |
