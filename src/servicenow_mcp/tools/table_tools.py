@@ -4,7 +4,8 @@ Provides CRUD operations on any ServiceNow table via /api/now/table/{table_name}
 """
 
 import logging
-from typing import Annotated, Any, Dict, List, Literal, Optional
+import re
+from typing import Annotated, Any, Dict, List, Literal, Optional, Tuple
 
 from pydantic import Field
 
@@ -34,6 +35,137 @@ def response_format_params(response_format: str) -> Dict[str, Any]:
     return {}
 
 
+DisplayValue = Annotated[
+    Literal["false", "true", "all"],
+    Field(
+        description=(
+            "'false' (default) returns stored values; 'true' returns labels in place "
+            "of sys_ids and choice values; 'all' returns {display_value, value} per "
+            "field, which keeps the sys_id beside the name. query= still filters on "
+            "stored values, not labels. With 'true' or 'all', dates come back in this "
+            "identity's time zone and format"
+        )
+    ),
+]
+
+GroupDisplayValue = Annotated[
+    Literal["false", "true", "all"],
+    Field(
+        description=(
+            "'false' (default) returns stored group_by values; 'true' returns labels "
+            "in place of sys_ids and choice values; 'all' returns both. query= still "
+            "filters on stored values, not labels"
+        )
+    ),
+]
+
+
+def display_value_params(display_value: str) -> Dict[str, Any]:
+    """Table and Stats API parameters for a read tool's ``display_value``.
+
+    "false" is the API default, so it sends nothing.
+    """
+    if display_value in ("true", "all"):
+        return {"sysparm_display_value": display_value}
+    return {}
+
+
+# A term that starts with one of these names no field of the table: ordering,
+# grouping, text search, and the brackets around related-list and sub-queries.
+_QUERY_KEYWORDS = (
+    "ORDERBY",  # also ORDERBYDESC
+    "GROUPBY",
+    "GOTO",
+    "123TEXTQUERY321",
+    "IR_",
+    "RLQUERY",
+    "ENDRLQUERY",
+    "SUBQUERY",
+    "ENDSUBQUERY",
+)
+# Column names are lowercase; a dot-walk joins them with ".". Operators are
+# uppercase words or symbols, so the field is the leading lowercase run.
+_QUERY_FIELD_RE = re.compile(r"[a-z0-9_]+(?:\.[a-z0-9_]+)*")
+# A label ends where an operator starts: a symbol or an uppercase word.
+_QUERY_LABEL_RE = re.compile(r"[A-Z][A-Za-z0-9_ .]*?(?=[A-Z]{2,}|[=!<>@]|$)")
+# ^OR and ^NQ join a term, unless the term is a label such as ORIGIN: what
+# follows the joiner is a field, a label like Name, or a keyword.
+_QUERY_JOINER_RE = re.compile(
+    r"(?:OR|NQ)(?:[a-z0-9_]|[A-Z][a-z]|" + "|".join(_QUERY_KEYWORDS) + r"|EQ\Z)"
+)
+
+
+def query_field_names(query: Optional[str]) -> Tuple[List[str], List[str]]:
+    """Return (field names, labels) that an encoded query filters on.
+
+    Field names keep their dot-walk. Labels are terms that start with an
+    uppercase letter and are no keyword, such as ``NameLIKEa``: no column is
+    named that way, so the instance ignores the condition. Terms inside
+    RLQUERY and SUBQUERY blocks filter another table and are skipped.
+    """
+    names: List[str] = []
+    labels: List[str] = []
+    if not query:
+        return names, labels
+    depth = 0
+    # "^^" is an escaped caret inside a value, not a separator.
+    for index, raw in enumerate(query.replace("^^", "\0").split("^")):
+        term = raw.strip()
+        if index and _QUERY_JOINER_RE.match(term) and not term.startswith("ORDERBY"):
+            term = term[2:]
+        if not term or term == "EQ":
+            continue
+        if term.startswith(("RLQUERY", "SUBQUERY")):
+            depth += 1
+            continue
+        if term.startswith(("ENDRLQUERY", "ENDSUBQUERY")):
+            depth = max(depth - 1, 0)
+            continue
+        if depth or term.startswith(_QUERY_KEYWORDS):
+            continue
+        field = _QUERY_FIELD_RE.match(term)
+        if field:
+            name = field.group().rstrip(".")
+            # variables.<sys_id> filters on a catalog variable, not a column.
+            if "variables" not in name.split("."):
+                names.append(name)
+        elif term[0].isupper():
+            label = _QUERY_LABEL_RE.match(term)
+            text = label.group().strip() if label else ""
+            labels.append(text if len(text) > 1 else term[:40])
+    return list(dict.fromkeys(names)), list(dict.fromkeys(labels))
+
+
+def _field_list(fields: str) -> List[str]:
+    return [name.strip() for name in fields.split(",") if name.strip()]
+
+
+def fields_with_query_fields(
+    fields: Optional[str], query_names: List[str]
+) -> Tuple[Optional[str], List[str]]:
+    """Add the query's field names to ``fields=`` so that the check sees them.
+
+    Returns the ``sysparm_fields`` value and the names it added, which the
+    caller removes from the rows again. Without ``fields=`` every readable
+    field comes back, so nothing is added.
+    """
+    if not fields:
+        return fields, []
+    requested = set(_field_list(fields))
+    added = [name for name in query_names if name not in requested]
+    if not added:
+        return fields, []
+    return ",".join([fields.strip(), *added]), added
+
+
+def drop_added_fields(records: List[Any], added: List[str]) -> None:
+    """Remove the fields that ``fields_with_query_fields`` added from each row."""
+    for row in records:
+        if isinstance(row, dict):
+            for name in added:
+                row.pop(name, None)
+
+
 def _add_order_clause(query: str, order_by: str) -> str:
     """Append a ServiceNow encoded-query order clause."""
     if order_by.startswith("-"):
@@ -44,35 +176,94 @@ def _add_order_clause(query: str, order_by: str) -> str:
     return f"{query}^{order_clause}".lstrip("^")
 
 
-def _missing_fields_warning(
-    table_name: str, fields: str, records: List[Any]
-) -> Optional[str]:
-    """Name the requested fields that no returned row carries, or None.
+def _missing_names(names: List[str], rows: List[Dict[str, Any]]) -> List[str]:
+    return [
+        name for name in dict.fromkeys(names) if not any(name in row for row in rows)
+    ]
+
+
+def _shown(names: List[str]) -> str:
+    return ", ".join(names[:20]) + (
+        f" and {len(names) - 20} more" if len(names) > 20 else ""
+    )
+
+
+def _missing_fields_warning(table_name: str, missing: List[str]) -> str:
+    """The sentence that names fields no returned row carries.
 
     The Table API drops a field from every row both when the table has no such
     field and when an ACL hides it from the caller, and it silently ignores
     query conditions on hidden fields. The two cases look the same here, so the
     warning names both.
     """
-    rows = [row for row in records if isinstance(row, dict)]
-    if not rows:
-        return None
-    requested = [name.strip() for name in fields.split(",") if name.strip()]
-    missing = [
-        name
-        for name in dict.fromkeys(requested)
-        if not any(name in row for row in rows)
-    ]
-    if not missing:
-        return None
-    shown = ", ".join(missing[:20]) + (
-        f" and {len(missing) - 20} more" if len(missing) > 20 else ""
-    )
     return (
-        f"Fields missing from every row: {shown}. They don't exist on "
+        f"Fields missing from every row: {_shown(missing)}. They don't exist on "
         f"{table_name} or an ACL hides them from this identity; query conditions "
         "on them may have been ignored."
     )
+
+
+def list_warning(
+    table_name: str,
+    fields: Optional[str],
+    query_names: List[str],
+    labels: List[str],
+    records: List[Any],
+) -> Optional[str]:
+    """The ``warning`` of list_records and list_ci, or None.
+
+    Checks the fields in ``fields=`` and the query's field names (which
+    ``fields_with_query_fields`` added to the request). Without ``fields=``
+    the whole readable row comes back, so each query field's first dot-walk
+    segment is checked against the row keys. Labels are reported even when
+    no row comes back.
+    """
+    rows = [row for row in records if isinstance(row, dict)]
+    missing_query: List[str] = []
+    warning: Optional[str] = None
+    if rows:
+        if fields:
+            checked = _field_list(fields) + query_names
+            missing = _missing_names(checked, rows)
+            missing_query = [name for name in query_names if name in missing]
+        else:
+            missing = _missing_names([name.split(".")[0] for name in query_names], rows)
+            missing_query = [
+                name for name in query_names if name.split(".")[0] in missing
+            ]
+        if missing:
+            warning = _missing_fields_warning(table_name, missing)
+    ignored = [name for name in missing_query if "." not in name]
+    walked = [name for name in missing_query if "." in name]
+    if not missing_query and not labels:
+        return warning
+    parts = [warning] if warning else []
+    if ignored:
+        parts.append(
+            f"query= filters on {_shown(ignored)}: the instance ignored these "
+            "conditions, so the rows may be unfiltered."
+        )
+    if walked:
+        # A dot-walk also comes back missing when the referenced records are
+        # unreadable, and then the condition still applies.
+        parts.append(
+            f"query= filters on {_shown(walked)}: either the field doesn't exist "
+            "or is hidden and the condition was ignored, or only the referenced "
+            "records are unreadable and the condition applied. Request the "
+            "reference field itself to tell."
+        )
+    if labels:
+        effect = (
+            "ignores these conditions, so the rows may be unfiltered"
+            if rows
+            else "ignored or rejected these conditions"
+        )
+        parts.append(
+            f"query= names {_shown(labels)}, which are not column names (columns "
+            f"are lowercase, like short_description): the instance {effect}."
+        )
+    parts.append(f"Call get_table_schema on {table_name} to find the real column name.")
+    return " ".join(parts)
 
 
 @mcp.tool(tags={"read", "table"}, annotations=annotations.READ)
@@ -99,6 +290,7 @@ def list_records(
         Field(description="Field to order results by (prefix with '-' for descending)"),
     ] = None,
     response_format: ResponseFormat = "detailed",
+    display_value: DisplayValue = "false",
 ) -> RecordList:
     """List records from any ServiceNow table with optional filtering, field selection, and pagination"""
     config = get_config()
@@ -108,24 +300,27 @@ def list_records(
         "sysparm_limit": limit,
         "sysparm_offset": offset,
     }
+    query_names, labels = query_field_names(query)
+    sysparm_fields, added = fields_with_query_fields(fields, query_names)
     if query:
         query_params["sysparm_query"] = query
-    if fields:
-        query_params["sysparm_fields"] = fields
+    if sysparm_fields:
+        query_params["sysparm_fields"] = sysparm_fields
     if order_by:
         query_params["sysparm_query"] = _add_order_clause(
             query_params.get("sysparm_query", ""), order_by
         )
     query_params.update(response_format_params(response_format))
+    query_params.update(display_value_params(display_value))
 
     response = make_sn_request("GET", url, config.timeout, params=query_params)
     data = parse_json_response(response, url)
     result = result_rows(data)
+    warning = list_warning(table_name, fields, query_names, labels, result)
+    drop_added_fields(result, added)
     payload: RecordList = {"count": len(result), "records": result}
-    if fields:
-        warning = _missing_fields_warning(table_name, fields, result)
-        if warning:
-            payload["warning"] = warning
+    if warning:
+        payload["warning"] = warning
     return payload
 
 
@@ -136,6 +331,7 @@ def get_record(
     fields: Annotated[
         Optional[str], Field(description="Comma-separated list of fields to return")
     ] = None,
+    display_value: DisplayValue = "false",
 ) -> Dict[str, Any]:
     """Get a single record from a ServiceNow table by sys_id.
 
@@ -148,6 +344,7 @@ def get_record(
     query_params: Dict[str, str] = {}
     if fields:
         query_params["sysparm_fields"] = fields
+    query_params.update(display_value_params(display_value))
 
     response = make_sn_request("GET", url, config.timeout, params=query_params)
     data = parse_json_response(response, url)
@@ -239,8 +436,15 @@ def aggregate_records(
         Field(description="Encoded query string to filter records before aggregation"),
     ] = None,
     having: Annotated[
-        Optional[str], Field(description="Post-aggregation filter (e.g., 'COUNT>5')")
+        Optional[str],
+        Field(
+            description=(
+                "Post-aggregation filter, aggregate^field^operator^value "
+                "(e.g., 'count^name^>^1')"
+            )
+        ),
     ] = None,
+    display_value: GroupDisplayValue = "false",
 ) -> Dict[str, Any]:
     """Aggregate records using COUNT, AVG, MIN, MAX, SUM with optional GROUP BY via the Stats API.
 
@@ -269,6 +473,7 @@ def aggregate_records(
         query_params["sysparm_query"] = query
     if having:
         query_params["sysparm_having"] = having
+    query_params.update(display_value_params(display_value))
 
     response = make_sn_request("GET", url, config.timeout, params=query_params)
     data = parse_json_response(response, url)

@@ -76,3 +76,44 @@ def test_list_ci_response_format(cfg: Mock, response_format: str, extra: dict) -
         "sysparm_offset": 0,
         **extra,
     }
+
+
+def test_list_ci_checks_query_fields(cfg: Mock) -> None:
+    cfg.return_value = sn_response(
+        {"result": [{"name": "web01", "os": "Linux"}, {"name": "db01"}]}
+    )
+    result = cmdb_tools.list_ci(
+        class_name="cmdb_ci_server",
+        query="osLIKELinux^ip_addressSTARTSWITH10.^NameLIKEweb",
+        fields="name",
+    )
+    params = cfg.call_args.kwargs["params"]
+    assert params["sysparm_fields"] == "name,os,ip_address"
+    assert result["records"] == [{"name": "web01"}, {"name": "db01"}]
+    warning = result["warning"]
+    assert warning.startswith("Fields missing from every row: ip_address.")
+    assert "cmdb_ci_server" in warning
+    assert "query= filters on ip_address:" in warning
+    assert "query= names Name, which are not column names" in warning
+
+
+def test_list_ci_no_warning(cfg: Mock) -> None:
+    result = cmdb_tools.list_ci(query="sys_id=r1", fields="sys_id")
+    assert result == {"count": 1, "class": "cmdb_ci", "records": [{"sys_id": "r1"}]}
+    assert cfg.call_args.kwargs["params"]["sysparm_fields"] == "sys_id"
+
+
+@pytest.mark.parametrize(
+    ("display_value", "extra"),
+    [("false", {}), ("all", {"sysparm_display_value": "all"})],
+)
+def test_ci_display_value(cfg: Mock, display_value: str, extra: dict) -> None:
+    cmdb_tools.list_ci(display_value=display_value)
+    assert cfg.call_args.kwargs["params"] == {
+        "sysparm_limit": 20,
+        "sysparm_offset": 0,
+        **extra,
+    }
+    cfg.return_value = sn_response({"result": {"sys_id": "r1"}})
+    cmdb_tools.get_ci(sys_id="r1", display_value=display_value)
+    assert cfg.call_args.kwargs["params"] == (extra or None)

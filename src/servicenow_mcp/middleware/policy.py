@@ -138,7 +138,9 @@ def check_query(name: str, value: Any, config: ServerConfig) -> None:
             "javascript:gs.daysAgo(7), javascript:gs.beginningOfToday() or "
             "javascript:gs.dateGenerate('2026-10-01','start') are allowed; use the "
             "RELATIVE* operators or ON/BETWEEN ranges instead (servicenow://help/query-syntax), "
-            "or start the server with --allow-js-queries (SERVICENOW_ALLOW_JS_QUERIES=true)."
+            "or start the server with --allow-js-queries (SERVICENOW_ALLOW_JS_QUERIES=true). "
+            "To filter on records of another table, query that table first, then pass "
+            "their sys_ids with the IN operator (fieldINsys_id1,sys_id2)."
         )
 
 

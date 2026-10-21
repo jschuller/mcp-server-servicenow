@@ -61,7 +61,8 @@ def test_list_records_sends_descending_order_clause(
             "sysparm_limit": 5,
             "sysparm_offset": 0,
             "sysparm_query": "active=true^ORDERBYDESCsys_updated_on",
-            "sysparm_fields": "number,sys_updated_on",
+            # The query's field is added so that the check can see it.
+            "sysparm_fields": "number,sys_updated_on,active",
         },
     )
 
@@ -157,3 +158,272 @@ async def test_response_format_is_an_enum_on_the_wire() -> None:
         prop = tools[name].input_schema["properties"]["response_format"]
         assert prop["enum"] == ["concise", "detailed"]
         assert prop["default"] == "detailed"
+
+
+def _setup(monkeypatch: pytest.MonkeyPatch, payload: object) -> Mock:
+    make_sn_request = Mock(return_value=sn_response({"result": payload}))
+    monkeypatch.setattr(
+        table_tools,
+        "get_config",
+        lambda: SimpleNamespace(
+            api_url="https://test.service-now.com/api/now", timeout=30
+        ),
+    )
+    monkeypatch.setattr(table_tools, "make_sn_request", make_sn_request)
+    return make_sn_request
+
+
+@pytest.mark.parametrize(
+    ("query", "names", "labels"),
+    [
+        (None, [], []),
+        ("", [], []),
+        ("active=true^priority=1", ["active", "priority"], []),
+        (
+            "state!=6^priority<=2^short_descriptionNOT LIKEtest^assigned_toISEMPTY",
+            ["state", "priority", "short_description", "assigned_to"],
+            [],
+        ),
+        ("sys_class_nameINSTANCEOFcmdb_ci_server", ["sys_class_name"], []),
+        ("opened_atRELATIVEGT@dayofweek@ago@30", ["opened_at"], []),
+        (
+            "opened_atONToday@javascript:gs.beginningOfToday()"
+            "@javascript:gs.endOfToday()",
+            ["opened_at"],
+            [],
+        ),
+        ("role.name=admin^user.active=false", ["role.name", "user.active"], []),
+        ("priority=1^ORpriority=2^NQstate=6^ORstate=7^EQ", ["priority", "state"], []),
+        ("active=true^ORDERBYDESCsys_created_on^ORDERBYnumber", ["active"], []),
+        ("ORDERBYnumber", [], []),
+        ("active=true^GROUPBYpriority", ["active"], []),
+        ("GOTO123TEXTQUERY321=email", [], []),
+        ("123TEXTQUERY321=email^IR_AND_OR_QUERY=x", [], []),
+        (
+            "active=true^RLQUERYtask_sla.task,>=1^sla.name=Gold^ENDRLQUERY^state=1",
+            ["active", "state"],
+            [],
+        ),
+        (
+            "SUBQUERYsys_id,user,sys_user_grmember^group.name=CAB^ENDSUBQUERY",
+            [],
+            [],
+        ),
+        # "^^" is an escaped caret inside a value.
+        ("short_descriptionLIKEa^^b", ["short_description"], []),
+        ("NameLIKEa^PortalISNOTEMPTY^Title=x", [], ["Name", "Portal", "Title"]),
+        ("active=true^ORName=x", ["active"], ["Name"]),
+        ("Short description=x", [], ["Short description"]),
+        ("NAMELIKEa", [], ["NAMELIKEa"]),
+        # A label that starts like a joiner keeps its letters.
+        ("active=true^ORIGINLIKEx", ["active"], ["ORIGINLIKEx"]),
+        ("active=true^NQNameLIKEx", ["active"], ["Name"]),
+        ("active=true^ORRLQUERYtask_sla.task,>=1^ENDRLQUERY", ["active"], []),
+        # Catalog variables are no columns, and no row carries them.
+        ("variables.3f1dd0320a0a0b99000a53f7604a2ef9=abc", [], []),
+        ("request_item.variables.3f1dd0320a0a0b99000a53f7604a2ef9=abc", [], []),
+    ],
+)
+def test_query_field_names(query: str | None, names: list, labels: list) -> None:
+    assert table_tools.query_field_names(query) == (names, labels)
+
+
+def test_list_records_checks_query_fields_and_strips_them(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # caller_id.name came back, vip did not: the vip condition was ignored.
+    rows = [{"number": "INC1", "caller_id.name": "Abel"}, {"number": "INC2"}]
+    make_sn_request = _setup(monkeypatch, rows)
+    result = table_tools.list_records(
+        table_name="incident",
+        query="caller_id.nameSTARTSWITHA^vip=true^number!=INC3",
+        fields="number",
+    )
+    assert make_sn_request.call_args.kwargs["params"]["sysparm_fields"] == (
+        "number,caller_id.name,vip"
+    )
+    # The caller gets exactly the fields they asked for.
+    assert result["records"] == [{"number": "INC1"}, {"number": "INC2"}]
+    warning = result["warning"]
+    assert warning.startswith("Fields missing from every row: vip.")
+    assert "query= filters on vip: the instance ignored these conditions" in warning
+    assert "rows may be unfiltered" in warning
+    assert "get_table_schema" in warning
+
+
+def test_list_records_keeps_requested_query_fields(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    rows = [{"number": "INC1", "active": "true"}]
+    make_sn_request = _setup(monkeypatch, rows)
+    result = table_tools.list_records(
+        table_name="incident", query="active=true", fields="number, active"
+    )
+    assert make_sn_request.call_args.kwargs["params"]["sysparm_fields"] == (
+        "number, active"
+    )
+    assert result == {"count": 1, "records": rows}
+
+
+def test_list_records_without_fields_checks_the_first_segment(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    rows = [{"number": "INC1", "caller_id": "u1", "active": "true"}]
+    make_sn_request = _setup(monkeypatch, rows)
+    result = table_tools.list_records(
+        table_name="incident", query="caller_id.name=Abel^active=true^u_portal=x"
+    )
+    assert "sysparm_fields" not in make_sn_request.call_args.kwargs["params"]
+    assert result["records"] == rows
+    assert result["warning"].startswith("Fields missing from every row: u_portal.")
+    assert "query= filters on u_portal:" in result["warning"]
+
+
+def test_list_records_reports_labels_even_without_rows(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    make_sn_request = _setup(monkeypatch, [])
+    result = table_tools.list_records(
+        table_name="sp_portal", query="NameLIKEa^PortalISNOTEMPTY", fields="name"
+    )
+    # Labels are not field names, so nothing is added to the request.
+    assert make_sn_request.call_args.kwargs["params"]["sysparm_fields"] == "name"
+    warning = result["warning"]
+    assert not warning.startswith("Fields missing")
+    assert "query= names Name, Portal, which are not column names" in warning
+    assert "ignored or rejected these conditions" in warning
+    assert "get_table_schema on sp_portal" in warning
+
+
+def test_list_records_hedges_a_missing_dot_walk(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # role.name is left out of a row when the role record is unreadable, and
+    # then the condition still applies: the warning must not say "ignored".
+    rows = [{"user": "u1"}, {"user": "u2"}]
+    _setup(monkeypatch, rows)
+    result = table_tools.list_records(
+        table_name="sys_user_has_role", query="role.name=admin", fields="user"
+    )
+    assert result["records"] == rows
+    warning = result["warning"]
+    assert "query= filters on role.name: either the field doesn't exist" in warning
+    assert "the instance ignored these conditions" not in warning
+    assert "Request the reference field itself" in warning
+
+
+@pytest.mark.parametrize(
+    ("query", "fields", "rows"),
+    [
+        ("active=true^ORDERBYnumber", "number", [{"number": "1", "active": "true"}]),
+        ("active=true", None, [{"number": "1", "active": "true"}]),
+        ("caller_id.name=Abel", None, [{"caller_id": "u1"}]),
+        ("active=true", "number", []),
+    ],
+)
+def test_list_records_no_query_warning(
+    monkeypatch: pytest.MonkeyPatch, query: str, fields: str | None, rows: list
+) -> None:
+    _setup(monkeypatch, [dict(row) for row in rows])
+    result = table_tools.list_records(table_name="incident", query=query, fields=fields)
+    assert "warning" not in result
+
+
+@pytest.mark.parametrize(
+    ("display_value", "extra"),
+    [
+        ("false", {}),
+        ("true", {"sysparm_display_value": "true"}),
+        ("all", {"sysparm_display_value": "all"}),
+    ],
+)
+def test_read_tools_display_value(
+    monkeypatch: pytest.MonkeyPatch, display_value: str, extra: dict
+) -> None:
+    make_sn_request = _setup(monkeypatch, [])
+    table_tools.list_records(table_name="incident", display_value=display_value)
+    assert make_sn_request.call_args.kwargs["params"] == {
+        "sysparm_limit": 20,
+        "sysparm_offset": 0,
+        **extra,
+    }
+    table_tools.get_record(
+        table_name="incident", sys_id="a" * 32, display_value=display_value
+    )
+    assert make_sn_request.call_args.kwargs["params"] == extra
+    table_tools.aggregate_records(
+        table_name="incident", group_by="assignment_group", display_value=display_value
+    )
+    assert make_sn_request.call_args.kwargs["params"] == {
+        "sysparm_count": "true",
+        "sysparm_group_by": "assignment_group",
+        **extra,
+    }
+
+
+def test_missing_field_warning_with_display_value_all(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    rows = [
+        {
+            "number": {"display_value": "INC1", "value": "INC1"},
+            "caller_id": {"display_value": "Abel Tuter", "value": "u1"},
+        }
+    ]
+    _setup(monkeypatch, rows)
+    result = table_tools.list_records(
+        table_name="incident",
+        fields="number,caller_id,rfc",
+        display_value="all",
+    )
+    assert result["records"] == rows
+    assert result["warning"].startswith("Fields missing from every row: rfc.")
+
+
+@pytest.mark.asyncio
+async def test_display_value_all_rows_match_the_output_schema(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from fastmcp import Client
+
+    from servicenow_mcp.server import mcp
+    from tests.conftest import init_test_services
+
+    rows = [
+        {
+            "number": {"display_value": "INC1", "value": "INC1"},
+            "caller_id": {"display_value": "Abel Tuter", "value": "u1"},
+            "vip": {"display_value": "", "value": ""},
+        }
+    ]
+    make_sn_request = Mock(return_value=sn_response({"result": rows}))
+    init_test_services()
+    monkeypatch.setattr(table_tools, "make_sn_request", make_sn_request)
+    async with Client(mcp) as client:
+        tools = {t.name: t for t in await client.list_tools()}
+        # The client validates structured content against the published schema.
+        result = await client.call_tool(
+            "list_records",
+            {
+                "table_name": "incident",
+                "fields": "number,caller_id",
+                "query": "vip=true",
+                "display_value": "all",
+            },
+        )
+    for name in (
+        "list_records",
+        "get_record",
+        "list_ci",
+        "get_ci",
+        "aggregate_records",
+    ):
+        prop = tools[name].input_schema["properties"]["display_value"]
+        assert prop["enum"] == ["false", "true", "all"]
+        assert prop["default"] == "false"
+    assert make_sn_request.call_args.kwargs["params"]["sysparm_display_value"] == "all"
+    data = result.structured_content
+    assert data == {
+        "count": 1,
+        "records": [{key: rows[0][key] for key in ("number", "caller_id")}],
+    }

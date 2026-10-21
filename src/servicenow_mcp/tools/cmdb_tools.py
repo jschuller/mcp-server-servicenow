@@ -11,7 +11,16 @@ from pydantic import Field
 from servicenow_mcp.server import get_config, make_sn_request, mcp
 from servicenow_mcp.tools import annotations
 from servicenow_mcp.tools.results import CIList, RelationshipList
-from servicenow_mcp.tools.table_tools import ResponseFormat, response_format_params
+from servicenow_mcp.tools.table_tools import (
+    DisplayValue,
+    ResponseFormat,
+    display_value_params,
+    drop_added_fields,
+    fields_with_query_fields,
+    list_warning,
+    query_field_names,
+    response_format_params,
+)
 from servicenow_mcp.utils.http import build_url, parse_json_response, result_rows
 
 logger = logging.getLogger(__name__)
@@ -37,6 +46,7 @@ def list_ci(
     ] = 20,
     offset: Annotated[int, Field(ge=0, description="Number of records to skip")] = 0,
     response_format: ResponseFormat = "detailed",
+    display_value: DisplayValue = "false",
 ) -> CIList:
     """List CMDB configuration items with optional class and query filtering"""
     config = get_config()
@@ -46,28 +56,38 @@ def list_ci(
         "sysparm_limit": limit,
         "sysparm_offset": offset,
     }
+    query_names, labels = query_field_names(query)
+    sysparm_fields, added = fields_with_query_fields(fields, query_names)
     if query:
         query_params["sysparm_query"] = query
-    if fields:
-        query_params["sysparm_fields"] = fields
+    if sysparm_fields:
+        query_params["sysparm_fields"] = sysparm_fields
     query_params.update(response_format_params(response_format))
+    query_params.update(display_value_params(display_value))
 
     response = make_sn_request("GET", url, config.timeout, params=query_params)
     data = parse_json_response(response, url)
     result = result_rows(data)
-    return {"count": len(result), "class": class_name, "records": result}
+    warning = list_warning(class_name, fields, query_names, labels, result)
+    drop_added_fields(result, added)
+    payload: CIList = {"count": len(result), "class": class_name, "records": result}
+    if warning:
+        payload["warning"] = warning
+    return payload
 
 
 @mcp.tool(tags={"read", "cmdb"}, annotations=annotations.READ)
 def get_ci(
     sys_id: Annotated[str, Field(description="The sys_id of the CI")],
     class_name: Annotated[str, Field(description="CMDB class name")] = "cmdb_ci",
+    display_value: DisplayValue = "false",
 ) -> Dict[str, Any]:
     """Get a single CMDB configuration item by sys_id"""
     config = get_config()
 
     url = build_url(config.api_url, "table", class_name, sys_id)
-    response = make_sn_request("GET", url, config.timeout)
+    params = display_value_params(display_value)
+    response = make_sn_request("GET", url, config.timeout, params=params or None)
     data = parse_json_response(response, url)
     return data.get("result", {})
 

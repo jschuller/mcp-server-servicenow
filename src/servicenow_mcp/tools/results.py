@@ -33,6 +33,7 @@ CIList = TypedDict(
         "count": int,
         "class": str,
         "records": List[Row],
+        "warning": NotRequired[str],
         "truncated": NotRequired[bool],
         "note": NotRequired[str],
         "next_offset": NotRequired[int],

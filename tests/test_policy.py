@@ -61,6 +61,23 @@ def test_unsafe_script_is_detected(query: str) -> None:
     assert find_unsafe_js(query) is not None
 
 
+def test_refusal_names_the_two_step_alternative() -> None:
+    from servicenow_mcp.middleware.policy import PolicyError, check_query
+    from tests.conftest import make_server_config
+
+    with pytest.raises(PolicyError) as refused:
+        check_query(
+            "query",
+            "assigned_toINjavascript:getMyGroups()",
+            make_server_config(),
+        )
+    message = str(refused.value)
+    assert "javascript:gs.daysAgo(7)" in message
+    assert "--allow-js-queries" in message
+    assert "query that table first" in message
+    assert "fieldINsys_id1,sys_id2" in message
+
+
 def test_build_url_encodes_segments() -> None:
     url = build_url("https://x/api/now", "table", "incident", "../sys_user/abc")
     assert url == "https://x/api/now/table/incident/..%2Fsys_user%2Fabc"
