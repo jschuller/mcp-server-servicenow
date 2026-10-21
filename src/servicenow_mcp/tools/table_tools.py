@@ -125,8 +125,10 @@ def query_field_names(query: Optional[str]) -> Tuple[List[str], int]:
     if not query:
         return names, unknown
     depth = 0
-    # "^^" is an escaped caret inside a value, not a separator.
-    for index, raw in enumerate(query.replace("^^", "\0").split("^")):
+    # "^^" is an escaped caret inside a value, not a separator. Its
+    # placeholder is a private-use character: nothing trims it and no field
+    # name holds it.
+    for index, raw in enumerate(query.replace("^^", "\ue000").split("^")):
         term = raw.strip(_TRIM)
         if index and _QUERY_JOINER_RE.match(term) and not term.startswith("ORDERBY"):
             term = term[2:].strip(_TRIM)

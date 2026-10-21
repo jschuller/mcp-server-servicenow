@@ -240,6 +240,10 @@ def _setup(monkeypatch: pytest.MonkeyPatch, payload: object) -> Mock:
         ("assign\u00adment_group=abc", [], []),
         ("\ufeffvip=true", [], []),
         ("\u00a0active=true", [], []),
+        # An escaped caret next to a name is not checked (no claim): the
+        # instance ignored "name^^=x", so checking "name" would stay silent.
+        ("name^^=x", [], []),
+        ("^^name=x", [], []),
     ],
 )
 def test_query_field_names(query: str | None, names: list, labels: list) -> None:
