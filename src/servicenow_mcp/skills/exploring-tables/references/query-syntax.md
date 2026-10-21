@@ -91,7 +91,7 @@ Each helper must end the value: at `^`, at the `@` between the two ends of a ran
   - ignored: `caused_byISEMPTY` and `caused_byISNOTEMPTY` returned the same rows;
   - refused: a 403 "Field(s) present in the query do not have permission to be read".
 
-  Request every field you filter on in `fields=`. If the field is hidden, `list_records` warns that it is missing from every row.
+  `list_records` and `list_ci` check the fields in `query=` for you: if one is hidden or misspelled, the warning names it.
 - **When a filter is suspicious, compare counts.** Run it once without the condition; if the counts match, the condition did nothing.
 - **A short page doesn't mean the end.** The limit is applied before ACLs remove rows, so keep paging with `offset`.
 
