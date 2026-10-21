@@ -98,7 +98,17 @@
               }
             ],
             "default": null,
-            "description": "Post-aggregation filter (e.g., 'COUNT>5')"
+            "description": "Post-aggregation filter, aggregate^field^operator^value (e.g., 'count^name^>^1')"
+          },
+          "display_value": {
+            "default": "false",
+            "description": "'false' (default) returns stored group_by values; 'true' returns labels in place of sys_ids and choice values; 'all' returns both. query= still filters on stored values, not labels",
+            "enum": [
+              "false",
+              "true",
+              "all"
+            ],
+            "type": "string"
           }
         },
         "required": [
@@ -436,6 +446,16 @@
             "default": "cmdb_ci",
             "description": "CMDB class name",
             "type": "string"
+          },
+          "display_value": {
+            "default": "false",
+            "description": "'false' (default) returns stored values; 'true' returns labels in place of sys_ids and choice values; 'all' returns {display_value, value} per field, which keeps the sys_id beside the name. query= still filters on stored values, not labels. With 'true' or 'all', dates come back in this identity's time zone and format",
+            "enum": [
+              "false",
+              "true",
+              "all"
+            ],
+            "type": "string"
           }
         },
         "required": [
@@ -606,6 +626,16 @@
             ],
             "default": null,
             "description": "Comma-separated list of fields to return"
+          },
+          "display_value": {
+            "default": "false",
+            "description": "'false' (default) returns stored values; 'true' returns labels in place of sys_ids and choice values; 'all' returns {display_value, value} per field, which keeps the sys_id beside the name. query= still filters on stored values, not labels. With 'true' or 'all', dates come back in this identity's time zone and format",
+            "enum": [
+              "false",
+              "true",
+              "all"
+            ],
+            "type": "string"
           }
         },
         "required": [
@@ -867,6 +897,16 @@
               "detailed"
             ],
             "type": "string"
+          },
+          "display_value": {
+            "default": "false",
+            "description": "'false' (default) returns stored values; 'true' returns labels in place of sys_ids and choice values; 'all' returns {display_value, value} per field, which keeps the sys_id beside the name. query= still filters on stored values, not labels. With 'true' or 'all', dates come back in this identity's time zone and format",
+            "enum": [
+              "false",
+              "true",
+              "all"
+            ],
+            "type": "string"
           }
         },
         "type": "object"
@@ -885,6 +925,9 @@
               "type": "object"
             },
             "type": "array"
+          },
+          "warning": {
+            "type": "string"
           },
           "truncated": {
             "type": "boolean"
@@ -984,6 +1027,16 @@
             "enum": [
               "concise",
               "detailed"
+            ],
+            "type": "string"
+          },
+          "display_value": {
+            "default": "false",
+            "description": "'false' (default) returns stored values; 'true' returns labels in place of sys_ids and choice values; 'all' returns {display_value, value} per field, which keeps the sys_id beside the name. query= still filters on stored values, not labels. With 'true' or 'all', dates come back in this identity's time zone and format",
+            "enum": [
+              "false",
+              "true",
+              "all"
             ],
             "type": "string"
           }

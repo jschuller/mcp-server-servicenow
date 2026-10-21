@@ -9,18 +9,18 @@ The list tools (`list_records`, `list_ci`, `get_ci_relationships`, `get_system_p
 ### Table API (6)
 | Tool | Description |
 |------|-------------|
-| `list_records` | List records from any table with filtering, field selection and pagination; adds a `warning` when a requested field is missing from every row (it doesn't exist or an ACL hides it). `response_format="concise"` returns reference fields as bare sys_ids, without their instance links |
-| `get_record` | Get a single record by sys_id |
+| `list_records` | List records from any table with filtering, field selection and pagination. Adds a `warning` when a requested field is missing from every row (it doesn't exist or an ACL hides it), and when `query=` filters on such a field or on a label like `Name`: the instance ignores those conditions, so the rows may be unfiltered (a dot-walk can also be missing because only the referenced records are unreadable). The fields in `query=` are checked without adding them to the returned rows. `response_format="concise"` returns reference fields as bare sys_ids, without their instance links. `display_value="true"` returns labels in place of sys_ids and choice values, `"all"` returns `{display_value, value}` per field |
+| `get_record` | Get a single record by sys_id. Takes `display_value` like `list_records` |
 | `create_record` | Create a record in any table |
 | `update_record` | Update a record |
 | `delete_record` | Delete a record by sys_id |
-| `aggregate_records` | COUNT, AVG, MIN, MAX, SUM with GROUP BY and HAVING via the Stats API |
+| `aggregate_records` | COUNT, AVG, MIN, MAX, SUM with GROUP BY and HAVING via the Stats API. `display_value="true"` returns group-by labels in place of sys_ids and choice values, `"all"` returns both. `having` takes `aggregate^field^operator^value`, such as `count^name^>^1` |
 
 ### CMDB (5)
 | Tool | Description |
 |------|-------------|
-| `list_ci` | List configuration items with class and query filtering. Takes `response_format` like `list_records` |
-| `get_ci` | Get a single CI by sys_id |
+| `list_ci` | List configuration items with class and query filtering. Takes `response_format` and `display_value`, and adds the same `warning`, like `list_records` |
+| `get_ci` | Get a single CI by sys_id. Takes `display_value` like `list_records` |
 | `create_ci` | Create a configuration item |
 | `update_ci` | Update a configuration item |
 | `get_ci_relationships` | Parent/child relationships for a CI (paged: `limit`, `offset`) |

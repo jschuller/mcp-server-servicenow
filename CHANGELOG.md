@@ -2,7 +2,8 @@
 
 ## [Unreleased]
 
-Read-only developer-loop tools (where-used, record history, structured output) and the
+Read-only developer-loop tools (where-used, record history, structured output), readable
+values and checked filters from a review of the owner's old ServiceNow notebooks, and the
 fixes from an independent review of the repository.
 
 ### Upgrade notes
@@ -19,9 +20,39 @@ fixes from an independent review of the repository.
   startup. Tokens under 32 characters, and an HTTP listener without `--read-only`, only
   log a warning.
 - **Regenerate your eval mocks** (`--eval-mocks`): `_tools.json` now carries the output
-  schemas and `find_references`, and the validator compares them.
+  schemas, `find_references` and `display_value`, and the validator compares them.
+- **`list_records` and `list_ci` check the fields in `query=`.** When `fields=` is given,
+  they add the fields the query filters on to the request and remove them from the rows
+  again, so you still get exactly the fields you asked for, but the request differs: a
+  test that asserts the exact `sysparm_fields` of a filtered call needs the query's
+  fields appended.
 
 ### Added
+- **`display_value`** on `list_records`, `get_record`, `list_ci`, `get_ci` and
+  `aggregate_records`: `"true"` returns labels in place of sys_ids and choice values, and
+  `"all"` returns `{display_value, value}` per field, so the sys_id stays beside the name.
+  The default, `"false"`, sends nothing new. `query=` still filters on stored values.
+- **A warning for conditions the instance ignored.** The Table API silently drops a
+  condition on a field that doesn't exist or that an ACL hides, so the "filtered" result is
+  unfiltered. `list_records` and `list_ci` now check the fields named in `query=`, not only
+  those in `fields=`, and they name a term that is a label rather than a column (`NameLIKEa`;
+  columns are lowercase), even when no row comes back. A missing dot-walk is reported more
+  cautiously: it is also missing when only the referenced records are unreadable, and then
+  the condition applied. Terms inside RLQUERY and SUBQUERY blocks and catalog variables
+  (`variables.<sys_id>`) are not checked. `list_ci` results carry the same `warning`.
+- **CMDB data-quality checks** in the servicenow-cmdb skill (2.1.0, workflow 4): each check is
+  a count over a total, with a sample. Unhandled duplicates (`duplicate_of` on active CIs, as
+  the CMDB Data Foundations dashboard counts them) and the same name within a class
+  (`group_by=name`, `having=count^name^>^1`); stale CIs by `sys_updated_on` and by
+  `last_discovered`, with never-discovered CIs counted separately; CIs with no relationship
+  through `RLQUERYcmdb_rel_ci` (one block per query); broken relationships; missing key
+  fields per class; locations with no parent, models with no owner, and assets with no CI.
+  `dl_definition` is gone from the skill: it holds Data Lookup definitions, not quality rules.
+- **Joins through dot-walks** in the analyzing-access skill (2.1.0, workflow 5): team
+  rosters, role holders with their groups, and distinct people holding a role
+  (`group_by=user`), with why a plain count gives grants rather than people.
+- The `javascript:` refusal names the two-step alternative: query the other table first,
+  then pass its sys_ids with `IN`.
 - **`find_references`**: where-used for a table or one field. It lists business rules,
   client scripts, UI policies (or their field actions), ACLs, script includes and
   reference fields, by name and sys_id only, never script or ACL bodies. Script matches
@@ -53,6 +84,8 @@ fixes from an independent review of the repository.
   telemetry; what the audit log keeps.
 
 ### Changed
+- The `having` description of `aggregate_records` gives the Aggregate API's form,
+  `aggregate^field^operator^value` (`count^name^>^1`), not `COUNT>5`.
 - **The Claude Code plugin pins its server** to the same release
   (`uvx mcp-server-servicenow==0.9.2`), as Anthropic's plugin directory requires. Plugin
   users get a new server when the plugin updates, so the skills and the server always
