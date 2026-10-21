@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [0.9.2] - 2026-10-21
 
 Read-only developer-loop tools (where-used, record history, structured output), readable
 values (`display_value`) and checked filters, and the fixes from an independent review of
