@@ -20,7 +20,7 @@ Profiles:
             sys_user_has_role rows sees all 20 (the check fails open) and the
             write comes back as ServiceNow's refusal. Changes nothing.
   write     the identity can create, update and delete incidents and update
-            sets (admin by default). Creates and deletes scratch incidents and
+            sets (admin by default). Creates and deletes one scratch incident and
             one empty update set; the caller's current update set is restored.
 
 --expect-tools N asserts how many tools the identity lists with no flag, as
@@ -304,11 +304,14 @@ async def section_b(results, profile, audit, expect_tools=None):
                         "delete_record", {"table_name": "incident", "sys_id": sid}
                     )
                     info("scratch incident deleted after a failed step", sid)
-                except ToolError as e:
-                    info(
-                        f"scratch incident {sid} NOT deleted: delete it by hand",
-                        str(e).splitlines()[0][:120],
-                    )
+                except Exception as e:  # cleanup must not mask the first error
+                    if "404" in str(e):
+                        info("scratch incident already deleted", sid)
+                    else:
+                        info(
+                            f"scratch incident {sid} NOT deleted: delete it by hand",
+                            str(e).splitlines()[0][:120],
+                        )
         return
 
 

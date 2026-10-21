@@ -6,7 +6,7 @@ them as part of [RELEASING](../RELEASING.md) step 2.
 
 Nothing is installed on the instance. Each identity is an integration user with roles and an API key or OAuth client,
 and credentials come only from the environment, started under a secret-store launcher (never from a file or the
-command line).
+command line). The examples use `with-secrets`; any launcher that puts the value in the environment works.
 
 ## Identity tiers
 
@@ -51,7 +51,7 @@ The same empty answer means three different things, and the server says which on
 | Cause | Example | What the server adds |
 |---|---|---|
 | **Hidden**: an ACL hides the rows | `sys_journal_field` for an identity without `admin` or `audit_viewer` | a `warning` that the entries are not assessable, not empty, and how to read the record's own journal fields |
-| **Empty**: there are no such rows | `sys_audit` for a record created without auditing | nothing |
+| **Empty**: there are no such rows | `sys_audit` for a record created without auditing, read by an identity with `admin` or `audit_viewer` | nothing (without those roles: the hedged `warning`) |
 | **Nonexistent**: the record or field isn't there | a dangling reference; a field the table doesn't have | for a field: a `warning` that the condition was ignored |
 
 A record an ACL hides answers `get_record` with 404, the same as one that doesn't exist; the error says both.

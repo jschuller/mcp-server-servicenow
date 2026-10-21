@@ -186,7 +186,8 @@ def _instance(monkeypatch, props, user=None, props_error=None) -> dict:
         "time_zone": "",
         **(user or {}),
     }
-    monkeypatch.setattr(resources, "fetch_current_user", Mock(return_value=caller))
+    fetch = Mock(return_value=caller)
+    monkeypatch.setattr(resources, "fetch_current_user", fetch)
 
     async def read() -> dict:
         async with Client(mcp) as client:
@@ -194,6 +195,8 @@ def _instance(monkeypatch, props, user=None, props_error=None) -> dict:
         return json.loads(content[0].text)
 
     payload = asyncio.run(read())
+    # The caller's own zone is what display values use.
+    assert fetch.call_args.args[2] == "time_zone"
     assert mock.call_args.kwargs["params"]["sysparm_query"] == (
         "nameINglide.war,glide.sys.default.tz,glide.product.version,glide.sys.timezone"
     )
@@ -258,4 +261,45 @@ class TestInstanceResource:
         payload = _instance(monkeypatch, [], props_error="Access denied (403). More")
         assert payload["unavailable"]["version"] == (
             "sys_properties could not be read: Access denied (403)"
+        )
+
+    def test_an_admin_without_the_properties(self, monkeypatch) -> None:
+        # Readable sys_properties, but neither property set: not "needs admin".
+        payload = _instance(
+            monkeypatch,
+            [{"name": "glide.sys.timezone", "value": ""}],
+            user={"roles": None, "time_zone": None},
+        )
+        unavailable = payload["unavailable"]
+        assert unavailable["version"] == (
+            "neither glide.war nor glide.product.version is set"
+        )
+        assert "not set" in unavailable["timezone"]
+        assert unavailable["user.roles"] == "the caller's role rows could not be read"
+        assert unavailable["user.time_zone"] == "sys_user.time_zone is not readable"
+
+    def test_an_unreadable_caller(self, monkeypatch) -> None:
+        from unittest.mock import Mock
+
+        from servicenow_mcp import resources
+
+        payload = _instance(monkeypatch, [])
+        monkeypatch.setattr(
+            resources, "fetch_current_user", Mock(side_effect=RuntimeError("boom. x"))
+        )
+        import asyncio
+        import json
+
+        async def read() -> dict:
+            async with Client(mcp) as client:
+                content = await client.read_resource("servicenow://instance")
+            return json.loads(content[0].text)
+
+        payload = asyncio.run(read())
+        assert "user" not in payload
+        assert payload["unavailable"]["user"] == "sys_user could not be read: boom"
+        monkeypatch.setattr(resources, "fetch_current_user", Mock(return_value={}))
+        payload = asyncio.run(read())
+        assert payload["unavailable"]["user"] == (
+            "the caller's sys_user row could not be read"
         )

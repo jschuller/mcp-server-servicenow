@@ -87,15 +87,16 @@ the repository.
   telemetry; what the audit log keeps.
 - **A warning when history is hidden, not empty.** Without `admin` or `audit_viewer`, the
   instance answers `sys_journal_field` with 0 rows rather than a 403, so a model reported
-  "no work notes" for an incident that had one. 0 rows from `sys_journal_field`,
-  `sys_audit`, `sys_history_set` or `sys_history_line` now add a `warning` unless the
-  caller holds one of those roles (checked with two role lookups, only on such a read): the
+  "no work notes" for an incident that had one. 0 rows from `sys_journal_field` or
+  `sys_audit` now add a `warning` unless the caller holds one of those roles (checked with
+  up to two role lookups, only on such a read, and cached for the service account): the
   entries are not assessable, not empty, and the record's own `work_notes` and `comments`
   with `display_value="true"` still show every entry with its time and author. The
   exploring-tables skill's record-history workflow uses that fallback.
 - **`display_note`** on `list_records` and `list_ci` results with `display_value="true"`
   or `"all"`: display dates are in this identity's time zone and format, while stored
-  values and `query=` use UTC.
+  values are UTC (`gs.dateGenerate()` and the `gs.beginningOf*` helpers in `query=` use
+  the identity's zone).
 - [docs/testing.md](docs/testing.md): the four identity tiers to test with, the tools each
   should list, the refusals each should get, and what "0 rows" can mean.
   `scripts/stdio_smoke.py --expect-tools N` turns a tier's tool count into a check.

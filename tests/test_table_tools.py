@@ -591,7 +591,14 @@ def test_missing_field_warning_names_subclasses(
     result = table_tools.list_records(
         table_name="cmdb_ci", fields="name,busines_criticality"
     )
-    assert "a table that extends cmdb_ci, such as a CMDB subclass" in result["warning"]
+    assert "a table that extends cmdb_ci, such as a CMDB subclass," in result["warning"]
+    # Outside the CMDB the example would mislead, so it is left out.
+    _setup(monkeypatch, [{"number": "INC1"}])
+    warning = table_tools.list_records(table_name="incident", fields="number,rfc")[
+        "warning"
+    ]
+    assert "a table that extends incident comes back only" in warning
+    assert "CMDB" not in warning
 
 
 def _history(
@@ -600,13 +607,17 @@ def _history(
     rows: list,
     roles: dict,
     offset: int = 0,
+    config: object | None = None,
 ) -> tuple:
-    _setup(monkeypatch, rows)
+    make_sn_request = _setup(monkeypatch, rows)
+    if config is not None:
+        monkeypatch.setattr(table_tools, "get_config", lambda: config)
     has_role = Mock(side_effect=lambda api_url, timeout, role: roles.get(role))
     monkeypatch.setattr(table_tools, "has_role", has_role)
     result = table_tools.list_records(
         table_name=table_name, query="element_id=abc", offset=offset
     )
+    assert make_sn_request.call_count == 1
     return result, has_role
 
 
@@ -618,7 +629,10 @@ def test_history_warning_without_the_roles(monkeypatch: pytest.MonkeyPatch) -> N
         {"admin": False, "audit_viewer": False},
     )
     warning = result["warning"]
-    assert warning.startswith("0 rows: this identity holds neither admin nor")
+    # Hidden role rows also read as "no", so the grant is "not visible".
+    assert warning.startswith(
+        "0 rows: no admin or audit_viewer grant is visible to this identity"
+    )
     assert "not assessable here, not empty" in warning
     assert 'fields="work_notes,comments" and display_value="true"' in warning
     assert [call.args[2] for call in has_role.call_args_list] == [
@@ -636,7 +650,7 @@ def test_history_warning_when_the_lookup_fails(
         monkeypatch, "sys_journal_field", [], {"admin": None, "audit_viewer": False}
     )
     assert result["warning"].startswith(
-        "0 rows may mean this identity can't read sys_journal_field rows"
+        "0 rows may mean this identity can't read journal rows"
     )
 
 
@@ -652,18 +666,52 @@ def test_history_no_warning_with_a_reading_role(
     assert has_role.call_count == (1 if role == "admin" else 2)
 
 
-@pytest.mark.parametrize(
-    "table_name", ["sys_audit", "sys_history_set", "sys_history_line"]
-)
-def test_history_warning_for_audit_tables(
-    monkeypatch: pytest.MonkeyPatch, table_name: str
+@pytest.mark.parametrize("roles", [{"admin": False, "audit_viewer": False}, {}])
+def test_history_warning_for_the_audit_table(
+    monkeypatch: pytest.MonkeyPatch, roles: dict
 ) -> None:
-    result, _ = _history(
-        monkeypatch, table_name, [], {"admin": False, "audit_viewer": False}
+    # Without the roles sys_audit was seen as a 403, so 0 rows stays hedged.
+    result, _ = _history(monkeypatch, "sys_audit", [], roles)
+    assert result["warning"].startswith(
+        "0 rows may mean this identity can't read sys_audit rows"
     )
-    assert table_name in result["warning"]
-    assert "field changes asked for are not assessable" in result["warning"]
+    assert "field changes are not assessable" in result["warning"]
     assert "work_notes" not in result["warning"]
+
+
+def test_history_role_answer_is_cached_for_the_service_account(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config = SimpleNamespace(api_url="https://test.service-now.com/api/now", timeout=30)
+    roles = {"admin": False, "audit_viewer": False}
+    _, first = _history(monkeypatch, "sys_journal_field", [], roles, config=config)
+    result, second = _history(monkeypatch, "sys_audit", [], roles, config=config)
+    assert first.call_count == 2
+    second.assert_not_called()
+    assert "warning" in result
+
+
+def test_history_role_answer_is_not_cached_for_a_per_user_token(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config = SimpleNamespace(api_url="https://test.service-now.com/api/now", timeout=30)
+    monkeypatch.setattr(table_tools, "caller_claims", lambda: {"sub": "u1"})
+    roles = {"admin": True}
+    _history(monkeypatch, "sys_journal_field", [], roles, config=config)
+    _, second = _history(monkeypatch, "sys_journal_field", [], roles, config=config)
+    second.assert_called_once()
+
+
+def test_history_and_field_warnings_join(monkeypatch: pytest.MonkeyPatch) -> None:
+    make_sn_request = _setup(monkeypatch, [])
+    monkeypatch.setattr(table_tools, "has_role", Mock(return_value=False))
+    result = table_tools.list_records(
+        table_name="sys_journal_field", query="Element_idLIKEabc"
+    )
+    assert make_sn_request.call_count == 1
+    first, _, second = result["warning"].partition(" 0 rows: ")
+    assert "uppercase letter" in first
+    assert second.startswith("no admin or audit_viewer grant")
 
 
 @pytest.mark.parametrize(
@@ -673,6 +721,9 @@ def test_history_warning_for_audit_tables(
         # Paging past the end is not a hidden journal.
         ("sys_journal_field", [], 20),
         ("incident", [], 0),
+        # A cache built on demand: 0 rows usually means no cache.
+        ("sys_history_set", [], 0),
+        ("sys_history_line", [], 0),
     ],
 )
 def test_history_no_lookup(

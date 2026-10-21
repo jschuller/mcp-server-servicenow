@@ -123,15 +123,18 @@ def instance_info() -> str:
             result["release_family"] = family.group(1)
     elif props.get("glide.product.version"):
         result["version"] = props["glide.product.version"]
+    elif props:
+        # Other properties came back, so the identity can read them: not set.
+        unavailable["version"] = "neither glide.war nor glide.product.version is set"
     else:
         unavailable["version"] = props_error or _NO_PROPERTIES
 
     timezone = props.get("glide.sys.default.tz") or props.get("glide.sys.timezone")
     if timezone:
         result["timezone"] = timezone
-    elif "glide.sys.default.tz" in props or "glide.sys.timezone" in props:
+    elif props:
         unavailable["timezone"] = (
-            "glide.sys.default.tz is empty: the instance's built-in default applies"
+            "glide.sys.default.tz is not set: the instance's built-in default applies"
         )
     else:
         unavailable["timezone"] = props_error or _NO_PROPERTIES
@@ -150,7 +153,12 @@ def instance_info() -> str:
             "roles": user["roles"],
             "time_zone": user.get("time_zone") or None,
         }
-        if not user.get("time_zone"):
+        if user["roles"] is None:
+            unavailable["user.roles"] = "the caller's role rows could not be read"
+        if user.get("time_zone") is None:
+            # A field ACL drops the key; an empty value means none is set.
+            unavailable["user.time_zone"] = "sys_user.time_zone is not readable"
+        elif not user["time_zone"]:
             unavailable["user.time_zone"] = (
                 "the user has no time zone set: display values use the instance default"
             )

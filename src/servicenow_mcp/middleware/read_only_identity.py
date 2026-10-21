@@ -51,7 +51,7 @@ def _current_config() -> Optional[ServerConfig]:
     return get_config_or_none()
 
 
-def _caller_claims() -> Optional[dict[str, Any]]:
+def caller_claims() -> Optional[dict[str, Any]]:
     """Claims of a per-user OAuth token, or None for the service account."""
     try:
         from fastmcp.server.dependencies import get_access_token
@@ -82,7 +82,7 @@ class ReadOnlyIdentityMiddleware(Middleware):
         )
 
     async def _caller_is_read_only(self, config: ServerConfig) -> bool:
-        claims = _caller_claims()
+        claims = caller_claims()
         if claims is not None:
             return claims.get(READ_ONLY_CLAIM) is True
 
