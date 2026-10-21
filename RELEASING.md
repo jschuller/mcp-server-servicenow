@@ -204,13 +204,16 @@ package uninstallable):
 ## Security posture
 
 Current: OIDC trusted publishing (no long-lived secrets), all Actions pinned
-to commit SHAs, fail-closed HTTP serving, Dependabot + Renovate (Renovate
-auto-merges GitHub Actions updates only, after a 3-day release age; runtime and dev
-dependency bumps are reviewed PRs), strict twine
+to commit SHAs, least-privilege workflows (`permissions: {}` at the top, each job
+asks for what it needs), `persist-credentials: false` on every checkout, pinned
+uv, build and twine, a zizmor job that audits the workflows, fail-closed HTTP
+serving, Dependabot + Renovate (Renovate auto-merges GitHub Actions updates
+only, after a 7-day release age; runtime and dev dependency bumps are reviewed
+PRs), strict twine
 metadata check, ruff rule set and mypy major version bounded so unpinned CI
 installs can't shift behavior underneath previously-clean code.
 
 Considered and deliberately not done yet: GitHub environment protection on
 the publish workflows (requires registering the environment name with the
 PyPI publisher), a scheduled nightly integration run (the PDI hibernates —
-it would need a keep-alive), `persist-credentials: false` on checkouts.
+it would need a keep-alive).

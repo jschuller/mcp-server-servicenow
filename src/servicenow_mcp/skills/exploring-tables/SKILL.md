@@ -206,4 +206,4 @@ Find the business rules, client scripts, UI policies, ACLs and script includes t
 - The `sys_db_object` table contains all table definitions. Use it to discover tables by keyword.
 - The `sys_dictionary` table contains field-level metadata. Query it for advanced schema details: `list_records(table_name="sys_dictionary", query="name=<table_name>")`.
 - Encoded query cheat sheet: `=` (equals), `LIKE` (contains), `ISEMPTY` (null), `^` (AND), `^OR` (OR). The full list, with date ranges, is in `references/query-syntax.md`.
-- `list_records` and `list_ci` check the fields you filter on in `query=` as well as those in `fields=`. If an ACL hides one, or it doesn't exist, the warning names it, and the filter may have been ignored.
+- `list_records` and `list_ci` check the fields you filter on in `query=` as well as those in `fields=`. If an ACL hides one, or it doesn't exist, the warning names it, and the filter may have been ignored. A dot-walk in `query=` is checked whole only when you pass `fields=`.

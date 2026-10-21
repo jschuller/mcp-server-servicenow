@@ -135,6 +135,6 @@ A dot-walk (`group.name`, `user.department.name`) reads a field of the reference
 - Role changes take effect at the user's next session, so a fresh grant may not show in that user's current denials.
 - Compare counts before trusting a filter. A condition on a field the identity can't read, or an operator ServiceNow doesn't recognise, is ignored rather than rejected, so the "filtered" result equals the unfiltered one.
 - `aggregate_records` can count rows that `list_records` won't return. A count above the rows you can list means row-level ACLs are hiding records.
-- `list_records` and `list_ci` check the fields you filter on in `query=` as well as those in `fields=`: if one is hidden or misspelled, the warning names it.
+- `list_records` and `list_ci` check the fields you filter on in `query=` as well as those in `fields=`: if one is hidden or misspelled, the warning names it. A dot-walk in `query=` is checked whole only when you pass `fields=`.
 - Never read ACL `script` or `condition` bodies, or any field that can hold credentials, even with an admin identity. Names and counts answer hygiene questions.
 - Treat the review as read-only. Recommend role removals; don't make them.

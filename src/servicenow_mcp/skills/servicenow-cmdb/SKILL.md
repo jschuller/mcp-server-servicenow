@@ -147,7 +147,7 @@ Measure each problem as a count over a total, so that the report can give a perc
 - [ ] Report each check as count / total and percent, with a sample
 ```
 
-Each check is one `aggregate_records` call for the problem rows and the same call without the check's own condition for the total. Then read up to 5 rows with `fields=` as examples. `list_ci` and `list_records` also check the fields in `query=`: a hidden or misspelled one shows up in the sample's warning. `display_value="all"` adds labels (class, status, location names) to a sample; every query here works without it.
+Each check is one `aggregate_records` call for the problem rows and the same call without the check's own condition for the total. Then read up to 5 rows with `fields=` as examples. `list_ci` and `list_records` also check the fields in `query=`: a hidden or misspelled one shows up in the sample's warning (a dot-walk only when you pass `fields=`, as these samples do). `display_value="all"` adds labels (class, status, location names) to a sample; every query here works without it.
 
 If `aggregate_records` is refused (a 401 under API-key auth means no REST API access policy covers the Aggregate API), count with `list_ci` or `list_records` instead: `fields="sys_id"` (`fields="sys_id,sys_class_name"` for a count per class), `limit=1000`, and page with `offset` until a page comes back empty. Say that the numbers were counted from readable rows.
 
@@ -164,6 +164,7 @@ If `aggregate_records` is refused (a 401 under API-key auth means no REST API ac
    aggregate_records(table_name="cmdb_ci_vm_instance", query="install_status=1^operational_status=1^duplicate_ofISNOTEMPTY")
    aggregate_records(table_name="cmdb_ci", query="duplicate_ofISNOTEMPTY", group_by="sys_class_name")
    list_ci(class_name="cmdb_ci", query="duplicate_ofISNOTEMPTY", fields="name,sys_class_name,duplicate_of,install_status", limit=5)
+   aggregate_records(table_name="reconcile_duplicate_task", query="active=true")
    list_records(table_name="reconcile_duplicate_task", query="active=true", fields="number,state,active", limit=5)
    ```
    The last call lists the open de-duplication tasks that IRE groups each set of duplicates into.

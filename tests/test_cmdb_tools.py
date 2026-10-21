@@ -94,7 +94,7 @@ def test_list_ci_checks_query_fields(cfg: Mock) -> None:
     assert not warning.startswith("Fields missing")
     assert "query= filters on ip_address, which no row carries" in warning
     assert "the instance ignored this condition" in warning
-    assert "query= names Name, which is not a column name" in warning
+    assert "query= has 1 term that starts with an uppercase letter" in warning
 
 
 def test_list_ci_no_warning(cfg: Mock) -> None:

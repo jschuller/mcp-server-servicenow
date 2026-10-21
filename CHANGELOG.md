@@ -33,20 +33,19 @@ the repository.
   `"all"` returns `{display_value, value}` per field, so the sys_id stays beside the name.
   The default, `"false"`, sends nothing new. `query=` still filters on stored values.
 - **A warning for conditions the instance ignored.** The Table API silently drops a
-  condition on a field that doesn't exist, and, depending on the instance's query ACL
-  setting, on a field an ACL hides (other instances answer 403), so the "filtered" result is
-  unfiltered. `list_records` and `list_ci` now check the fields named in `query=`, not only
-  those in `fields=`, and they name a term that is a label rather than a column (`NameLIKEa`;
+  condition on a field that doesn't exist, and, depending on the field's ACL, on a field an
+  ACL hides (some answer 403), so the "filtered" result is unfiltered. `list_records` and `list_ci` now check the fields named in `query=`, not only
+  those in `fields=`, and they count the terms that are a label rather than a column (`NameLIKEa`;
   columns are lowercase), even when no row comes back. A dot-walk in `query=` is checked
   whole only when `fields=` is given; without it, only the reference field is. A missing
   dot-walk is reported more cautiously: it is also missing when only the referenced records
   are unreadable, and then the condition applied. Terms inside RLQUERY and SUBQUERY blocks,
-  catalog variables and tags are not checked, nor are more than 50 query fields. A label is
-  echoed at most 40 characters long, letters, digits, spaces, `_` and `.` only, because query
-  text can come from a record. `list_ci` results carry the same `warning`.
+  catalog variables and tags are not checked, nor are more than 50 query fields. The warning
+  never echoes query text, which can come from a record. `list_ci` results carry the same
+  `warning`.
 - **CMDB data-quality checks** in the servicenow-cmdb skill (2.1.0, workflow 4): each check is
   a count over a total, with a sample. Unhandled duplicates (`duplicate_of` on active CIs, as
-  the CMDB Data Foundations dashboard counts them) and the same name within a class
+  the CMDB Data Foundations dashboard counts them, and open de-duplication tasks) and the same name within a class
   (`group_by=name`, `having=count^name^>^1`); stale CIs by `sys_updated_on` and by
   `last_discovered`, with never-discovered CIs counted separately; CIs with no relationship
   through `RLQUERYcmdb_rel_ci` (one block per query); broken relationships; missing key
@@ -86,6 +85,11 @@ the repository.
   telemetry; what the audit log keeps.
 
 ### Changed
+- `get_table_schema` adds a `note` when the parent tables can't be read (`sys_db_object`
+  unavailable): the hierarchy may be incomplete and inherited fields are missing.
+- **The template's workflows ask for least privilege** (`permissions: {}`), keep checkout
+  credentials out of the workspace and pin their tools; the template adds a Dependabot
+  config with a 7-day cooldown and a zizmor workflow that audits its Actions.
 - The `javascript:` refusal names the two-step alternative: query the other table first,
   then pass its sys_ids with `IN`.
 - The `having` description of `aggregate_records` gives the Aggregate API's form,
@@ -100,7 +104,7 @@ the repository.
 - The plugin manifest carries the directory listing fields (`displayName`,
   `documentationUrl`, `supportUrl`, `privacyPolicyUrl`), and the skill validator accepts
   them, plus `termsOfServiceUrl`, in a skills wrapper.
-- **Renovate auto-merges GitHub Actions updates only**, after a 3-day release age, and
+- **Renovate auto-merges GitHub Actions updates only**, after a 7-day release age, and
   never this repository's own Action; Python dependency bumps are reviewed PRs.
 - The plugin passes `SERVICENOW_TOKEN_URL` and `SERVICENOW_DEBUG`; `server.json` lists
   `SERVICENOW_DEBUG`.

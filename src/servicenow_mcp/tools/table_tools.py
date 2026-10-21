@@ -5,6 +5,7 @@ Provides CRUD operations on any ServiceNow table via /api/now/table/{table_name}
 
 import logging
 import re
+import unicodedata
 from typing import Annotated, Any, Dict, List, Literal, Optional, Tuple
 
 from pydantic import Field
@@ -86,8 +87,6 @@ _QUERY_KEYWORDS = (
 # Column names are lowercase; a dot-walk joins them with ".". Operators are
 # uppercase words or symbols, so the field is the leading lowercase run.
 _QUERY_FIELD_RE = re.compile(r"[a-z0-9_]+(?:\.[a-z0-9_]+)*")
-# A label ends where an operator starts: a symbol or an uppercase word.
-_QUERY_LABEL_RE = re.compile(r"[A-Z][A-Za-z0-9_ .]*?(?=[A-Z]{2,}|[=!<>@]|$)")
 # ^OR and ^NQ join a term, unless the term is a label such as ORIGIN: what
 # follows the joiner is a field, a label like Name, or a keyword.
 _QUERY_JOINER_RE = re.compile(
@@ -96,31 +95,34 @@ _QUERY_JOINER_RE = re.compile(
 # variables.<sys_id> and sys_tags.<sys_id> filter on catalog variables and
 # tags: no row carries them as a key.
 _PSEUDO_FIELDS = frozenset({"variables", "sys_tags"})
-# A label is echoed in the warning, so it is cut short and keeps only the
-# characters a label can hold: query text may come from a record.
-_LABEL_MAX = 40
-_LABEL_JUNK_RE = re.compile(r"[^A-Za-z0-9_ .]")
 # More query fields than this are not checked: each one lengthens the URL.
 _MAX_QUERY_FIELDS = 50
 
 
-def query_field_names(query: Optional[str]) -> Tuple[List[str], List[str]]:
-    """Return (field names, labels) that an encoded query filters on.
+def _visible(text: str) -> str:
+    """Drop format characters (zero-width, bidi) that hide a term's start."""
+    return "".join(ch for ch in text if unicodedata.category(ch) != "Cf")
+
+
+def query_field_names(query: Optional[str]) -> Tuple[List[str], int]:
+    """Return the field names an encoded query filters on, and its label count.
 
     Field names keep their dot-walk; only the first 50 are returned. Labels
     are terms that start with an uppercase letter and are no keyword, such as
     ``NameLIKEa``: no column is named that way, so the instance ignores the
-    condition. Terms inside RLQUERY and SUBQUERY blocks filter another table
-    and are skipped, and so are catalog variables and tags.
+    condition. Only their number is returned: the warning never echoes query
+    text, which may come from a record. Terms inside RLQUERY and SUBQUERY
+    blocks filter another table and are skipped, and so are catalog
+    variables and tags.
     """
     names: List[str] = []
-    labels: List[str] = []
+    labels = 0
     if not query:
         return names, labels
     depth = 0
     # "^^" is an escaped caret inside a value, not a separator.
     for index, raw in enumerate(query.replace("^^", "\0").split("^")):
-        term = raw.strip()
+        term = _visible(raw).strip()
         if index and _QUERY_JOINER_RE.match(term) and not term.startswith("ORDERBY"):
             term = term[2:]
         if not term or term == "EQ":
@@ -139,13 +141,8 @@ def query_field_names(query: Optional[str]) -> Tuple[List[str], List[str]]:
             if not _PSEUDO_FIELDS.intersection(name.split(".")):
                 names.append(name)
         elif term[0].isupper():
-            label = _QUERY_LABEL_RE.match(term)
-            text = label.group().strip() if label else ""
-            text = _LABEL_JUNK_RE.sub("", text if len(text) > 1 else term).strip()
-            if len(text) > _LABEL_MAX:
-                text = text[:_LABEL_MAX] + "..."
-            labels.append(text)
-    return list(dict.fromkeys(names))[:_MAX_QUERY_FIELDS], list(dict.fromkeys(labels))
+            labels += 1
+    return list(dict.fromkeys(names))[:_MAX_QUERY_FIELDS], labels
 
 
 def _field_list(fields: str) -> List[str]:
@@ -210,8 +207,8 @@ def _missing_fields_warning(table_name: str, missing: List[str]) -> str:
     """
     return (
         f"Fields missing from every row: {_shown(missing)}. They don't exist on "
-        f"{table_name} or an ACL hides them from this identity; query conditions "
-        "on them may have been ignored."
+        f"{table_name} or an ACL hides them from this identity; a query condition "
+        "on them would be ignored."
     )
 
 
@@ -223,7 +220,7 @@ def list_warning(
     table_name: str,
     fields: Optional[str],
     query_names: List[str],
-    labels: List[str],
+    labels: int,
     records: List[Any],
 ) -> Optional[str]:
     """The ``warning`` of list_records and list_ci, or None.
@@ -233,9 +230,9 @@ def list_warning(
     the request (``fields_with_query_fields``), so each is checked whole.
     Without ``fields=`` the whole readable row comes back, so only each name's
     first dot-walk segment can be checked. A dot-walk that is missing although
-    its reference was requested may only mean the referenced records are
-    unreadable, so that case is hedged. Labels are reported even when no row
-    comes back.
+    its reference came back may only mean the referenced records are
+    unreadable, so that case is hedged. Labels are counted, not echoed, and
+    reported even when no row comes back.
     """
     rows = [row for row in records if isinstance(row, dict)]
     requested = [name for name in _field_list(fields or "") if name not in query_names]
@@ -250,7 +247,9 @@ def list_warning(
                 if _missing_names([base if not fields else name], rows):
                     ignored.append(name)
             elif _missing_names([name], rows):
-                walked.append(name)
+                # A requested reference that is missing too: nothing to walk.
+                reference_missing = base in missing_requested
+                (ignored if reference_missing else walked).append(name)
     parts = (
         [_missing_fields_warning(table_name, missing_requested)]
         if missing_requested
@@ -272,18 +271,18 @@ def list_warning(
             "means the condition applied."
         )
     if labels:
+        one = labels == 1
+        conditions = "this condition" if one else "these conditions"
         effect = (
-            "ignores "
-            + _plural(labels, "this condition", "these conditions")
-            + ", so the rows may be unfiltered"
+            f"ignores {conditions}, so the rows may be unfiltered"
             if rows
-            else "ignored or rejected "
-            + _plural(labels, "this condition", "these conditions")
+            else f"ignored or rejected {conditions}"
         )
         parts.append(
-            f"query= names {_shown(labels)}, which "
-            + _plural(labels, "is not a column name", "are not column names")
-            + f" (columns are lowercase, like short_description): the instance {effect}."
+            f"query= has {labels} "
+            + ("term that starts" if one else "terms that start")
+            + " with an uppercase letter, such as a form label like Name: column "
+            f"names are lowercase, like short_description, so the instance {effect}."
         )
     if ignored or labels:
         parts.append(
