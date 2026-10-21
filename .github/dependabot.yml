@@ -1,0 +1,25 @@
+# Dependabot version updates (homelab-governance supply-chain baseline, 2026-10-20). They replace renovate.json:
+# the Renovate app was never installed, so it opened no pull request here.
+# Every ecosystem waits out a cooldown: 7 days by default, and 14 for a semver-major bump where the ecosystem supports
+# per-bump days (uv). docker supports default-days only, and a new python image tag is a new Python minor, so it waits 14.
+# Every update is a reviewed pull request (nothing auto-merges): main is also the plugin marketplace.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    # / is .github/workflows. /examples/template is the template repository's copy (.github/workflows there).
+    # actions/validate-skills is left out on purpose: a change to the Action breaks the template's SHA pin check
+    # until the template is re-pinned (RELEASING.md Pre-flight 1), so its pins move with a release.
+    directories: [/, /examples/template]
+    schedule: { interval: weekly }
+    cooldown: { default-days: 7 }
+    ignore:
+      # The template's validate-skills Action pin moves with server-version and plugin.json, by hand (RELEASING.md).
+      - dependency-name: "jschuller/mcp-server-servicenow*"
+  - package-ecosystem: uv
+    directory: /
+    schedule: { interval: weekly }
+    cooldown: { default-days: 7, semver-major-days: 14 }
+  - package-ecosystem: docker
+    directory: /
+    schedule: { interval: weekly }
+    cooldown: { default-days: 14 }
