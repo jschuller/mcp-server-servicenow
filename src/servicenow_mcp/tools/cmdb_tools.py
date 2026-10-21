@@ -56,7 +56,7 @@ def list_ci(
         "sysparm_limit": limit,
         "sysparm_offset": offset,
     }
-    query_names, labels = query_field_names(query)
+    query_names, unknown = query_field_names(query)
     sysparm_fields, added = fields_with_query_fields(fields, query_names)
     if query:
         query_params["sysparm_query"] = query
@@ -68,7 +68,7 @@ def list_ci(
     response = make_sn_request("GET", url, config.timeout, params=query_params)
     data = parse_json_response(response, url)
     result = result_rows(data)
-    warning = list_warning(class_name, fields, query_names, labels, result)
+    warning = list_warning(class_name, fields, query_names, unknown, result)
     drop_added_fields(result, added)
     payload: CIList = {"count": len(result), "class": class_name, "records": result}
     if warning:

@@ -5,7 +5,6 @@ Provides CRUD operations on any ServiceNow table via /api/now/table/{table_name}
 
 import logging
 import re
-import unicodedata
 from typing import Annotated, Any, Dict, List, Literal, Optional, Tuple
 
 from pydantic import Field
@@ -85,8 +84,10 @@ _QUERY_KEYWORDS = (
     "ENDSUBQUERY",
 )
 # Column names are lowercase; a dot-walk joins them with ".". Operators are
-# uppercase words or symbols, so the field is the leading lowercase run.
-_QUERY_FIELD_RE = re.compile(r"[a-z0-9_]+(?:\.[a-z0-9_]+)*")
+# uppercase words or symbols, so a field term is a lowercase run followed
+# directly by one. Anything else (a label like Name, an invisible or
+# non-ASCII character) names no column the instance can match.
+_QUERY_FIELD_RE = re.compile(r"([a-z0-9_]+(?:\.[a-z0-9_]+)*)(?=[A-Z=!<>@]|\Z)")
 # ^OR and ^NQ join a term, unless the term is a label such as ORIGIN: what
 # follows the joiner is a field, a label like Name, or a keyword.
 _QUERY_JOINER_RE = re.compile(
@@ -99,30 +100,26 @@ _PSEUDO_FIELDS = frozenset({"variables", "sys_tags"})
 _MAX_QUERY_FIELDS = 50
 
 
-def _visible(text: str) -> str:
-    """Drop format characters (zero-width, bidi) that hide a term's start."""
-    return "".join(ch for ch in text if unicodedata.category(ch) != "Cf")
-
-
 def query_field_names(query: Optional[str]) -> Tuple[List[str], int]:
-    """Return the field names an encoded query filters on, and its label count.
+    """Return the field names an encoded query filters on, and how many terms
+    name no column.
 
-    Field names keep their dot-walk; only the first 50 are returned. Labels
-    are terms that start with an uppercase letter and are no keyword, such as
-    ``NameLIKEa``: no column is named that way, so the instance ignores the
-    condition. Only their number is returned: the warning never echoes query
-    text, which may come from a record. Terms inside RLQUERY and SUBQUERY
-    blocks filter another table and are skipped, and so are catalog
-    variables and tags.
+    Field names keep their dot-walk; only the first 50 are returned. A term
+    that is neither a field term nor a keyword, such as ``NameLIKEa`` or a
+    name with an invisible character, matches no column, so the instance
+    ignores the condition. Only the number of such terms is returned: the
+    warning never echoes them, since query text may come from a record. Terms
+    inside RLQUERY and SUBQUERY blocks filter another table and are skipped,
+    and so are catalog variables and tags.
     """
     names: List[str] = []
-    labels = 0
+    unknown = 0
     if not query:
-        return names, labels
+        return names, unknown
     depth = 0
     # "^^" is an escaped caret inside a value, not a separator.
     for index, raw in enumerate(query.replace("^^", "\0").split("^")):
-        term = _visible(raw).strip()
+        term = raw.strip()
         if index and _QUERY_JOINER_RE.match(term) and not term.startswith("ORDERBY"):
             term = term[2:]
         if not term or term == "EQ":
@@ -136,13 +133,11 @@ def query_field_names(query: Optional[str]) -> Tuple[List[str], int]:
         if depth or term.startswith(_QUERY_KEYWORDS):
             continue
         field = _QUERY_FIELD_RE.match(term)
-        if field:
-            name = field.group().rstrip(".")
-            if not _PSEUDO_FIELDS.intersection(name.split(".")):
-                names.append(name)
-        elif term[0].isupper():
-            labels += 1
-    return list(dict.fromkeys(names))[:_MAX_QUERY_FIELDS], labels
+        if not field:
+            unknown += 1
+        elif not _PSEUDO_FIELDS.intersection(field.group(1).split(".")):
+            names.append(field.group(1))
+    return list(dict.fromkeys(names))[:_MAX_QUERY_FIELDS], unknown
 
 
 def _field_list(fields: str) -> List[str]:
@@ -191,8 +186,16 @@ def _missing_names(names: List[str], rows: List[Dict[str, Any]]) -> List[str]:
     ]
 
 
+_ECHO_RE = re.compile(r"[A-Za-z0-9_.]{1,60}")
+
+
 def _shown(names: List[str]) -> str:
-    return ", ".join(names[:20]) + (
+    """Names for the warning: field-name characters only, at most 60 each."""
+    shown = [
+        name if _ECHO_RE.fullmatch(name) else "(a name that is not a column name)"
+        for name in names[:20]
+    ]
+    return ", ".join(shown) + (
         f" and {len(names) - 20} more" if len(names) > 20 else ""
     )
 
@@ -207,8 +210,8 @@ def _missing_fields_warning(table_name: str, missing: List[str]) -> str:
     """
     return (
         f"Fields missing from every row: {_shown(missing)}. They don't exist on "
-        f"{table_name} or an ACL hides them from this identity; a query condition "
-        "on them would be ignored."
+        f"{table_name} or an ACL hides them from this identity; query conditions "
+        "on them may have been ignored."
     )
 
 
@@ -220,7 +223,7 @@ def list_warning(
     table_name: str,
     fields: Optional[str],
     query_names: List[str],
-    labels: int,
+    unknown: int,
     records: List[Any],
 ) -> Optional[str]:
     """The ``warning`` of list_records and list_ci, or None.
@@ -231,8 +234,8 @@ def list_warning(
     Without ``fields=`` the whole readable row comes back, so only each name's
     first dot-walk segment can be checked. A dot-walk that is missing although
     its reference came back may only mean the referenced records are
-    unreadable, so that case is hedged. Labels are counted, not echoed, and
-    reported even when no row comes back.
+    unreadable, so that case is hedged. Terms that name no column are
+    counted, not echoed, and reported even when no row comes back.
     """
     rows = [row for row in records if isinstance(row, dict)]
     requested = [name for name in _field_list(fields or "") if name not in query_names]
@@ -241,15 +244,17 @@ def list_warning(
     walked: List[str] = []
     if rows:
         missing_requested = _missing_names(requested, rows)
+        # References no row carries, requested or filtered on: nothing to walk.
+        missing_plain = set(missing_requested) | set(
+            _missing_names([name for name in query_names if "." not in name], rows)
+        )
         for name in query_names:
             base = name.split(".")[0]
             if not fields or "." not in name:
                 if _missing_names([base if not fields else name], rows):
                     ignored.append(name)
             elif _missing_names([name], rows):
-                # A requested reference that is missing too: nothing to walk.
-                reference_missing = base in missing_requested
-                (ignored if reference_missing else walked).append(name)
+                (ignored if base in missing_plain else walked).append(name)
     parts = (
         [_missing_fields_warning(table_name, missing_requested)]
         if missing_requested
@@ -270,21 +275,22 @@ def list_warning(
             "To tell, run the query again with a value that can't match: 0 rows "
             "means the condition applied."
         )
-    if labels:
-        one = labels == 1
+    if unknown:
+        one = unknown == 1
         conditions = "this condition" if one else "these conditions"
         effect = (
-            f"ignores {conditions}, so the rows may be unfiltered"
+            f"The instance ignores {conditions}, so the rows may be unfiltered."
             if rows
-            else f"ignored or rejected {conditions}"
+            else f"The instance ignored or rejected {conditions}."
         )
         parts.append(
-            f"query= has {labels} "
-            + ("term that starts" if one else "terms that start")
-            + " with an uppercase letter, such as a form label like Name: column "
-            f"names are lowercase, like short_description, so the instance {effect}."
+            f"query= has {unknown} "
+            + ("term that doesn't" if one else "terms that don't")
+            + " start with a column name: a form label like Name, or a name with an"
+            " invisible or non-ASCII character. Column names are lowercase, like"
+            f" short_description. {effect}"
         )
-    if ignored or labels:
+    if ignored or unknown:
         parts.append(
             "To find the real column name, call get_table_schema on the table "
             "that holds it (it needs personalize_dictionary), or read one row "
@@ -327,7 +333,7 @@ def list_records(
         "sysparm_limit": limit,
         "sysparm_offset": offset,
     }
-    query_names, labels = query_field_names(query)
+    query_names, unknown = query_field_names(query)
     sysparm_fields, added = fields_with_query_fields(fields, query_names)
     if query:
         query_params["sysparm_query"] = query
@@ -343,7 +349,7 @@ def list_records(
     response = make_sn_request("GET", url, config.timeout, params=query_params)
     data = parse_json_response(response, url)
     result = result_rows(data)
-    warning = list_warning(table_name, fields, query_names, labels, result)
+    warning = list_warning(table_name, fields, query_names, unknown, result)
     drop_added_fields(result, added)
     payload: RecordList = {"count": len(result), "records": result}
     if warning:
