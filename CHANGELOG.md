@@ -36,15 +36,15 @@ the repository.
   condition on a field that doesn't exist, and, depending on the field's ACL, on a field an
   ACL hides (some answer 403), so the "filtered" result is unfiltered. `list_records` and
   `list_ci` now check the fields named in `query=`, not only those in `fields=`, and they
-  count the terms that name no column, even when no row comes back: a label like
-  `NameLIKEa` (columns are lowercase), or a name with an invisible or non-ASCII character. A
-  dot-walk in `query=` is checked whole only when `fields=` is given; without it, only the
-  reference field is. A missing dot-walk is reported more cautiously: it is also missing when
-  only the referenced records are unreadable, and then the condition applied. Terms inside
-  RLQUERY and SUBQUERY blocks, catalog variables and tags are not checked, nor are more than
-  50 query fields. Terms that name no column are counted, never quoted, and field names are
-  echoed in field-name characters only, at most 60 each, since query text can come from a
-  record. `list_ci` results carry the same `warning`.
+  count the terms that start with an uppercase letter (a label like `NameLIKEa`; columns are
+  lowercase), even when no row comes back. A dot-walk in `query=` is checked whole only when
+  `fields=` is given; without it, only the reference field is. A missing dot-walk is reported
+  more cautiously: it is also missing when only the referenced records are unreadable, and
+  then the condition applied. Terms inside RLQUERY and SUBQUERY blocks, catalog variables,
+  tags, terms the server can't parse and more than 50 query fields are not checked.
+  Uppercase terms are counted, never quoted, and field names are echoed in field-name
+  characters only, at most 60 each, since query text can come from a record. `list_ci`
+  results carry the same `warning`.
 - **CMDB data-quality checks** in the servicenow-cmdb skill (2.1.0, workflow 4): each check is
   a count over a total, with a sample. Unhandled duplicates (`duplicate_of` on active CIs, as
   the CMDB Data Foundations dashboard counts them, and open de-duplication tasks) and the same name within a class

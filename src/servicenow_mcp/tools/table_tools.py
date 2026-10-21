@@ -83,15 +83,23 @@ _QUERY_KEYWORDS = (
     "SUBQUERY",
     "ENDSUBQUERY",
 )
+# The instance trims ASCII whitespace and control characters (<= U+0020)
+# around a name, as Java's trim() does, and nothing else.
+_TRIM = "".join(chr(code) for code in range(0x21))
 # Column names are lowercase; a dot-walk joins them with ".". Operators are
-# uppercase words or symbols, so a field term is a lowercase run followed
-# directly by one. Anything else (a label like Name, an invisible or
-# non-ASCII character) names no column the instance can match.
-_QUERY_FIELD_RE = re.compile(r"([a-z0-9_]+(?:\.[a-z0-9_]+)*)(?=[A-Z=!<>@]|\Z)")
+# uppercase words or symbols, so a field term is a lowercase run, optional
+# trimmed whitespace, then an operator. A term that starts with an uppercase
+# letter and is no keyword (a label like Name) names no column. Anything
+# else is not checked: the server can't tell what the instance makes of it.
+_QUERY_FIELD_RE = re.compile(
+    r"([a-z0-9_]+(?:\.[a-z0-9_]+)*)(?=[\x00-\x20]*(?:[A-Z=!<>@]|\Z))"
+)
 # ^OR and ^NQ join a term, unless the term is a label such as ORIGIN: what
 # follows the joiner is a field, a label like Name, or a keyword.
 _QUERY_JOINER_RE = re.compile(
-    r"(?:OR|NQ)(?:[a-z0-9_]|[A-Z][a-z]|" + "|".join(_QUERY_KEYWORDS) + r"|EQ\Z)"
+    r"(?:OR|NQ)[\x00-\x20]*(?:[a-z0-9_]|[A-Z][a-z]|"
+    + "|".join(_QUERY_KEYWORDS)
+    + r"|EQ\Z)"
 )
 # variables.<sys_id> and sys_tags.<sys_id> filter on catalog variables and
 # tags: no row carries them as a key.
@@ -105,12 +113,12 @@ def query_field_names(query: Optional[str]) -> Tuple[List[str], int]:
     name no column.
 
     Field names keep their dot-walk; only the first 50 are returned. A term
-    that is neither a field term nor a keyword, such as ``NameLIKEa`` or a
-    name with an invisible character, matches no column, so the instance
-    ignores the condition. Only the number of such terms is returned: the
-    warning never echoes them, since query text may come from a record. Terms
-    inside RLQUERY and SUBQUERY blocks filter another table and are skipped,
-    and so are catalog variables and tags.
+    that starts with an uppercase letter and is no keyword, such as
+    ``NameLIKEa``, matches no column, so the instance ignores the condition.
+    Only the number of such terms is returned: the warning never echoes them,
+    since query text may come from a record. Terms inside RLQUERY and SUBQUERY
+    blocks filter another table and are skipped, and so are catalog variables,
+    tags and any term the server can't parse.
     """
     names: List[str] = []
     unknown = 0
@@ -119,10 +127,10 @@ def query_field_names(query: Optional[str]) -> Tuple[List[str], int]:
     depth = 0
     # "^^" is an escaped caret inside a value, not a separator.
     for index, raw in enumerate(query.replace("^^", "\0").split("^")):
-        term = raw.strip()
+        term = raw.strip(_TRIM)
         if index and _QUERY_JOINER_RE.match(term) and not term.startswith("ORDERBY"):
-            term = term[2:]
-        if not term or term == "EQ":
+            term = term[2:].strip(_TRIM)
+        if not term or term in ("EQ", "OR", "NQ"):
             continue
         if term.startswith(("RLQUERY", "SUBQUERY")):
             depth += 1
@@ -133,10 +141,11 @@ def query_field_names(query: Optional[str]) -> Tuple[List[str], int]:
         if depth or term.startswith(_QUERY_KEYWORDS):
             continue
         field = _QUERY_FIELD_RE.match(term)
-        if not field:
+        if field:
+            if not _PSEUDO_FIELDS.intersection(field.group(1).split(".")):
+                names.append(field.group(1))
+        elif "A" <= term[0] <= "Z":
             unknown += 1
-        elif not _PSEUDO_FIELDS.intersection(field.group(1).split(".")):
-            names.append(field.group(1))
     return list(dict.fromkeys(names))[:_MAX_QUERY_FIELDS], unknown
 
 
@@ -186,15 +195,18 @@ def _missing_names(names: List[str], rows: List[Dict[str, Any]]) -> List[str]:
     ]
 
 
-_ECHO_RE = re.compile(r"[A-Za-z0-9_.]{1,60}")
+_ECHO_RE = re.compile(r"[A-Za-z0-9_.]+")
+
+
+def _echo(name: str) -> str:
+    if not _ECHO_RE.fullmatch(name):
+        return "(a name that is not a column name)"
+    return name if len(name) <= 60 else name[:60] + "..."
 
 
 def _shown(names: List[str]) -> str:
     """Names for the warning: field-name characters only, at most 60 each."""
-    shown = [
-        name if _ECHO_RE.fullmatch(name) else "(a name that is not a column name)"
-        for name in names[:20]
-    ]
+    shown = [_echo(name) for name in names[:20]]
     return ", ".join(shown) + (
         f" and {len(names) - 20} more" if len(names) > 20 else ""
     )
@@ -285,10 +297,9 @@ def list_warning(
         )
         parts.append(
             f"query= has {unknown} "
-            + ("term that doesn't" if one else "terms that don't")
-            + " start with a column name: a form label like Name, or a name with an"
-            " invisible or non-ASCII character. Column names are lowercase, like"
-            f" short_description. {effect}"
+            + ("term that starts" if one else "terms that start")
+            + " with an uppercase letter, such as a form label like Name. Column"
+            f" names are lowercase, like short_description. {effect}"
         )
     if ignored or unknown:
         parts.append(
