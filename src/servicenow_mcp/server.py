@@ -33,7 +33,10 @@ _SKILL_HINTS = (
         "table schemas, fields, choice lists, data profiling, a record's work notes, "
         "comments and audit history, what touches a table or field",
     ),
-    ("analyzing-access", "who has admin, role reviews, 403s, missing rows or fields"),
+    (
+        "analyzing-access",
+        "who has admin, role reviews, team rosters, 403s, missing rows or fields",
+    ),
 )
 
 

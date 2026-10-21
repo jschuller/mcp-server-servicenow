@@ -25,7 +25,9 @@ the release (see Failure modes).
    - `server.json` → top-level `version` **and** `packages[0].version`
    - `.claude-plugin/plugin.json` → `version` (missed in v0.6.1 — hence the check)
 
-   Then `uv lock` (the lockfile records the project's own version), a
+   Then `uv lock` (the lockfile records the project's own version; on a machine with a
+   global uv `exclude-newer`, run lock commands with `--no-config`, or the cooldown is
+   written into the lock and CI's `uv lock --check` fails), a
    `CHANGELOG.md` section (`## [X.Y.Z] - YYYY-MM-DD`). On a new minor (0.X.0), move
    the supported line in `SECURITY.md` to `0.X.x` (it was left at 0.7.x until 0.9.2).
 

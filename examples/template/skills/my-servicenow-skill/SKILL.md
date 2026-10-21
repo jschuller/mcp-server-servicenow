@@ -45,5 +45,5 @@ Declare every table your tool calls read in `io.github.jschuller/servicenow-tabl
 
 ## Tips
 
-- Request every field you filter on in `fields=`, so a hidden field shows up in the warning.
+- `list_records` and `list_ci` check the fields you filter on in `query=` as well as those in `fields=`: if one is hidden or misspelled, the warning names it.
 - Write in your own words, and cite ServiceNow's documentation by link (see `references/notes.md`).

@@ -93,15 +93,25 @@ _QUERY_LABEL_RE = re.compile(r"[A-Z][A-Za-z0-9_ .]*?(?=[A-Z]{2,}|[=!<>@]|$)")
 _QUERY_JOINER_RE = re.compile(
     r"(?:OR|NQ)(?:[a-z0-9_]|[A-Z][a-z]|" + "|".join(_QUERY_KEYWORDS) + r"|EQ\Z)"
 )
+# variables.<sys_id> and sys_tags.<sys_id> filter on catalog variables and
+# tags: no row carries them as a key.
+_PSEUDO_FIELDS = frozenset({"variables", "sys_tags"})
+# A label is echoed in the warning, so it is cut short and keeps only the
+# characters a label can hold: query text may come from a record.
+_LABEL_MAX = 40
+_LABEL_JUNK_RE = re.compile(r"[^A-Za-z0-9_ .]")
+# More query fields than this are not checked: each one lengthens the URL.
+_MAX_QUERY_FIELDS = 50
 
 
 def query_field_names(query: Optional[str]) -> Tuple[List[str], List[str]]:
     """Return (field names, labels) that an encoded query filters on.
 
-    Field names keep their dot-walk. Labels are terms that start with an
-    uppercase letter and are no keyword, such as ``NameLIKEa``: no column is
-    named that way, so the instance ignores the condition. Terms inside
-    RLQUERY and SUBQUERY blocks filter another table and are skipped.
+    Field names keep their dot-walk; only the first 50 are returned. Labels
+    are terms that start with an uppercase letter and are no keyword, such as
+    ``NameLIKEa``: no column is named that way, so the instance ignores the
+    condition. Terms inside RLQUERY and SUBQUERY blocks filter another table
+    and are skipped, and so are catalog variables and tags.
     """
     names: List[str] = []
     labels: List[str] = []
@@ -126,14 +136,16 @@ def query_field_names(query: Optional[str]) -> Tuple[List[str], List[str]]:
         field = _QUERY_FIELD_RE.match(term)
         if field:
             name = field.group().rstrip(".")
-            # variables.<sys_id> filters on a catalog variable, not a column.
-            if "variables" not in name.split("."):
+            if not _PSEUDO_FIELDS.intersection(name.split(".")):
                 names.append(name)
         elif term[0].isupper():
             label = _QUERY_LABEL_RE.match(term)
             text = label.group().strip() if label else ""
-            labels.append(text if len(text) > 1 else term[:40])
-    return list(dict.fromkeys(names)), list(dict.fromkeys(labels))
+            text = _LABEL_JUNK_RE.sub("", text if len(text) > 1 else term).strip()
+            if len(text) > _LABEL_MAX:
+                text = text[:_LABEL_MAX] + "..."
+            labels.append(text)
+    return list(dict.fromkeys(names))[:_MAX_QUERY_FIELDS], list(dict.fromkeys(labels))
 
 
 def _field_list(fields: str) -> List[str]:
@@ -189,7 +201,7 @@ def _shown(names: List[str]) -> str:
 
 
 def _missing_fields_warning(table_name: str, missing: List[str]) -> str:
-    """The sentence that names fields no returned row carries.
+    """The sentence that names requested fields no returned row carries.
 
     The Table API drops a field from every row both when the table has no such
     field and when an ACL hides it from the caller, and it silently ignores
@@ -203,6 +215,10 @@ def _missing_fields_warning(table_name: str, missing: List[str]) -> str:
     )
 
 
+def _plural(names: List[str], one: str, many: str) -> str:
+    return one if len(names) == 1 else many
+
+
 def list_warning(
     table_name: str,
     fields: Optional[str],
@@ -212,58 +228,70 @@ def list_warning(
 ) -> Optional[str]:
     """The ``warning`` of list_records and list_ci, or None.
 
-    Checks the fields in ``fields=`` and the query's field names (which
-    ``fields_with_query_fields`` added to the request). Without ``fields=``
-    the whole readable row comes back, so each query field's first dot-walk
-    segment is checked against the row keys. Labels are reported even when
-    no row comes back.
+    The first sentence names requested fields that no row carries. The query's
+    field names get their own sentences: with ``fields=`` they were added to
+    the request (``fields_with_query_fields``), so each is checked whole.
+    Without ``fields=`` the whole readable row comes back, so only each name's
+    first dot-walk segment can be checked. A dot-walk that is missing although
+    its reference was requested may only mean the referenced records are
+    unreadable, so that case is hedged. Labels are reported even when no row
+    comes back.
     """
     rows = [row for row in records if isinstance(row, dict)]
-    missing_query: List[str] = []
-    warning: Optional[str] = None
+    requested = [name for name in _field_list(fields or "") if name not in query_names]
+    missing_requested: List[str] = []
+    ignored: List[str] = []
+    walked: List[str] = []
     if rows:
-        if fields:
-            checked = _field_list(fields) + query_names
-            missing = _missing_names(checked, rows)
-            missing_query = [name for name in query_names if name in missing]
-        else:
-            missing = _missing_names([name.split(".")[0] for name in query_names], rows)
-            missing_query = [
-                name for name in query_names if name.split(".")[0] in missing
-            ]
-        if missing:
-            warning = _missing_fields_warning(table_name, missing)
-    ignored = [name for name in missing_query if "." not in name]
-    walked = [name for name in missing_query if "." in name]
-    if not missing_query and not labels:
-        return warning
-    parts = [warning] if warning else []
+        missing_requested = _missing_names(requested, rows)
+        for name in query_names:
+            base = name.split(".")[0]
+            if not fields or "." not in name:
+                if _missing_names([base if not fields else name], rows):
+                    ignored.append(name)
+            elif _missing_names([name], rows):
+                walked.append(name)
+    parts = (
+        [_missing_fields_warning(table_name, missing_requested)]
+        if missing_requested
+        else []
+    )
     if ignored:
         parts.append(
-            f"query= filters on {_shown(ignored)}: the instance ignored these "
-            "conditions, so the rows may be unfiltered."
+            f"query= filters on {_shown(ignored)}, which no row carries: the "
+            "instance ignored "
+            + _plural(ignored, "this condition", "these conditions")
+            + ", so the rows may be unfiltered."
         )
     if walked:
-        # A dot-walk also comes back missing when the referenced records are
-        # unreadable, and then the condition still applies.
         parts.append(
-            f"query= filters on {_shown(walked)}: either the field doesn't exist "
-            "or is hidden and the condition was ignored, or only the referenced "
-            "records are unreadable and the condition applied. Request the "
-            "reference field itself to tell."
+            f"query= filters on {_shown(walked)}, which no row carries: either the "
+            "field doesn't exist or is hidden and the condition was ignored, or "
+            "only the referenced records are unreadable and the condition applied. "
+            "To tell, run the query again with a value that can't match: 0 rows "
+            "means the condition applied."
         )
     if labels:
         effect = (
-            "ignores these conditions, so the rows may be unfiltered"
+            "ignores "
+            + _plural(labels, "this condition", "these conditions")
+            + ", so the rows may be unfiltered"
             if rows
-            else "ignored or rejected these conditions"
+            else "ignored or rejected "
+            + _plural(labels, "this condition", "these conditions")
         )
         parts.append(
-            f"query= names {_shown(labels)}, which are not column names (columns "
-            f"are lowercase, like short_description): the instance {effect}."
+            f"query= names {_shown(labels)}, which "
+            + _plural(labels, "is not a column name", "are not column names")
+            + f" (columns are lowercase, like short_description): the instance {effect}."
         )
-    parts.append(f"Call get_table_schema on {table_name} to find the real column name.")
-    return " ".join(parts)
+    if ignored or labels:
+        parts.append(
+            "To find the real column name, call get_table_schema on the table "
+            "that holds it (it needs personalize_dictionary), or read one row "
+            "without fields= to see the readable columns."
+        )
+    return " ".join(parts) or None
 
 
 @mcp.tool(tags={"read", "table"}, annotations=annotations.READ)

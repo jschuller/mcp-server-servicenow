@@ -5,7 +5,7 @@ license: MIT
 metadata:
   author: jschuller
   version: "2.1.0"
-  io.github.jschuller/servicenow-roles: "cmdb_read sn_cmdb_user snc_read_only"
+  io.github.jschuller/servicenow-roles: "cmdb_read sn_cmdb_user itil snc_read_only"
   io.github.jschuller/servicenow-tables: "cmdb_ci cmdb_rel_ci sys_db_object service_offering cmdb_health_scorecard cmdb_health_result cmdb_health_metric cmdb_health_staleness_rule cmdb_health_orphan_rule sn_getwell_csdm_score reconcile_duplicate_task cmn_location cmdb_model alm_hardware"
 
 ---
@@ -149,7 +149,7 @@ Measure each problem as a count over a total, so that the report can give a perc
 
 Each check is one `aggregate_records` call for the problem rows and the same call without the check's own condition for the total. Then read up to 5 rows with `fields=` as examples. `list_ci` and `list_records` also check the fields in `query=`: a hidden or misspelled one shows up in the sample's warning. `display_value="all"` adds labels (class, status, location names) to a sample; every query here works without it.
 
-If `aggregate_records` is refused (a 401 under API-key auth means no REST API access policy covers the Aggregate API), count with `list_ci` or `list_records` instead: `fields="sys_id"`, `limit=1000`, and page with `offset` until a page comes back empty. Say that the numbers were counted from readable rows.
+If `aggregate_records` is refused (a 401 under API-key auth means no REST API access policy covers the Aggregate API), count with `list_ci` or `list_records` instead: `fields="sys_id"` (`fields="sys_id,sys_class_name"` for a count per class), `limit=1000`, and page with `offset` until a page comes back empty. Say that the numbers were counted from readable rows.
 
 1. **Totals.** CIs per class, and the active hardware that most checks score:
    ```
@@ -158,7 +158,7 @@ If `aggregate_records` is refused (a 401 under API-key auth means no REST API ac
    ```
    `group_by="sys_class_name"` counts each exact class. A class table such as `cmdb_ci_hardware` holds the class and all its subclasses; on `cmdb_ci`, the condition `sys_class_nameINSTANCEOF<class>` does the same. `install_status=1` is Installed and `operational_status=1` is Operational: the set that ServiceNow's CMDB Data Foundations dashboard scores. Put `cmdb_ci_vm_instance`, `cmdb_ci_appl` or any other class in place of `cmdb_ci_hardware` the same way.
 
-2. **Duplicates tagged by IRE.** The Identification and Reconciliation Engine (IRE) sets `duplicate_of` on a duplicate CI to point at the main CI. The field stays set after remediation, so a set CI is not always an open problem; IRE clears it only when IRE processing updates another attribute of the CI. Count the unhandled ones as the CMDB Data Foundations dashboard does, on active CIs, and the ever-tagged total for context:
+2. **Duplicates tagged by IRE.** The Identification and Reconciliation Engine (IRE) sets `duplicate_of` on a duplicate CI to point at the main CI, when `glide.identification_engine.skip_duplicates` is on (the default) and the set is under its threshold (5 by default). It creates a de-duplication task in every case, so count `reconcile_duplicate_task` too. The field stays set after remediation, so a set CI is not always an open problem; IRE clears it when IRE processing updates another attribute of the CI. Count the unhandled ones as the CMDB Data Foundations dashboard does, on active CIs, and the ever-tagged total for context:
    ```
    aggregate_records(table_name="cmdb_ci_hardware", query="install_status=1^operational_status=1^duplicate_ofISNOTEMPTY", group_by="sys_class_name")
    aggregate_records(table_name="cmdb_ci_vm_instance", query="install_status=1^operational_status=1^duplicate_ofISNOTEMPTY")

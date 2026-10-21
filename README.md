@@ -1,4 +1,4 @@
-<!-- mcp-server: servicenow | tools: 19 | resources: 5 | skills: 4 | transport: stdio,streamable-http | auth: basic,oauth,api_key | framework: fastmcp-4.1 -->
+<!-- mcp-server: servicenow | tools: 20 | resources: 5 | skills: 4 | transport: stdio,streamable-http | auth: basic,oauth,api_key | framework: fastmcp-4.1 -->
 <!-- mcp-name: io.github.jschuller/mcp-server-servicenow -->
 
 <p align="center">
@@ -173,7 +173,7 @@ Everything else: run `--check` ([above](#4-check-it-works)), then [TROUBLESHOOTI
 
 **Skills:** four guided workflows for the Now Platform, served over MCP as `skill://` resources so every client gets them with no plugin:
 - `exploring-tables`: schemas, choice lists, a record's history, what touches a table or field, the encoded-query reference;
-- `analyzing-access`: who holds which roles, and what a 403 or a missing field means;
+- `analyzing-access`: who holds which roles, team rosters and group members, and what a 403 or a missing field means;
 - `reviewing-update-sets`: risk categories and a pre-promotion checklist;
 - `servicenow-cmdb`: CMDB data quality and CSDM conformance.
 

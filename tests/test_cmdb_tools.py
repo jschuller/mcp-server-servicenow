@@ -91,10 +91,10 @@ def test_list_ci_checks_query_fields(cfg: Mock) -> None:
     assert params["sysparm_fields"] == "name,os,ip_address"
     assert result["records"] == [{"name": "web01"}, {"name": "db01"}]
     warning = result["warning"]
-    assert warning.startswith("Fields missing from every row: ip_address.")
-    assert "cmdb_ci_server" in warning
-    assert "query= filters on ip_address:" in warning
-    assert "query= names Name, which are not column names" in warning
+    assert not warning.startswith("Fields missing")
+    assert "query= filters on ip_address, which no row carries" in warning
+    assert "the instance ignored this condition" in warning
+    assert "query= names Name, which is not a column name" in warning
 
 
 def test_list_ci_no_warning(cfg: Mock) -> None:

@@ -3,8 +3,8 @@
 ## [Unreleased]
 
 Read-only developer-loop tools (where-used, record history, structured output), readable
-values and checked filters from a review of the owner's old ServiceNow notebooks, and the
-fixes from an independent review of the repository.
+values (`display_value`) and checked filters, and the fixes from an independent review of
+the repository.
 
 ### Upgrade notes
 - **Eight read tools now publish an `outputSchema`**: `list_records`, `list_ci`,
@@ -33,13 +33,17 @@ fixes from an independent review of the repository.
   `"all"` returns `{display_value, value}` per field, so the sys_id stays beside the name.
   The default, `"false"`, sends nothing new. `query=` still filters on stored values.
 - **A warning for conditions the instance ignored.** The Table API silently drops a
-  condition on a field that doesn't exist or that an ACL hides, so the "filtered" result is
+  condition on a field that doesn't exist, and, depending on the instance's query ACL
+  setting, on a field an ACL hides (other instances answer 403), so the "filtered" result is
   unfiltered. `list_records` and `list_ci` now check the fields named in `query=`, not only
   those in `fields=`, and they name a term that is a label rather than a column (`NameLIKEa`;
-  columns are lowercase), even when no row comes back. A missing dot-walk is reported more
-  cautiously: it is also missing when only the referenced records are unreadable, and then
-  the condition applied. Terms inside RLQUERY and SUBQUERY blocks and catalog variables
-  (`variables.<sys_id>`) are not checked. `list_ci` results carry the same `warning`.
+  columns are lowercase), even when no row comes back. A dot-walk in `query=` is checked
+  whole only when `fields=` is given; without it, only the reference field is. A missing
+  dot-walk is reported more cautiously: it is also missing when only the referenced records
+  are unreadable, and then the condition applied. Terms inside RLQUERY and SUBQUERY blocks,
+  catalog variables and tags are not checked, nor are more than 50 query fields. A label is
+  echoed at most 40 characters long, letters, digits, spaces, `_` and `.` only, because query
+  text can come from a record. `list_ci` results carry the same `warning`.
 - **CMDB data-quality checks** in the servicenow-cmdb skill (2.1.0, workflow 4): each check is
   a count over a total, with a sample. Unhandled duplicates (`duplicate_of` on active CIs, as
   the CMDB Data Foundations dashboard counts them) and the same name within a class
@@ -51,8 +55,6 @@ fixes from an independent review of the repository.
 - **Joins through dot-walks** in the analyzing-access skill (2.1.0, workflow 5): team
   rosters, role holders with their groups, and distinct people holding a role
   (`group_by=user`), with why a plain count gives grants rather than people.
-- The `javascript:` refusal names the two-step alternative: query the other table first,
-  then pass its sys_ids with `IN`.
 - **`find_references`**: where-used for a table or one field. It lists business rules,
   client scripts, UI policies (or their field actions), ACLs, script includes and
   reference fields, by name and sys_id only, never script or ACL bodies. Script matches
@@ -61,7 +63,7 @@ fixes from an independent review of the repository.
   its table out) is reported in `not_assessable`, and the others still answer. Under basic
   auth the first 401 is an error, and so is a refused OAuth secret or a timeout, raised at the first source so a bad
   password costs one failed login. The exploring-tables skill drives it (workflow 7).
-- **Record history** in the exploring-tables skill (workflow 6): a record's work notes and
+- **Record history** in the exploring-tables skill (2.1.0, workflow 6): a record's work notes and
   comments (`sys_journal_field`) and field changes (`sys_audit`) as one timeline. Without
   `audit_viewer` the journal returns 0 rows rather than a 403, and the skill reports that
   as not assessable.
@@ -84,6 +86,8 @@ fixes from an independent review of the repository.
   telemetry; what the audit log keeps.
 
 ### Changed
+- The `javascript:` refusal names the two-step alternative: query the other table first,
+  then pass its sys_ids with `IN`.
 - The `having` description of `aggregate_records` gives the Aggregate API's form,
   `aggregate^field^operator^value` (`count^name^>^1`), not `COUNT>5`.
 - **The Claude Code plugin pins its server** to the same release
@@ -91,7 +95,8 @@ fixes from an independent review of the repository.
   users get a new server when the plugin updates, so the skills and the server always
   come from the same release. CI checks the pin with the other version fields, and
   RELEASING.md now publishes to PyPI before main (the marketplace) moves.
-- One description everywhere: pyproject, server.json, the plugin and the marketplace.
+- One description in pyproject, the plugin and the marketplace; server.json carries a short
+  form of it.
 - The plugin manifest carries the directory listing fields (`displayName`,
   `documentationUrl`, `supportUrl`, `privacyPolicyUrl`), and the skill validator accepts
   them, plus `termsOfServiceUrl`, in a skills wrapper.

@@ -4,7 +4,7 @@ description: "Exploring any ServiceNow table: schema, field types, sample record
 license: MIT
 metadata:
   author: jschuller
-  version: "2.0.0"
+  version: "2.1.0"
   io.github.jschuller/servicenow-roles: "personalize_dictionary itil snc_read_only audit_viewer"
   io.github.jschuller/servicenow-tables: "sys_db_object sys_dictionary sys_choice sys_journal_field sys_audit sys_script sys_script_client sys_ui_policy sys_ui_policy_action sys_security_acl sys_script_include"
 
