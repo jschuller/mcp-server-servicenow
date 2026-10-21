@@ -207,9 +207,9 @@ Current: OIDC trusted publishing (no long-lived secrets), all Actions pinned
 to commit SHAs, least-privilege workflows (`permissions: {}` at the top, each job
 asks for what it needs), `persist-credentials: false` on every checkout, pinned
 uv, build and twine, a zizmor job that audits the workflows, fail-closed HTTP
-serving, Dependabot + Renovate (Renovate auto-merges GitHub Actions updates
-only, after a 7-day release age; runtime and dev dependency bumps are reviewed
-PRs), strict twine
+serving, Dependabot version updates (`.github/dependabot.yml`: GitHub Actions, uv
+and the Docker base image, each after a 7-day cooldown, 14 for a uv major or a new
+image tag; every bump is a reviewed PR, nothing auto-merges), strict twine
 metadata check, ruff rule set and mypy major version bounded so unpinned CI
 installs can't shift behavior underneath previously-clean code.
 

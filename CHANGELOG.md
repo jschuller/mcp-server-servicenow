@@ -106,8 +106,10 @@ the repository.
 - The plugin manifest carries the directory listing fields (`displayName`,
   `documentationUrl`, `supportUrl`, `privacyPolicyUrl`), and the skill validator accepts
   them, plus `termsOfServiceUrl`, in a skills wrapper.
-- **Renovate auto-merges GitHub Actions updates only**, after a 7-day release age, and
-  never this repository's own Action; Python dependency bumps are reviewed PRs.
+- **Dependabot replaces Renovate** (the Renovate app was never installed): GitHub Actions,
+  uv and the Docker base image get weekly update PRs after a 7-day cooldown (14 for a uv
+  major or a new image tag). Every bump is a reviewed PR; the validate-skills Action and the
+  template's pin of it still move by hand with a release.
 - The plugin passes `SERVICENOW_TOKEN_URL` and `SERVICENOW_DEBUG`; `server.json` lists
   `SERVICENOW_DEBUG`.
 - The server turns off FastMCP's startup check for a newer FastMCP on PyPI, so it makes no
