@@ -5,6 +5,7 @@ from fastmcp import Client
 
 from servicenow_mcp.server import mcp
 from tests.conftest import init_test_services
+from tests.inventory import ALL_TOOLS
 
 DESTRUCTIVE = {"update_record", "update_ci", "delete_record"}
 CREATES = {"create_record", "create_ci", "create_update_set", "set_current_update_set"}
@@ -18,7 +19,7 @@ def _services():
 @pytest.mark.asyncio
 async def test_every_tool_has_annotations() -> None:
     tools = await mcp.list_tools()
-    assert len(tools) == 19
+    assert {t.name for t in tools} == ALL_TOOLS
     for tool in tools:
         assert tool.annotations is not None, f"{tool.name} lacks annotations"
 

@@ -1,6 +1,7 @@
 """HTTP request helper with proper error handling for ServiceNow API responses."""
 
 import logging
+import re
 import socket
 from urllib.parse import quote
 from typing import Any, Dict, Optional
@@ -73,6 +74,38 @@ def build_url(base: str, *segments: str) -> str:
     them means ``../`` or ``?sysparm_query=`` can never rewrite the request path.
     """
     return base + "".join("/" + quote(str(segment), safe="") for segment in segments)
+
+
+_TABLE_RECORD_PATH = re.compile(r"/api/now/table/[^/?]+/[0-9a-f]{32}(?:$|\?)")
+
+
+def api_key_401_hint(method: str, url: str) -> str:
+    """What to check, and what still works, after an API key's 401.
+
+    API keys only authenticate where a REST API access policy maps the key's
+    profile for this API and method; the global policy cannot carry token
+    auth, so each API needs its own policy. A key that reads tables often has
+    no policy for the Stats API or single-record reads, so say which table
+    read gets the same answer instead of leaving the agent to give up.
+    """
+    hint = (
+        "Check the API key and that a REST API access policy maps it "
+        f"for this API and method ({method.upper()})."
+    )
+    if method.upper() != "GET":
+        return hint
+    if "/api/now/stats/" in url:
+        return hint + (
+            " Table reads may still work with this key: count with list_records "
+            '(the same query, fields="sys_id", limit=1000, paging with offset) '
+            "instead of aggregate_records."
+        )
+    if _TABLE_RECORD_PATH.search(url):
+        return hint + (
+            " Table reads may still work with this key: list_records with "
+            'query="sys_id=<the sys_id>" and limit=1 returns the same record.'
+        )
+    return hint
 
 
 def api_request(
@@ -185,13 +218,7 @@ def api_request(
         else:
             ctx = _error_context(response)
             if auth_manager and auth_manager.config.type.value == "api_key":
-                # API keys only authenticate where a REST API access policy maps
-                # the key's profile for this API and method; the global policy
-                # cannot carry token auth, so each API needs its own policy.
-                hint = (
-                    "Check the API key and that a REST API access policy maps it "
-                    f"for this API and method ({method.upper()})."
-                )
+                hint = api_key_401_hint(method, url)
             else:
                 hint = (
                     "New instances accept basic auth only for users with 'Web service "
@@ -226,6 +253,21 @@ def api_request(
         )
 
     return response
+
+
+def result_rows(data: Any) -> list:
+    """The ``result`` of a Table API list call as a list of records.
+
+    ServiceNow returns a list of objects. Anything else (a single object, null,
+    stray scalars) is normalised so the list tools' published outputSchema
+    still holds: one object becomes a one-row list, everything else is dropped.
+    """
+    result = data.get("result") if isinstance(data, dict) else None
+    if isinstance(result, dict):
+        return [result]
+    if not isinstance(result, list):
+        return []
+    return [row for row in result if isinstance(row, dict)]
 
 
 def parse_json_response(response: requests.Response, url: str) -> Dict[str, Any]:

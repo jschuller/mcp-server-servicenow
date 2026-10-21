@@ -4,6 +4,7 @@ import argparse
 import json
 import logging
 import os
+import re
 import sys
 from pathlib import Path
 from typing import Any, List, Optional
@@ -206,8 +207,11 @@ def parse_args() -> argparse.Namespace:
         "--mcp-static-tokens",
         default=_env_str("MCP_STATIC_TOKENS"),
         help=(
-            "Comma-separated static bearer tokens for CI/CD auth. Callers share the "
-            "configured ServiceNow service-account credentials."
+            "Comma-separated static bearer tokens for CI/CD auth, each `token` or "
+            "`name:token` (the audit log's user; default static-client-<position>). "
+            "Tokens under 32 characters log a warning. Callers share the "
+            "configured ServiceNow service-account credentials (MCP_STATIC_TOKENS; "
+            "prefer the variable to the flag)."
         ),
     )
 
@@ -365,26 +369,91 @@ def create_config(
     )
 
 
+# Up to 32 characters, so a 64-hex token with a stray ':' doesn't read as a
+# name. A token that contains ':' after a shorter name-like prefix would still
+# split: the docs say unnamed tokens must not contain ':'.
+_TOKEN_NAME = re.compile(r"\A[A-Za-z0-9][A-Za-z0-9._-]{0,31}\Z")
+MIN_STATIC_TOKEN_LENGTH = 32
+
+
 def _parse_static_tokens(args: argparse.Namespace) -> dict[str, dict[str, Any]] | None:
     """Parse comma-separated static bearer tokens into StaticTokenVerifier format.
 
-    Returns None if no tokens configured, otherwise a dict mapping each token
-    to its metadata. ``sn_auth: service-account`` tells ``get_sn_bearer_token``
-    that this is an MCP credential, not a ServiceNow token to forward.
+    Each entry is ``token`` or ``name:token``. A name is what the audit log
+    records as ``user``, so attribution survives reordering the list; unnamed
+    tokens are ``static-client-<position>`` and must not contain ``:``. Returns
+    None if no tokens are configured.
+    ``sn_auth: service-account`` tells ``get_sn_bearer_token`` that this is an
+    MCP credential, not a ServiceNow token to forward.
     """
     raw = getattr(args, "mcp_static_tokens", None)
     if not raw:
         return None
-    tokens = {}
-    for i, token in enumerate(raw.split(","), 1):
-        token = token.strip()
-        if token:
-            tokens[token] = {
-                "client_id": f"static-client-{i}",
-                "scopes": [],
-                "sn_auth": "service-account",
-            }
+    tokens: dict[str, dict[str, Any]] = {}
+    for i, entry in enumerate(raw.split(","), 1):
+        entry = entry.strip()
+        if not entry:
+            continue
+        # Messages name an entry by its position: its text may be a token.
+        name, sep, token = entry.partition(":")
+        name, token = name.strip(), token.strip()
+        if sep and _TOKEN_NAME.match(name):
+            if not token:
+                raise ValueError(
+                    f"MCP_STATIC_TOKENS entry {i} has a name but no token after ':'"
+                )
+        else:
+            if sep:
+                logger.warning(
+                    "MCP_STATIC_TOKENS entry %d contains ':' but does not start with "
+                    "a name (up to 32 letters, digits, '.', '_', '-'): the whole "
+                    "entry is the token",
+                    i,
+                )
+            name, token = f"static-client-{i}", entry
+        if name in {meta["client_id"] for meta in tokens.values()}:
+            raise ValueError(
+                f"MCP_STATIC_TOKENS entry {i} repeats a name; names must be unique"
+            )
+        if token in tokens:
+            raise ValueError(f"MCP_STATIC_TOKENS entry {i} repeats a token")
+        if len(token) < MIN_STATIC_TOKEN_LENGTH:
+            # Position and length only: even a name may be token text.
+            logger.warning(
+                "MCP_STATIC_TOKENS entry %d is %d characters; use at least %d "
+                "(openssl rand -hex 32)",
+                i,
+                len(token),
+                MIN_STATIC_TOKEN_LENGTH,
+            )
+        tokens[token] = {
+            "client_id": name,
+            "scopes": [],
+            "sn_auth": "service-account",
+        }
     return tokens or None
+
+
+def _warn_writes_over_http(static_tokens: dict[str, dict[str, Any]] | None) -> None:
+    """Say at startup that write tools are served over the network.
+
+    The server does not confirm writes: the MCP client approves them, and a
+    client without prompts (or a raw HTTP caller) can run them unasked. Static
+    tokens make it worse, since every token holder writes as one shared
+    ServiceNow identity.
+    """
+    shared = (
+        f"; all {len(static_tokens)} static token(s) write as the one configured "
+        "service account"
+        if static_tokens
+        else ""
+    )
+    logger.warning(
+        "write tools are enabled over HTTP and the MCP client alone approves "
+        "them%s. Use --read-only (SERVICENOW_READ_ONLY=true) or an "
+        "snc_read_only identity unless callers need to write.",
+        shared,
+    )
 
 
 def _has_mcp_oauth(args: argparse.Namespace) -> bool:
@@ -500,6 +569,12 @@ def main() -> None:
         if getattr(args, "check", False):
             sys.exit(run_check(args))
 
+        # FastMCP's startup banner asks PyPI for a newer FastMCP; this server
+        # makes no requests except to the instance (docs/privacy.md).
+        import fastmcp
+
+        fastmcp.settings.check_for_updates = "off"
+
         use_mcp_oauth = _has_mcp_oauth(args) and args.transport != "stdio"
         static_tokens = _parse_static_tokens(args)
         # Static-token callers share one ServiceNow identity, so the service
@@ -571,6 +646,8 @@ def main() -> None:
         if config.read_only:
             mcp.disable(tags={"write"}, components={"tool"})
             logger.info("Read-only mode: write tools hidden, non-GET requests refused")
+        elif args.transport != "stdio":
+            _warn_writes_over_http(static_tokens)
 
         from servicenow_mcp.middleware.audit import configure_audit_log
 

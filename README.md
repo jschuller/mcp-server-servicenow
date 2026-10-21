@@ -137,7 +137,7 @@ Codex, opencode, Antigravity, Cursor, pi, the Claude Code plugin and keeping the
 
 ### 4. Check it works
 
-Ask: *"List the 5 most recent incidents."* The start-here user holds `snc_read_only`, so the server lists only the 12 read-only tools. Give the user write roles (and remove `snc_read_only`) and the 7 write tools appear; your client asks before each write.
+Ask: *"List the 5 most recent incidents."* The start-here user holds `snc_read_only`, so the server lists only the 13 read-only tools. Give the user write roles (and remove `snc_read_only`) and the 7 write tools appear; your client asks before each write.
 
 No answer? Run the same configuration with `--check`. It makes read-only requests, prints one line per check (instance reachable, identity, roles, table read, schema, aggregates) and never prints a secret:
 
@@ -160,19 +160,19 @@ Everything else: run `--check` ([above](#4-check-it-works)), then [TROUBLESHOOTI
 
 ## Tools
 
-19 tools, 5 resources and 4 skills. Full reference: [tools, resources and skills](https://github.com/jschuller/mcp-server-servicenow/blob/main/docs/tools.md).
+20 tools, 5 resources and 4 skills. Full reference: [tools, resources and skills](https://github.com/jschuller/mcp-server-servicenow/blob/main/docs/tools.md).
 
 | Group | Tools |
 |---|---|
 | Table API | `list_records` `get_record` `create_record` `update_record` `delete_record` `aggregate_records` |
 | CMDB | `list_ci` `get_ci` `create_ci` `update_ci` `get_ci_relationships` |
-| System | `get_table_schema` `get_current_user` `get_system_properties` |
+| System | `get_table_schema` `get_current_user` `get_system_properties` `find_references` |
 | Update sets | `list_update_sets` `get_update_set` `create_update_set` `set_current_update_set` `list_update_set_changes` |
 
 **Resources:** table schemas, instance info, the current update set, the CMDB class hierarchy and an encoded-query reference — read without a tool call.
 
 **Skills:** four guided workflows for the Now Platform, served over MCP as `skill://` resources so every client gets them with no plugin:
-- `exploring-tables`: schemas, choice lists, the encoded-query reference;
+- `exploring-tables`: schemas, choice lists, a record's history, what touches a table or field, the encoded-query reference;
 - `analyzing-access`: who holds which roles, and what a 403 or a missing field means;
 - `reviewing-update-sets`: risk categories and a pre-promotion checklist;
 - `servicenow-cmdb`: CMDB data quality and CSDM conformance.

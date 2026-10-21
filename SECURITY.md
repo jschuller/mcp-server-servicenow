@@ -6,7 +6,7 @@ If you discover a security vulnerability in this project, please report it respo
 
 **Do NOT open a public GitHub issue for security vulnerabilities.**
 
-Instead, please email the maintainer directly or use [GitHub's private vulnerability reporting](https://github.com/jschuller/mcp-server-servicenow/security/advisories/new).
+Instead, use [GitHub's private vulnerability reporting](https://github.com/jschuller/mcp-server-servicenow/security/advisories/new), which reaches the maintainer privately. If that page says private reporting is unavailable, open a [Discussion](https://github.com/jschuller/mcp-server-servicenow/discussions/categories/q-a) titled "Security contact request" with no details, and the maintainer will reply with a private channel.
 
 ### What to include
 
@@ -25,8 +25,10 @@ Instead, please email the maintainer directly or use [GitHub's private vulnerabi
 
 | Version | Supported |
 |---------|-----------|
-| 0.7.x   | Yes       |
-| < 0.7   | No        |
+| 0.9.x   | Yes       |
+| < 0.9   | No        |
+
+Fixes ship in the latest release only. The table moves with each minor release ([RELEASING.md](RELEASING.md), pre-flight 1).
 
 ## Security Best Practices
 

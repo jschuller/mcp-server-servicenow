@@ -3,7 +3,7 @@
     {
       "name": "aggregate_records",
       "title": "Aggregate Records",
-      "description": "Aggregate records using COUNT, AVG, MIN, MAX, SUM with optional GROUP BY via the Stats API",
+      "description": "Aggregate records using COUNT, AVG, MIN, MAX, SUM with optional GROUP BY via the Stats API.\n\nIf the Stats API is refused (401) while list_records works, count with\nlist_records instead: the same query, fields=\"sys_id\", limit=1000, paging\nwith offset.",
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
@@ -291,6 +291,137 @@
       }
     },
     {
+      "name": "find_references",
+      "title": "Find References",
+      "description": "Where-used for a table or one of its fields: the business rules, client scripts, UI policies, ACLs, script includes and reference fields that touch it.\n\nReturns names, sys_ids and flags only, never script, condition or ACL\nbodies. Script matches (script includes; business rules and client scripts\nin field mode) are text matches, so expect false positives. Only this exact\ntable is matched: run it again for a parent table (get_table_schema's\nhierarchy) to find rules and ACLs defined there. A source this identity\ncan't read (403, or a 401 from an access policy that leaves its table out)\nis listed in not_assessable (under OAuth each such source costs one token\nrefresh). Under basic auth the first 401 is an error (a refused password\nlooks the same), and so is a refused OAuth secret; rows hidden by an ACL\nare simply missing. complete=false means the source hit the limit.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "table_name": {
+            "description": "The table to look up (e.g., 'incident')",
+            "maxLength": 80,
+            "type": "string"
+          },
+          "field_name": {
+            "anyOf": [
+              {
+                "maxLength": 80,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Narrow to one field of the table (e.g., 'assigned_to')"
+          },
+          "limit": {
+            "default": 50,
+            "description": "Maximum matches to return per source",
+            "maximum": 100,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "table_name"
+        ],
+        "type": "object"
+      },
+      "outputSchema": {
+        "properties": {
+          "table": {
+            "type": "string"
+          },
+          "field": {
+            "type": "string"
+          },
+          "groups": {
+            "items": {
+              "properties": {
+                "source": {
+                  "type": "string"
+                },
+                "table": {
+                  "type": "string"
+                },
+                "count": {
+                  "type": "integer"
+                },
+                "complete": {
+                  "type": "boolean"
+                },
+                "items": {
+                  "items": {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  "type": "array"
+                }
+              },
+              "required": [
+                "source",
+                "table",
+                "count",
+                "complete",
+                "items"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "not_assessable": {
+            "items": {
+              "properties": {
+                "source": {
+                  "type": "string"
+                },
+                "table": {
+                  "type": "string"
+                },
+                "reason": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "source",
+                "table",
+                "reason"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "truncated": {
+            "type": "boolean"
+          },
+          "note": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "table",
+          "groups",
+          "not_assessable"
+        ],
+        "type": "object"
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "_meta": {
+        "fastmcp": {
+          "tags": [
+            "admin",
+            "read"
+          ]
+        }
+      }
+    },
+    {
       "name": "get_ci",
       "title": "Get Ci",
       "description": "Get a single CMDB configuration item by sys_id",
@@ -369,6 +500,34 @@
         ],
         "type": "object"
       },
+      "outputSchema": {
+        "properties": {
+          "count": {
+            "type": "integer"
+          },
+          "relationships": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "truncated": {
+            "type": "boolean"
+          },
+          "note": {
+            "type": "string"
+          },
+          "next_offset": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "count",
+          "relationships"
+        ],
+        "type": "object"
+      },
       "annotations": {
         "readOnlyHint": true,
         "destructiveHint": false,
@@ -424,7 +583,7 @@
     {
       "name": "get_record",
       "title": "Get Record",
-      "description": "Get a single record from a ServiceNow table by sys_id",
+      "description": "Get a single record from a ServiceNow table by sys_id.\n\nIf this is refused (401) while list_records works, call list_records with\nquery=\"sys_id=<sys_id>\" and limit=1 instead.",
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
@@ -499,6 +658,31 @@
         },
         "type": "object"
       },
+      "outputSchema": {
+        "properties": {
+          "count": {
+            "type": "integer"
+          },
+          "properties": {
+            "type": "array",
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            }
+          },
+          "truncated": {
+            "type": "boolean"
+          },
+          "note": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "count",
+          "properties"
+        ],
+        "type": "object"
+      },
       "annotations": {
         "readOnlyHint": true,
         "destructiveHint": false,
@@ -540,6 +724,42 @@
         },
         "required": [
           "table_name"
+        ],
+        "type": "object"
+      },
+      "outputSchema": {
+        "properties": {
+          "table": {
+            "type": "string"
+          },
+          "hierarchy": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "field_count": {
+            "type": "integer"
+          },
+          "fields": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "truncated": {
+            "type": "boolean"
+          },
+          "note": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "table",
+          "hierarchy",
+          "field_count",
+          "fields"
         ],
         "type": "object"
       },
@@ -638,8 +858,49 @@
             "description": "Number of records to skip",
             "minimum": 0,
             "type": "integer"
+          },
+          "response_format": {
+            "default": "detailed",
+            "description": "'detailed' (default) returns each reference field as {link, value}; 'concise' drops the link (an instance URL) and returns the sys_id alone",
+            "enum": [
+              "concise",
+              "detailed"
+            ],
+            "type": "string"
           }
         },
+        "type": "object"
+      },
+      "outputSchema": {
+        "properties": {
+          "count": {
+            "type": "integer"
+          },
+          "class": {
+            "type": "string"
+          },
+          "records": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "truncated": {
+            "type": "boolean"
+          },
+          "note": {
+            "type": "string"
+          },
+          "next_offset": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "count",
+          "class",
+          "records"
+        ],
         "type": "object"
       },
       "annotations": {
@@ -716,10 +977,50 @@
             ],
             "default": null,
             "description": "Field to order results by (prefix with '-' for descending)"
+          },
+          "response_format": {
+            "default": "detailed",
+            "description": "'detailed' (default) returns each reference field as {link, value}; 'concise' drops the link (an instance URL) and returns the sys_id alone",
+            "enum": [
+              "concise",
+              "detailed"
+            ],
+            "type": "string"
           }
         },
         "required": [
           "table_name"
+        ],
+        "type": "object"
+      },
+      "outputSchema": {
+        "properties": {
+          "count": {
+            "type": "integer"
+          },
+          "records": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "warning": {
+            "type": "string"
+          },
+          "truncated": {
+            "type": "boolean"
+          },
+          "note": {
+            "type": "string"
+          },
+          "next_offset": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "count",
+          "records"
         ],
         "type": "object"
       },
@@ -759,6 +1060,31 @@
         },
         "required": [
           "update_set_sys_id"
+        ],
+        "type": "object"
+      },
+      "outputSchema": {
+        "properties": {
+          "count": {
+            "type": "integer"
+          },
+          "changes": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "truncated": {
+            "type": "boolean"
+          },
+          "note": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "count",
+          "changes"
         ],
         "type": "object"
       },
@@ -816,6 +1142,31 @@
             "type": "integer"
           }
         },
+        "type": "object"
+      },
+      "outputSchema": {
+        "properties": {
+          "count": {
+            "type": "integer"
+          },
+          "update_sets": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "truncated": {
+            "type": "boolean"
+          },
+          "note": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "count",
+          "update_sets"
+        ],
         "type": "object"
       },
       "annotations": {
@@ -953,6 +1304,6 @@
     }
   ],
   "_meta": {
-    "io.github.jschuller/server-version": "0.9.0"
+    "io.github.jschuller/server-version": "0.9.2"
   }
 }

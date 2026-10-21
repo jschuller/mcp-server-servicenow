@@ -8,7 +8,7 @@ How to set up the ServiceNow user this server signs in as, following ServiceNow'
 - **Tokens over long-lived passwords** (p. 29). Use [OAuth client credentials](#oauth-client-credentials-headless) for headless and CI use, and the per-user [OAuth 2.1 + PKCE proxy](deployment.md#oauth-21--pkce-recommended-for-production) when people should act with their own permissions. Basic auth is fine on a developer instance; the OAuth password grant is legacy because it skips MFA.
 - **Least privilege.** `itil` + `snc_read_only` reads incidents, changes, problems, SLAs and the CMDB, and can't change anything; add only the roles your tools need ([roles](tools.md#roles)). `snc_read_only` blocks writes whatever other roles the user has, and the server then hides its write tools. Never give the integration user `admin` outside a developer instance.
 - **Scope tables and APIs on the instance.** ACLs, Machine Identity access controls and REST API access policies limit what the identity can reach even where its roles would allow more (pp. 17, 37). ServiceNow enforces these for every client, dot-walked fields included, so this is where to keep an integration away from HR, security or user data.
-- **Keep secrets out of logs and files** (p. 30). The audit log records field names, never values; give the server its credentials through the environment or a [launcher](#keeping-secrets-out-of-config-files) that reads your OS secret store.
+- **Keep secrets out of logs and files** (p. 30). The audit log records the names of written fields, never their values, but it does log encoded queries (secret-like values masked), which can hold filter values; give the server its credentials through the environment or a [launcher](#keeping-secrets-out-of-config-files) that reads your OS secret store.
 
 One thing to know when you grant `itil`: on a base instance it can read every user's role assignments (`sys_user_has_role`), including who holds `admin`. The server uses that table only for the caller's own rows, but the data is there for any `itil` user; tighten that table's read ACL if it matters on your instance.
 
@@ -28,7 +28,7 @@ Copy `.mcp.json.example` to `.mcp.json` and fill in your credentials. The JSON f
         "SERVICENOW_INSTANCE_URL": "https://your-instance.service-now.com",
         "SERVICENOW_AUTH_TYPE": "basic",
         "SERVICENOW_USERNAME": "mcp.integration",
-        "SERVICENOW_PASSWORD": "your-password"
+        "SERVICENOW_PASSWORD": "<from your secret store: see below>"
       }
     }
   }
@@ -49,7 +49,7 @@ No username or password: the server uses the client credentials grant, and every
         "SERVICENOW_INSTANCE_URL": "https://your-instance.service-now.com",
         "SERVICENOW_AUTH_TYPE": "oauth",
         "SERVICENOW_CLIENT_ID": "your-client-id",
-        "SERVICENOW_CLIENT_SECRET": "your-client-secret"
+        "SERVICENOW_CLIENT_SECRET": "<from your secret store: see below>"
       }
     }
   }
@@ -80,9 +80,9 @@ The password grant sends a user's password to the token endpoint and skips MFA. 
         "SERVICENOW_INSTANCE_URL": "https://your-instance.service-now.com",
         "SERVICENOW_AUTH_TYPE": "oauth",
         "SERVICENOW_CLIENT_ID": "your-client-id",
-        "SERVICENOW_CLIENT_SECRET": "your-client-secret",
+        "SERVICENOW_CLIENT_SECRET": "<from your secret store: see below>",
         "SERVICENOW_USERNAME": "mcp.integration",
-        "SERVICENOW_PASSWORD": "your-password"
+        "SERVICENOW_PASSWORD": "<from your secret store: see below>"
       }
     }
   }
@@ -101,7 +101,7 @@ The password grant sends a user's password to the token endpoint and skips MFA. 
         "SERVICENOW_INSTANCE_URL": "https://prod12345.service-now.com",
         "SERVICENOW_AUTH_TYPE": "basic",
         "SERVICENOW_USERNAME": "svc-readonly",
-        "SERVICENOW_PASSWORD": "prod-password",
+        "SERVICENOW_PASSWORD": "<from your secret store: see below>",
         "SERVICENOW_AUDIT_LOG": "/var/log/servicenow-mcp/audit.jsonl"
       }
     }
@@ -121,7 +121,7 @@ The password grant sends a user's password to the token endpoint and skips MFA. 
         "SERVICENOW_INSTANCE_URL": "https://dev12345.service-now.com",
         "SERVICENOW_AUTH_TYPE": "basic",
         "SERVICENOW_USERNAME": "mcp.integration",
-        "SERVICENOW_PASSWORD": "dev-password"
+        "SERVICENOW_PASSWORD": "<from your secret store: see below>"
       }
     },
     "servicenow-prod": {
@@ -131,9 +131,9 @@ The password grant sends a user's password to the token endpoint and skips MFA. 
         "SERVICENOW_INSTANCE_URL": "https://prod12345.service-now.com",
         "SERVICENOW_AUTH_TYPE": "oauth",
         "SERVICENOW_CLIENT_ID": "prod-client-id",
-        "SERVICENOW_CLIENT_SECRET": "prod-client-secret",
+        "SERVICENOW_CLIENT_SECRET": "<from your secret store: see below>",
         "SERVICENOW_USERNAME": "svc-account",
-        "SERVICENOW_PASSWORD": "prod-password"
+        "SERVICENOW_PASSWORD": "<from your secret store: see below>"
       }
     }
   }
@@ -178,10 +178,13 @@ All settings can be passed as CLI args or environment variables. See `.env.examp
 | `MCP_TRANSPORT` | `--transport` | `stdio` (default) or `streamable-http` |
 | `MCP_HOST` | `--host` | HTTP bind address (default: `127.0.0.1`; set `0.0.0.0` to listen on all interfaces) |
 | `PORT` | `--port` | HTTP port (default: 8080) |
-| `MCP_STATIC_TOKENS` | `--mcp-static-tokens` | Comma-separated static bearer tokens for MCP endpoint auth (CI/CD) |
+| `MCP_STATIC_TOKENS` | `--mcp-static-tokens` | Comma-separated static bearer tokens for MCP endpoint auth (CI/CD), each `token` or `name:token`; the name (letters, digits, `.`, `_`, `-`; up to 32) is what the audit log records as `user` (default `static-client-<position>`). A token must not contain `,`, and an unnamed one must not contain `:` (startup warns when an entry has a `:` but no valid name). Under 32 characters logs a warning; a repeated token or name stops startup |
 | `MCP_OAUTH_CLIENT_ID` | `--mcp-oauth-client-id` | SN OAuth app client ID for MCP endpoint auth |
 | `MCP_OAUTH_CLIENT_SECRET` | `--mcp-oauth-client-secret` | SN OAuth app client secret for MCP endpoint auth |
 | `MCP_BASE_URL` | `--mcp-base-url` | Public URL of this MCP server |
+
+Pass secrets as environment variables, not CLI args: `--password`, `--client-secret`, `--api-key`,
+`--mcp-static-tokens` and `--mcp-oauth-client-secret` show up in shell history and process listings.
 
 ### Safety rails
 

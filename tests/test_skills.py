@@ -33,6 +33,7 @@ REFERENCE_URIS = {
     "skill://analyzing-access/references/access-errors.md",
     "skill://analyzing-access/references/acl-evaluation.md",
     "skill://exploring-tables/references/query-syntax.md",
+    "skill://exploring-tables/references/history-and-references.md",
     "skill://reviewing-update-sets/references/update-set-fields.md",
     "skill://servicenow-cmdb/references/cmdb-tables.md",
     "skill://servicenow-cmdb/references/csdm5.md",
@@ -93,15 +94,15 @@ class TestSkillListing:
         async with Client(mcp) as client:
             resources = await client.list_resources()
             templates = await client.list_resource_templates()
-        assert sum(str(r.uri).startswith("skill://") for r in resources) == 14
-        assert len(resources) == 18
+        assert sum(str(r.uri).startswith("skill://") for r in resources) == 15
+        assert len(resources) == 19
         assert len(templates) == 1  # servicenow://schema/{table_name} only
 
     async def test_read_only_mode_keeps_skills(self) -> None:
         mcp.disable(tags={"write"}, components={"tool"})
         async with Client(mcp) as client:
             resources = await client.list_resources()
-        assert sum(str(r.uri).startswith("skill://") for r in resources) == 14
+        assert sum(str(r.uri).startswith("skill://") for r in resources) == 15
 
 
 class TestSkillFrontmatter:

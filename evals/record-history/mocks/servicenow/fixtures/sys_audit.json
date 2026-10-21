@@ -1,0 +1,32 @@
+{
+  "count": 3,
+  "records": [
+    {
+      "tablename": "incident",
+      "documentkey": "4f1c2a9be3a1101089a1d5e2c7b9f001",
+      "fieldname": "priority",
+      "oldvalue": "3",
+      "newvalue": "2",
+      "user": "service.desk1",
+      "sys_created_on": "2026-10-14 06:20:02"
+    },
+    {
+      "tablename": "incident",
+      "documentkey": "4f1c2a9be3a1101089a1d5e2c7b9f001",
+      "fieldname": "assigned_to",
+      "oldvalue": "",
+      "newvalue": "6816f79cc0a8016401c5a33be04be441",
+      "user": "service.desk1",
+      "sys_created_on": "2026-10-14 06:21:10"
+    },
+    {
+      "tablename": "incident",
+      "documentkey": "4f1c2a9be3a1101089a1d5e2c7b9f001",
+      "fieldname": "state",
+      "oldvalue": "1",
+      "newvalue": "2",
+      "user": "dev.ops1",
+      "sys_created_on": "2026-10-14 09:28:44"
+    }
+  ]
+}

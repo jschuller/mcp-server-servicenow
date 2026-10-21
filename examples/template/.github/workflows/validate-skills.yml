@@ -3,13 +3,17 @@ on:
   push:
     branches: [main]
   pull_request:
-permissions:
-  contents: read
+# The workflow grants nothing; the job asks for read access only, and the checkout keeps no token.
+permissions: {}
 jobs:
   validate:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       # Pin the Action to a full commit SHA (a tag can be moved; the comment names its
       # release) and the server to a release you have tested. The Action runs the
       # validator from server-version and its own citation check, so its pinned release
@@ -17,5 +21,5 @@ jobs:
       - uses: jschuller/mcp-server-servicenow/actions/validate-skills@66ba9254971e36dad67d3c0f609d9161d29d0d1c # v0.9.0
         with:
           path: .  # the skills, the plugin wrapper and its eval mocks
-          server-version: "0.9.1"
+          server-version: "0.9.2"
           strict: "true"

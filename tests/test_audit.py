@@ -2,6 +2,7 @@
 
 import json
 import logging
+import re
 from typing import Any, List
 from unittest.mock import Mock
 
@@ -89,10 +90,8 @@ async def test_error_denied_and_unknown_outcomes(
             await client.call_tool("no_such_tool", {})
     outcomes = [line["outcome"] for line in captured.lines]
     assert outcomes == ["error", "denied", "unknown_tool"]
-    assert (
-        captured.lines[0]["error"].startswith("ToolError")
-        or "boom" in captured.lines[0]["error"]
-    )
+    # The class FastMCP raised, then the underlying message: both must survive.
+    assert re.fullmatch(r"ToolError: .*\bboom", captured.lines[0]["error"])
     assert "Invalid table name" in captured.lines[1]["error"]
 
 
@@ -193,6 +192,16 @@ def test_identity_for_static_and_oauth_tokens(monkeypatch) -> None:
     )
     monkeypatch.setattr("fastmcp.server.dependencies.get_access_token", lambda: static)
     assert audit._identity() == ("static-token", "static-client-1")
+    # Behind MultiAuth the configured name survives as original_client_id.
+    multi = AccessToken(
+        token="t",
+        client_id='["configured:abc", "ci", null, null]',
+        original_client_id="ci",
+        scopes=[],
+        claims={"sn_auth": "service-account"},
+    )
+    monkeypatch.setattr("fastmcp.server.dependencies.get_access_token", lambda: multi)
+    assert audit._identity() == ("static-token", "ci")
     user = AccessToken(
         token="t", client_id="c", scopes=[], claims={"user_name": "jane"}
     )

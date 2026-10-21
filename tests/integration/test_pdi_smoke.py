@@ -106,7 +106,7 @@ class TestTableTools:
                 "personalize_dictionary",
             )
             assert result is not None
-            data = result.data
+            data = result.structured_content
             # Inherited fields: incident's `number` lives on task (v0.7.0)
             assert data["hierarchy"][:2] == ["incident", "task"]
             by_name = {f["name"]: f for f in data["fields"]}

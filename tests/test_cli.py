@@ -6,6 +6,7 @@ from unittest.mock import patch
 import pytest
 
 from servicenow_mcp import cli
+from tests.inventory import READ_TOOLS
 
 # Env vars that parse_args() reads — cleared per-test so the host machine's
 # environment (or a local .env) can't leak into assertions.
@@ -98,6 +99,74 @@ class TestParseStaticTokens:
         assert set(tokens) == {"secret-a", "secret-b"}
         assert tokens["secret-b"]["client_id"] == "static-client-2"
 
+    def test_named_tokens_keep_their_name_when_reordered(self):
+        first = cli._parse_static_tokens(_args(mcp_static_tokens="ci:tok-a,dev:tok-b"))
+        second = cli._parse_static_tokens(_args(mcp_static_tokens="dev:tok-b,ci:tok-a"))
+        assert first == second
+        assert first["tok-a"]["client_id"] == "ci"
+        assert first["tok-b"]["client_id"] == "dev"
+
+    def test_named_and_unnamed_tokens_mix(self):
+        tokens = cli._parse_static_tokens(_args(mcp_static_tokens="ci:tok-a,tok-b"))
+        assert tokens["tok-a"]["client_id"] == "ci"
+        assert tokens["tok-b"]["client_id"] == "static-client-2"
+
+    @pytest.mark.parametrize("entry", ["bad name:tok", ":tok", "-ci:tok"])
+    def test_entry_without_a_valid_name_is_one_whole_token(self, entry):
+        tokens = cli._parse_static_tokens(_args(mcp_static_tokens=entry))
+        assert tokens == {
+            entry: {
+                "client_id": "static-client-1",
+                "scopes": [],
+                "sn_auth": "service-account",
+            }
+        }
+
+    def test_a_name_without_a_token_is_refused(self):
+        with pytest.raises(ValueError, match="entry 1 has a name but no token"):
+            cli._parse_static_tokens(_args(mcp_static_tokens="ci:"))
+
+    def test_a_token_with_a_stray_colon_is_never_echoed(self, caplog):
+        token = "a" * 64
+        with caplog.at_level("WARNING"):
+            tokens = cli._parse_static_tokens(_args(mcp_static_tokens=token + ":"))
+        # 64 characters can't be a name, so the whole entry is the token.
+        assert list(tokens) == [token + ":"]
+        assert "entry 1 contains ':'" in caplog.text
+        assert token not in caplog.text
+
+    @pytest.mark.parametrize("name", ["TeamCityAgent2026", "deadbeef", "ci-prod-01"])
+    def test_realistic_names_stay_names(self, name):
+        tokens = cli._parse_static_tokens(_args(mcp_static_tokens=f"{name}:{'b' * 40}"))
+        assert tokens["b" * 40]["client_id"] == name
+
+    def test_spaces_around_the_colon_are_ignored(self):
+        tokens = cli._parse_static_tokens(_args(mcp_static_tokens=" ci : tok-a "))
+        assert tokens == {
+            "tok-a": {"client_id": "ci", "scopes": [], "sn_auth": "service-account"}
+        }
+
+    def test_duplicate_name_is_refused(self):
+        with pytest.raises(ValueError, match="entry 2 repeats a name"):
+            cli._parse_static_tokens(_args(mcp_static_tokens="ci:tok-a,ci:tok-b"))
+
+    def test_duplicate_token_is_refused_without_echoing_it(self):
+        with pytest.raises(ValueError) as exc_info:
+            cli._parse_static_tokens(_args(mcp_static_tokens="ci:tok-a,dev:tok-a"))
+        assert "tok-a" not in str(exc_info.value)
+
+    def test_short_token_warns_with_position_and_length_only(self, caplog):
+        with caplog.at_level("WARNING"):
+            cli._parse_static_tokens(_args(mcp_static_tokens="ci:short-token"))
+        assert "entry 1 is 11 characters; use at least 32" in caplog.text
+        assert "static token ci" not in caplog.text
+        assert "short-token" not in caplog.text
+
+    def test_long_token_does_not_warn(self, caplog):
+        with caplog.at_level("WARNING"):
+            cli._parse_static_tokens(_args(mcp_static_tokens="ci:" + "a" * 32))
+        assert "characters; use at least" not in caplog.text
+
 
 class TestHasMcpOauth:
     def test_false_when_nothing_set(self):
@@ -183,6 +252,56 @@ class TestFailClosed:
         # Static tokens compose into MultiAuth on the server
         assert mcp.auth is not None
         assert type(mcp.auth).__name__ == "MultiAuth"
+
+    def test_http_writes_warn_about_the_shared_identity(self, monkeypatch, caplog):
+        monkeypatch.setattr(
+            "sys.argv",
+            [
+                *_BASIC_ARGV,
+                "--transport",
+                "streamable-http",
+                "--mcp-static-tokens",
+                "tok-1",
+            ],
+        )
+        with patch("servicenow_mcp.server.mcp.run"), caplog.at_level("WARNING"):
+            cli.main()
+        assert "write tools are enabled over HTTP" in caplog.text
+        assert (
+            "all 1 static token(s) write as the one configured service account"
+            in caplog.text
+        )
+
+    def test_http_read_only_does_not_warn_about_writes(self, monkeypatch, caplog):
+        monkeypatch.setattr(
+            "sys.argv",
+            [
+                *_BASIC_ARGV,
+                "--transport",
+                "streamable-http",
+                "--mcp-static-tokens",
+                "tok-1",
+                "--read-only",
+            ],
+        )
+        with patch("servicenow_mcp.server.mcp.run"), caplog.at_level("WARNING"):
+            cli.main()
+        assert "write tools are enabled" not in caplog.text
+
+    def test_startup_turns_off_fastmcp_update_check(self, monkeypatch):
+        import fastmcp
+
+        monkeypatch.setattr(fastmcp.settings, "check_for_updates", "stable")
+        monkeypatch.setattr("sys.argv", list(_BASIC_ARGV))
+        with patch("servicenow_mcp.server.mcp.run"):
+            cli.main()
+        assert fastmcp.settings.check_for_updates == "off"
+
+    def test_stdio_does_not_warn_about_writes(self, monkeypatch, caplog):
+        monkeypatch.setattr("sys.argv", list(_BASIC_ARGV))
+        with patch("servicenow_mcp.server.mcp.run"), caplog.at_level("WARNING"):
+            cli.main()
+        assert "write tools are enabled" not in caplog.text
 
     def test_http_with_oauth_proxy_starts_listener(self, monkeypatch):
         monkeypatch.setattr(
@@ -304,7 +423,7 @@ class TestSafetyFlags:
             async with Client(mcp) as client:
                 return len(await client.list_tools())
 
-        assert asyncio.run(count()) == 12
+        assert asyncio.run(count()) == len(READ_TOOLS)
 
     def test_server_instructions_on_wire(self, monkeypatch):
         """The model-facing instructions name the skill resources (SEP-2640 pattern)."""

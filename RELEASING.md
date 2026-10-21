@@ -26,7 +26,8 @@ the release (see Failure modes).
    - `.claude-plugin/plugin.json` → `version` (missed in v0.6.1 — hence the check)
 
    Then `uv lock` (the lockfile records the project's own version), a
-   `CHANGELOG.md` section (`## [X.Y.Z] - YYYY-MM-DD`).
+   `CHANGELOG.md` section (`## [X.Y.Z] - YYYY-MM-DD`). On a new minor (0.X.0), move
+   the supported line in `SECURITY.md` to `0.X.x` (it was left at 0.7.x until 0.9.2).
 
    This repo's plugin, the template and the examples pin the release too, and CI checks
    those pins:
@@ -84,7 +85,7 @@ the release (see Failure modes).
      sh -c 'uv run pytest tests/integration/ -v -rs && uv run python scripts/stdio_smoke.py --profile readonly && uv run mcp-server-servicenow --check'
    ```
 
-   The `itil` + `snc_read_only` key must list 12 tools with no flag, and
+   The `itil` + `snc_read_only` key must list 13 tools with no flag, and
    `--check` must exit 0 (record, schema and aggregate show as limits under
    an API key). Repeat the smoke and `--check` with an OAuth
    client-credentials identity (`SERVICENOW_AUTH_TYPE=oauth`,
@@ -104,7 +105,7 @@ the release (see Failure modes).
 3. **Real-client check** (the unit suite drives an in-memory client; these
    surfaces behave differently):
    - Claude Code: `claude mcp add servicenow-dev -- uv run --directory . mcp-server-servicenow …`
-     with the start-here identity and no flag must list 12 tools; with a
+     with the start-here identity and no flag must list 13 tools; with a
      writable identity, update a scratch incident — Claude Code's permission
      prompt must appear before the write tool runs.
    - Claude Desktop: point `claude_desktop_config.json` at the local build;
@@ -120,7 +121,7 @@ the release (see Failure modes).
      a skill is readable via `read_mcp_resource`, a write tool is refused by
      `codex exec`; in the TUI a write tool shows Codex's approval prompt.
    - pi (1.0+): `pi mcp add … --exposure direct -- uv run --directory . mcp-server-servicenow`,
-     `pi mcp list` must report 12/19 tools and 18 resources.
+     `pi mcp list` must report 13/20 tools and 19 resources.
    - Behaviour evals (Claude Code only, mocked tools, no instance):
      `command claude plugin eval . --trust-plugin --runs 1 --ablation none --model sonnet --no-publish --max-cost-usd 5`.
      Runs draw on the signed-in plan's usage. Hitting a usage limit mid-suite scores
@@ -201,7 +202,9 @@ package uninstallable):
 ## Security posture
 
 Current: OIDC trusted publishing (no long-lived secrets), all Actions pinned
-to commit SHAs, fail-closed HTTP serving, Dependabot + Renovate, strict twine
+to commit SHAs, fail-closed HTTP serving, Dependabot + Renovate (Renovate
+auto-merges GitHub Actions updates only, after a 3-day release age; runtime and dev
+dependency bumps are reviewed PRs), strict twine
 metadata check, ruff rule set and mypy major version bounded so unpinned CI
 installs can't shift behavior underneath previously-clean code.
 

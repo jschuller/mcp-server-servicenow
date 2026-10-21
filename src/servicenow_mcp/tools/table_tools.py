@@ -4,15 +4,34 @@ Provides CRUD operations on any ServiceNow table via /api/now/table/{table_name}
 """
 
 import logging
-from typing import Annotated, Any, Dict, List, Optional
+from typing import Annotated, Any, Dict, List, Literal, Optional
 
 from pydantic import Field
 
 from servicenow_mcp.server import get_config, make_sn_request, mcp
 from servicenow_mcp.tools import annotations
-from servicenow_mcp.utils.http import build_url, parse_json_response
+from servicenow_mcp.tools.results import RecordList
+from servicenow_mcp.utils.http import build_url, parse_json_response, result_rows
 
 logger = logging.getLogger(__name__)
+
+
+ResponseFormat = Annotated[
+    Literal["concise", "detailed"],
+    Field(
+        description=(
+            "'detailed' (default) returns each reference field as {link, value}; "
+            "'concise' drops the link (an instance URL) and returns the sys_id alone"
+        )
+    ),
+]
+
+
+def response_format_params(response_format: str) -> Dict[str, Any]:
+    """Table API parameters for a list tool's ``response_format``."""
+    if response_format == "concise":
+        return {"sysparm_exclude_reference_link": "true"}
+    return {}
 
 
 def _add_order_clause(query: str, order_by: str) -> str:
@@ -46,8 +65,11 @@ def _missing_fields_warning(
     ]
     if not missing:
         return None
+    shown = ", ".join(missing[:20]) + (
+        f" and {len(missing) - 20} more" if len(missing) > 20 else ""
+    )
     return (
-        f"Fields missing from every row: {', '.join(missing)}. They don't exist on "
+        f"Fields missing from every row: {shown}. They don't exist on "
         f"{table_name} or an ACL hides them from this identity; query conditions "
         "on them may have been ignored."
     )
@@ -76,7 +98,8 @@ def list_records(
         Optional[str],
         Field(description="Field to order results by (prefix with '-' for descending)"),
     ] = None,
-) -> Dict[str, Any]:
+    response_format: ResponseFormat = "detailed",
+) -> RecordList:
     """List records from any ServiceNow table with optional filtering, field selection, and pagination"""
     config = get_config()
 
@@ -93,11 +116,12 @@ def list_records(
         query_params["sysparm_query"] = _add_order_clause(
             query_params.get("sysparm_query", ""), order_by
         )
+    query_params.update(response_format_params(response_format))
 
     response = make_sn_request("GET", url, config.timeout, params=query_params)
     data = parse_json_response(response, url)
-    result = data.get("result", [])
-    payload: Dict[str, Any] = {"count": len(result), "records": result}
+    result = result_rows(data)
+    payload: RecordList = {"count": len(result), "records": result}
     if fields:
         warning = _missing_fields_warning(table_name, fields, result)
         if warning:
@@ -113,7 +137,11 @@ def get_record(
         Optional[str], Field(description="Comma-separated list of fields to return")
     ] = None,
 ) -> Dict[str, Any]:
-    """Get a single record from a ServiceNow table by sys_id"""
+    """Get a single record from a ServiceNow table by sys_id.
+
+    If this is refused (401) while list_records works, call list_records with
+    query="sys_id=<sys_id>" and limit=1 instead.
+    """
     config = get_config()
 
     url = build_url(config.api_url, "table", table_name, sys_id)
@@ -214,7 +242,12 @@ def aggregate_records(
         Optional[str], Field(description="Post-aggregation filter (e.g., 'COUNT>5')")
     ] = None,
 ) -> Dict[str, Any]:
-    """Aggregate records using COUNT, AVG, MIN, MAX, SUM with optional GROUP BY via the Stats API"""
+    """Aggregate records using COUNT, AVG, MIN, MAX, SUM with optional GROUP BY via the Stats API.
+
+    If the Stats API is refused (401) while list_records works, count with
+    list_records instead: the same query, fields="sys_id", limit=1000, paging
+    with offset.
+    """
     config = get_config()
 
     url = build_url(config.api_url, "stats", table_name)

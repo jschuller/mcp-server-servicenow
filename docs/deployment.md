@@ -15,10 +15,17 @@ uv run mcp-server-servicenow --read-only          # stdio, for local clients
 
 # Streamable HTTP (remote access / Cloud Run) fails closed: it needs MCP
 # endpoint auth on top of the ServiceNow credentials. Static bearer tokens
-# here; OAuth 2.1 + PKCE below.
-uv run mcp-server-servicenow --transport streamable-http --port 8080 \
-  --mcp-static-tokens "$(openssl rand -hex 32)"
+# here; OAuth 2.1 + PKCE below. Make the token first, so your client can use
+# it; the server reads it from the environment, not the command line.
+export MCP_STATIC_TOKENS="local:$(openssl rand -hex 32)"
+echo "${MCP_STATIC_TOKENS#local:}"                 # the bearer token for your client
+uv run mcp-server-servicenow --transport streamable-http --port 8080 --read-only
 ```
+
+Each static token is `token` or `name:token`; the name is what the audit log records as `user`, so it stays the same when you
+reorder the list. A token shorter than 32 characters logs a warning at startup. Without `--read-only`, an HTTP
+listener also warns at startup: the server doesn't confirm writes, the MCP client does, and every static token writes
+as the one service account.
 
 ## Headless and CI
 
@@ -37,15 +44,22 @@ docker build -t mcp-server-servicenow .
 # Run locally
 # The server fails closed: an HTTP listener requires MCP endpoint auth
 # (MCP_STATIC_TOKENS or MCP_OAUTH_*), otherwise it exits at startup.
+# `-e NAME` with no value passes the variable from your shell, so the
+# password and token stay out of shell history and `ps`.
+read -rs SERVICENOW_PASSWORD && export SERVICENOW_PASSWORD
+export MCP_STATIC_TOKENS="docker:$(openssl rand -hex 32)"
 docker run -p 8080:8080 \
   -e SERVICENOW_INSTANCE_URL=https://your-instance.service-now.com \
   -e SERVICENOW_AUTH_TYPE=basic \
   -e SERVICENOW_USERNAME=mcp.integration \
-  -e SERVICENOW_PASSWORD=your-password \
-  -e MCP_STATIC_TOKENS=a-long-random-token \
+  -e SERVICENOW_PASSWORD \
+  -e MCP_STATIC_TOKENS \
+  -e SERVICENOW_READ_ONLY=true \
   mcp-server-servicenow
 
-# Deploy to Cloud Run with global creds (requires GCP IAM for access)
+# Deploy to Cloud Run with global creds (requires GCP IAM for access).
+# Secrets come from Secret Manager (--set-secrets), not plain env vars that
+# anyone with viewer access can read in the revision config.
 gcloud run deploy servicenow-mcp \
   --source . \
   --region us-east1 \
@@ -54,9 +68,10 @@ gcloud run deploy servicenow-mcp \
   --set-env-vars "SERVICENOW_INSTANCE_URL=..." \
   --set-env-vars "SERVICENOW_AUTH_TYPE=basic" \
   --set-env-vars "SERVICENOW_USERNAME=..." \
-  --set-env-vars "SERVICENOW_PASSWORD=..." \
-  --set-env-vars "MCP_STATIC_TOKENS=..." \
-  --set-env-vars "MCP_TRANSPORT=streamable-http"
+  --set-env-vars "SERVICENOW_READ_ONLY=true" \
+  --set-env-vars "MCP_TRANSPORT=streamable-http" \
+  --set-secrets "SERVICENOW_PASSWORD=sn-password:latest" \
+  --set-secrets "MCP_STATIC_TOKENS=mcp-static-tokens:latest"
 
 # Deploy to Cloud Run with OAuth (per-user auth, publicly accessible)
 gcloud run deploy servicenow-mcp \
@@ -66,25 +81,34 @@ gcloud run deploy servicenow-mcp \
   --allow-unauthenticated \
   --set-env-vars "SERVICENOW_INSTANCE_URL=..." \
   --set-env-vars "MCP_OAUTH_CLIENT_ID=..." \
-  --set-env-vars "MCP_OAUTH_CLIENT_SECRET=..." \
   --set-env-vars "MCP_BASE_URL=https://servicenow-mcp-xxxxx.run.app" \
-  --set-env-vars "MCP_TRANSPORT=streamable-http"
+  --set-env-vars "MCP_TRANSPORT=streamable-http" \
+  --set-secrets "MCP_OAUTH_CLIENT_SECRET=mcp-oauth-client-secret:latest"
 ```
+
+Before those deploys, create each secret once with `gcloud secrets create <name> --data-file=-` (the value on
+stdin), and give the Cloud Run service account `roles/secretmanager.secretAccessor` on it.
 
 ## Verify HTTP Transport
 
 ```bash
 # Local testing — an Authorization header is always required now
-# (unauthenticated HTTP listeners no longer exist; the server fails closed)
-curl -X POST http://localhost:8080/mcp \
-  -H "Authorization: Bearer <one of your MCP_STATIC_TOKENS>" \
+# (unauthenticated HTTP listeners no longer exist; the server fails closed).
+# The bearer is the token part of MCP_STATIC_TOKENS (one entry), without its
+# `name:`. curl reads the header from stdin (-H @-), so the token stays out of
+# the process list.
+printf 'Authorization: Bearer %s\n' "${MCP_STATIC_TOKENS#*:}" | curl -X POST http://localhost:8080/mcp \
+  -H @- \
   -H "Content-Type: application/json" \
   -H "Accept: application/json, text/event-stream" \
   -d '{"jsonrpc":"2.0","method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"test","version":"1.0"}},"id":1}'
 
-# Cloud Run (GCP IAM in front, MCP static token for the server)
+# Cloud Run (GCP IAM in front, MCP static token for the server). IAM reads
+# the Google identity token from X-Serverless-Authorization, which leaves
+# Authorization for the MCP token.
 curl -X POST https://your-service-url.run.app/mcp \
-  -H "Authorization: Bearer <one of your MCP_STATIC_TOKENS>" \
+  -H "X-Serverless-Authorization: Bearer $(gcloud auth print-identity-token)" \
+  -H "Authorization: Bearer <the token part of one MCP_STATIC_TOKENS entry>" \
   -H "Content-Type: application/json" \
   -H "Accept: application/json, text/event-stream" \
   -d '{"jsonrpc":"2.0","method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"test","version":"1.0"}},"id":1}'
@@ -133,4 +157,4 @@ MCP_TRANSPORT=streamable-http
 
 ### Guardrails in HTTP deployments
 
-All safety flags work over HTTP. The audit log records the OAuth user (`claims.user_name`), the static token's `client_id`, or `oauth-client:<client_id>` for a client-credentials service account; send it to a file or let the platform collect stderr (Cloud Run → Cloud Logging).
+All safety flags work over HTTP. The audit log records the OAuth user (`claims.user_name`), the static token's name, or `oauth-client:<client_id>` for a client-credentials service account; send it to a file or let the platform collect stderr (Cloud Run → Cloud Logging).

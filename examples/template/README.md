@@ -26,13 +26,13 @@ Edit `skills/my-servicenow-skill/SKILL.md`:
 Then check it:
 
 ```bash
-uvx mcp-server-servicenow==0.9.1 --validate-skills . --strict
+uvx mcp-server-servicenow==0.9.2 --validate-skills . --strict
 ```
 
 ## 2. Test it with mocked tools
 
 ```bash
-uvx mcp-server-servicenow==0.9.1 --eval-mocks .
+uvx mcp-server-servicenow==0.9.2 --eval-mocks .
 ```
 
 This writes `evals/mocks/servicenow/`:
@@ -51,7 +51,7 @@ Write a case per job the skill does (`evals/<case>/prompt.md` plus `graders/`). 
 
 ```bash
 claude plugin eval . --trust-plugin --runs 3 --ablation none --json evals/results.json
-uvx mcp-server-servicenow==0.9.1 --eval-baseline . ../tools-only
+uvx mcp-server-servicenow==0.9.2 --eval-baseline . ../tools-only
 claude plugin eval ../tools-only --trust-plugin --runs 3 --ablation none --json evals/baseline.json
 ```
 
@@ -62,7 +62,7 @@ The second run is what tells you whether the skill helps. A case the bare tools 
 ## 3. Publish results with the skill
 
 ```bash
-uvx mcp-server-servicenow==0.9.1 --eval-summary evals/results.json --baseline evals/baseline.json --badge evals/badge.json > RESULTS.md
+uvx mcp-server-servicenow==0.9.2 --eval-summary evals/results.json --baseline evals/baseline.json --badge evals/badge.json > RESULTS.md
 ```
 
 It refuses a run that stopped early or had runs end in an error, such as a usage limit, since those score 0. Commit `RESULTS.md` and `evals/badge.json`, then tag the commit. Don't commit the raw result files: they record paths on your machine. Anyone can re-run the suite from that tag, because the mocks and cases are in the repository.

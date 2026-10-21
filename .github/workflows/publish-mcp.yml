@@ -4,15 +4,22 @@ on:
   release:
     types: [created]
 
+# Supply-chain baseline (homelab-governance, 2026-10-20): the workflow grants nothing and the
+# job asks for exactly what it needs; actions pinned by commit SHA; the checkout keeps no token;
+# no cache is restored in a job that holds the publishing OIDC token.
+permissions: {}
+
 jobs:
   publish:
     runs-on: ubuntu-latest
     permissions:
-      id-token: write
-      contents: read
+      id-token: write # mcp-publisher login github-oidc (the io.github.jschuller/* namespace)
+      contents: read # the checkout (server.json)
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       # The registry validates the version exists on PyPI. Both workflows
       # trigger on the same release event, and PyPI takes ~1-2 min to serve a

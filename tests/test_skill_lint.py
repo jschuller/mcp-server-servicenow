@@ -1147,12 +1147,15 @@ def test_tools_json_drift(tmp_path: Path) -> None:
     tools["tools"] = [t for t in tools["tools"] if t["name"] != "get_ci"]
     tools["tools"][0]["inputSchema"] = {}
     tools["tools"][1]["description"] = "STALE"
+    listing = next(t for t in tools["tools"] if t["name"] == "list_records")
+    del listing["outputSchema"]  # a _tools.json from before 0.9.2
     tools["tools"].append({"name": "old_tool", "inputSchema": {}})
     path.write_text(json.dumps(tools))
     (warning,) = plugin_messages(lint_skills([plugin]), "warning")
     assert "missing: get_ci" in warning and "unknown: old_tool" in warning
     changed = warning.split("changed: ")[1].split(")")[0].split()
-    assert len(changed) == 2 and "--eval-mocks" in warning
+    assert len(changed) == 3 and "list_records" in changed
+    assert "--eval-mocks" in warning
 
 
 def test_eval_frontmatter_must_parse(tmp_path: Path) -> None:
@@ -1165,3 +1168,24 @@ def test_eval_frontmatter_must_parse(tmp_path: Path) -> None:
     (plugin / "evals" / "mocks" / "servicenow" / "get_ci.md").write_text("{}")
     errors = plugin_messages(lint_skills([plugin]), "error")
     assert len(errors) == 1 and "skips this file" in errors[0]
+
+
+def test_mock_expect_on_a_defaulted_parameter_warns(tmp_path: Path) -> None:
+    from servicenow_mcp.eval_kit import write_eval_mocks
+
+    plugin = make_wrapper(tmp_path)
+    write_eval_mocks(plugin, "9.9.9")
+    mocks = plugin / "evals/mocks/servicenow"
+    (mocks / "list_ci.md").write_text(
+        "---\nexpect:\n  class_name: /^[a-z_]+$/\n  colour: red\n---\n\n{}\n"
+    )
+    warnings = [
+        w
+        for w in plugin_messages(lint_skills([plugin]), "warning")
+        if w.startswith("expect")
+    ]
+    # Only list_ci's two: the generated list_records mock expects table_name,
+    # which is required.
+    assert len(warnings) == 2
+    assert "expect on 'class_name', which defaults to 'cmdb_ci'" in warnings[0]
+    assert "'colour', which list_ci does not take" in warnings[1]

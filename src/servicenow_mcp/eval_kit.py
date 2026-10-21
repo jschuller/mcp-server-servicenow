@@ -38,6 +38,7 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 
 from servicenow_mcp import __version__
 from servicenow_mcp.middleware.policy import IDENTIFIER_RE
+from servicenow_mcp.utils.http import api_key_401_hint
 from servicenow_mcp.skill_lint import (
     TABLES_KEY,
     _entry,
@@ -60,8 +61,8 @@ expect:
 
 AGGREGATE_REFUSED_MOCK = (
     "---\nerror: true\n---\n\n"
-    "Authentication failed (401). Check the API key and that a REST API access policy "
-    "maps it for this API and method (GET). "
+    "Authentication failed (401). "
+    f"{api_key_401_hint('GET', f'{INSTANCE}/api/now/stats/')} "
     f"URL: {INSTANCE}/api/now/stats/{{{{input.table_name}}}} | "
     'Response: {"error":{"message":"User is not authenticated",'
     '"detail":"Required to provide Auth information"},"status":"failure"}\n'

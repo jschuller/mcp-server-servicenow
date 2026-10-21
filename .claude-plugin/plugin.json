@@ -1,7 +1,7 @@
 {
   "name": "servicenow",
   "displayName": "ServiceNow developer data plane",
-  "version": "0.9.1",
+  "version": "0.9.2",
   "description": "ServiceNow MCP server for Claude Code, GitHub Copilot, Codex and any MCP client: Table API, CMDB, schema, aggregates and update sets, plus four Agent Skills. Read-only mode, OAuth client credentials for headless use, audit log.",
   "author": {
     "name": "Josh Schuller"
@@ -25,7 +25,7 @@
     "servicenow": {
       "command": "uvx",
       "args": [
-        "mcp-server-servicenow==0.9.1"
+        "mcp-server-servicenow==0.9.2"
       ],
       "env": {
         "SERVICENOW_INSTANCE_URL": "${SERVICENOW_INSTANCE_URL}",
@@ -34,9 +34,11 @@
         "SERVICENOW_PASSWORD": "${SERVICENOW_PASSWORD}",
         "SERVICENOW_CLIENT_ID": "${SERVICENOW_CLIENT_ID}",
         "SERVICENOW_CLIENT_SECRET": "${SERVICENOW_CLIENT_SECRET}",
+        "SERVICENOW_TOKEN_URL": "${SERVICENOW_TOKEN_URL:-}",
         "SERVICENOW_API_KEY": "${SERVICENOW_API_KEY:-}",
         "SERVICENOW_API_KEY_HEADER": "${SERVICENOW_API_KEY_HEADER:-x-sn-apikey}",
         "SERVICENOW_TIMEOUT": "${SERVICENOW_TIMEOUT:-30}",
+        "SERVICENOW_DEBUG": "${SERVICENOW_DEBUG:-false}",
         "SERVICENOW_READ_ONLY": "${SERVICENOW_READ_ONLY:-false}",
         "SERVICENOW_ALLOW_JS_QUERIES": "${SERVICENOW_ALLOW_JS_QUERIES:-false}",
         "SERVICENOW_AUDIT_LOG": "${SERVICENOW_AUDIT_LOG:-stderr}"

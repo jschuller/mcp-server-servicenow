@@ -87,6 +87,40 @@ class TestApiRequest:
         with pytest.raises(ServiceNowAPIError, match="REST API access policy.*GET"):
             api_request("GET", URL, manager)
 
+    @pytest.mark.parametrize(
+        ("url", "fallback"),
+        [
+            ("https://test.service-now.com/api/now/stats/incident", 'fields="sys_id"'),
+            (
+                "https://test.service-now.com/api/now/table/incident/" + "a" * 32,
+                'query="sys_id=<the sys_id>"',
+            ),
+        ],
+    )
+    @patch("servicenow_mcp.utils.http.requests.request")
+    def test_401_api_key_names_the_table_read_fallback(
+        self, mock_request: MagicMock, url: str, fallback: str
+    ) -> None:
+        from servicenow_mcp.utils.config import ApiKeyConfig, AuthConfig, AuthType
+
+        manager = AuthManager(
+            AuthConfig(type=AuthType.API_KEY, api_key=ApiKeyConfig(api_key="k")),
+            "https://test.service-now.com",
+        )
+        mock_request.return_value = _mock_response(401)
+        with pytest.raises(ServiceNowAPIError) as exc_info:
+            api_request("GET", url, manager)
+        message = str(exc_info.value)
+        assert "Table reads may still work" in message and fallback in message
+
+    def test_api_key_hint_adds_no_fallback_for_table_lists_or_writes(self) -> None:
+        from servicenow_mcp.utils.http import api_key_401_hint
+
+        listing = "https://test.service-now.com/api/now/table/incident"
+        assert "list_records" not in api_key_401_hint("GET", listing)
+        stats = "https://test.service-now.com/api/now/stats/incident"
+        assert "list_records" not in api_key_401_hint("POST", stats)
+
     @patch("servicenow_mcp.utils.http.requests.request")
     def test_401_oauth_retries_on_success(
         self, mock_request: MagicMock, oauth_auth_manager: AuthManager

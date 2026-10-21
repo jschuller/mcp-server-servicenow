@@ -8,6 +8,7 @@ from servicenow_mcp import server
 from servicenow_mcp.server import mcp
 from servicenow_mcp.utils.http import ServiceNowAPIError
 from tests.conftest import init_test_services
+from tests.inventory import ALL_TOOLS, READ_TOOLS
 
 
 @pytest.mark.asyncio
@@ -16,14 +17,14 @@ async def test_disable_write_tag_hides_only_tools() -> None:
     mcp.disable(tags={"write"}, components={"tool"})
     async with Client(mcp) as client:
         tools = await client.list_tools()
-        assert len(tools) == 12
+        assert len(tools) == len(READ_TOOLS)
         assert all(
             "write" not in (t.meta or {}).get("_fastmcp", {}).get("tags", [])
             for t in tools
         )
         assert (
-            len(await client.list_resources()) == 18
-        )  # 4 static + 14 skill:// entries
+            len(await client.list_resources()) == 19
+        )  # 4 static + 15 skill:// entries
         assert len(await client.list_resource_templates()) == 1
         with pytest.raises(ToolError, match="Unknown tool"):
             await client.call_tool(
@@ -37,7 +38,7 @@ async def test_enable_restores_write_tools() -> None:
     mcp.disable(tags={"write"}, components={"tool"})
     mcp.enable(tags={"write"}, components={"tool"})
     async with Client(mcp) as client:
-        assert len(await client.list_tools()) == 19
+        assert len(await client.list_tools()) == len(ALL_TOOLS)
 
 
 def test_make_sn_request_refuses_non_get_in_read_only(monkeypatch) -> None:

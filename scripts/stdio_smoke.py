@@ -15,9 +15,9 @@ with values in a file:
 
 Profiles:
   readonly  the identity has snc_read_only (the default): without any flag the
-            write tools are hidden (12 tools) and a write call is refused
+            write tools are hidden (13 tools) and a write call is refused
             before it reaches ServiceNow. An identity that cannot read its own
-            sys_user_has_role rows sees all 19 (the check fails open) and the
+            sys_user_has_role rows sees all 20 (the check fails open) and the
             write comes back as ServiceNow's refusal. Changes nothing.
   write     the identity can create, update and delete incidents and update
             sets (admin by default). Creates and deletes scratch incidents and
@@ -38,6 +38,9 @@ from fastmcp.client.transports import StdioTransport
 from fastmcp.exceptions import ToolError
 
 REPO = str(Path(__file__).resolve().parents[1])
+sys.path.insert(0, REPO)
+from tests.inventory import ALL_TOOLS, READ_TOOLS  # noqa: E402  (the one tool list)
+
 SKILLS = (
     "analyzing-access",
     "exploring-tables",
@@ -81,7 +84,11 @@ async def section_a(results):
     async with Client(transport("--read-only", "--audit-log", "off")) as c:
         tools = await c.list_tools()
         results.append(
-            ok("read-only: 12 tools listed", len(tools) == 12, str(len(tools)))
+            ok(
+                f"read-only: {len(READ_TOOLS)} tools listed",
+                {t.name for t in tools} == READ_TOOLS,
+                str(len(tools)),
+            )
         )
         ann = {t.name: t.annotations for t in tools}
         results.append(
@@ -94,9 +101,9 @@ async def section_a(results):
         res = await c.list_resources()
         results.append(
             ok(
-                "read-only: 18 resources incl. 14 skill://",
-                len(res) == 18
-                and sum(str(r.uri).startswith("skill://") for r in res) == 14,
+                "read-only: 19 resources incl. 15 skill://",
+                len(res) == 19
+                and sum(str(r.uri).startswith("skill://") for r in res) == 15,
                 str(len(res)),
             )
         )
@@ -115,10 +122,16 @@ async def section_b(results, profile, audit):
     """Default mode: identifier and javascript: policy, schema, paging, then writes."""
     async with Client(transport("--audit-log", audit)) as c:
         tools = await c.list_tools()
-        roles = (await c.call_tool("get_current_user", {})).data.get("roles")
+        roles = (await c.call_tool("get_current_user", {})).structured_content.get(
+            "roles"
+        )
         if profile == "readonly" and roles is None:
             info("identity cannot read its own role rows: hiding fails open")
-        want = 12 if profile == "readonly" and roles is not None else 19
+        want = (
+            len(READ_TOOLS)
+            if profile == "readonly" and roles is not None
+            else len(ALL_TOOLS)
+        )
         results.append(
             ok(
                 f"no flag: {want} tools for this identity",
@@ -161,12 +174,14 @@ async def section_b(results, profile, audit):
                 "limit": 1,
             },
         )
-        results.append(ok("JS policy allows gs.daysAgo()", "records" in r.data))
-        existing = (r.data.get("records") or [{}])[0].get("sys_id")
+        results.append(
+            ok("JS policy allows gs.daysAgo()", "records" in r.structured_content)
+        )
+        existing = (r.structured_content.get("records") or [{}])[0].get("sys_id")
         try:
             schema = (
                 await c.call_tool("get_table_schema", {"table_name": "incident"})
-            ).data
+            ).structured_content
             by_name = {f["name"]: f for f in schema["fields"]}
             results.append(
                 ok(
@@ -188,7 +203,10 @@ async def section_b(results, profile, audit):
                 "get_ci_relationships", {"sys_id": "0" * 32, "limit": 5}
             )
             results.append(
-                ok("get_ci_relationships paging arg accepted", rel.data["count"] == 0)
+                ok(
+                    "get_ci_relationships paging arg accepted",
+                    rel.structured_content["count"] == 0,
+                )
             )
         except ToolError as e:
             # cmdb_rel_ci needs itil or a CMDB read role.
@@ -197,7 +215,9 @@ async def section_b(results, profile, audit):
             agg = await c.call_tool(
                 "aggregate_records", {"table_name": "incident", "group_by": "priority"}
             )
-            info("aggregate_records", f"ok, {agg.data.get('count')} groups")
+            info(
+                "aggregate_records", f"ok, {agg.structured_content.get('count')} groups"
+            )
         except ToolError as e:
             # API keys need a REST API access policy for the Aggregate API too.
             info("aggregate_records refused", str(e).splitlines()[0][:140])
@@ -235,7 +255,7 @@ async def section_b(results, profile, audit):
                     },
                 },
             )
-        ).data
+        ).structured_content
         sid = created["sys_id"]
         results.append(
             ok("create scratch incident", bool(sid), created["record"].get("number"))
@@ -245,7 +265,7 @@ async def section_b(results, profile, audit):
                 "update_record",
                 {"table_name": "incident", "sys_id": sid, "data": {"urgency": "2"}},
             )
-        ).data
+        ).structured_content
         results.append(
             ok(
                 "default: update_record single call, no prompt",
@@ -256,7 +276,7 @@ async def section_b(results, profile, audit):
             await c.call_tool(
                 "delete_record", {"table_name": "incident", "sys_id": sid}
             )
-        ).data
+        ).structured_content
         results.append(
             ok(
                 "default: delete_record returns dict",
@@ -367,7 +387,7 @@ def pref_rows(data):
 async def section_e(results, profile):
     """Caller identity; in the write profile, the caller-scoped update-set pick."""
     async with Client(transport("--audit-log", "off")) as c:
-        me = (await c.call_tool("get_current_user", {})).data
+        me = (await c.call_tool("get_current_user", {})).structured_content
         # Blank under client credentials, where the OAuth application user answers.
         expected = os.environ.get("SERVICENOW_USERNAME") or None
         results.append(
@@ -406,7 +426,7 @@ async def section_e(results, profile):
                             "limit": 50,
                         },
                     )
-                ).data
+                ).structured_content
             )
 
         before_mine, before_default = await prefs(mine_q), await prefs(default_q)
@@ -415,7 +435,7 @@ async def section_e(results, profile):
                 "create_update_set",
                 {"name": "mcp smoke (safe to delete)", "description": "stdio smoke"},
             )
-        ).data
+        ).structured_content
         us = created["sys_id"]
         results.append(ok("create_update_set", bool(us)))
         try:
@@ -435,10 +455,12 @@ async def section_e(results, profile):
             results.append(
                 ok("update-set/current resource follows", cur.get("sys_id") == us)
             )
-            got = (await c.call_tool("get_update_set", {"sys_id": us})).data
+            got = (
+                await c.call_tool("get_update_set", {"sys_id": us})
+            ).structured_content
             changes = (
                 await c.call_tool("list_update_set_changes", {"update_set_sys_id": us})
-            ).data
+            ).structured_content
             results.append(
                 ok(
                     "get_update_set + list_update_set_changes",

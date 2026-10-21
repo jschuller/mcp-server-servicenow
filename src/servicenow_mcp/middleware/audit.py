@@ -2,8 +2,9 @@
 
 Lines go to ``stderr`` by default (``--audit-log stderr``), to a file
 (``--audit-log /path/audit.jsonl``) or nowhere (``--audit-log off``). Never
-stdout: on stdio transport that is the protocol channel. Values are never
-logged — only ``data`` keys and a redacted, truncated query string.
+stdout: on stdio transport that is the protocol channel. Written values are
+never logged, only the ``data`` keys; the encoded query is logged redacted
+(secret-like values masked) and truncated, so it can hold filter values.
 """
 
 from __future__ import annotations
@@ -22,6 +23,7 @@ from fastmcp.server.middleware import CallNext, Middleware, MiddlewareContext
 from mcp.types import TextContent
 
 from servicenow_mcp.middleware.policy import SCHEMA_URI_RE, PolicyError, resolve_table
+from servicenow_mcp.middleware.response_limit import TRUNCATED_META
 
 AUDIT_LOGGER_NAME = "servicenow_mcp.audit"
 TRUNCATION_SUFFIX = "\n\n[Response truncated due to size limit]"
@@ -99,7 +101,11 @@ def _identity() -> Tuple[str, Optional[str]]:
     if token is not None:
         claims = getattr(token, "claims", None)
         claims = claims if isinstance(claims, dict) else {}
-        client_id = getattr(token, "client_id", None)
+        # MultiAuth replaces client_id with a JSON list naming the verifier;
+        # the configured name survives as original_client_id.
+        client_id = getattr(token, "original_client_id", None) or getattr(
+            token, "client_id", None
+        )
         if claims.get("sn_auth") == "service-account":
             return "static-token", client_id
         user = claims.get("user_name") or claims.get("sub") or client_id
@@ -141,6 +147,8 @@ def _classify_exception(exc: BaseException) -> Tuple[str, str]:
 
 
 def _is_truncated(result: Any) -> bool:
+    if (getattr(result, "meta", None) or {}).get(TRUNCATED_META):
+        return True  # a list cut to fit, structure kept
     content = getattr(result, "content", None) or []
     return any(
         isinstance(block, TextContent) and block.text.endswith(TRUNCATION_SUFFIX)

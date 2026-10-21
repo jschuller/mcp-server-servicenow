@@ -1,0 +1,6 @@
+---
+expect:
+  table_name: /^[A-Za-z0-9_]+$/
+---
+
+{"table": "incident", "field": "assigned_to", "groups": [{"source": "business_rules", "table": "sys_script", "count": 2, "complete": true, "items": [{"sys_id": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1", "name": "Assignment group changes", "active": "true", "when": "before"}, {"sys_id": "a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2", "name": "Notify on reassignment", "active": "true", "when": "after"}]}, {"source": "client_scripts", "table": "sys_script_client", "count": 1, "complete": true, "items": [{"sys_id": "b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1", "name": "Clear assignee when group changes", "active": "true", "type": "onChange", "field": "assignment_group"}]}, {"source": "ui_policy_actions", "table": "sys_ui_policy_action", "count": 1, "complete": true, "items": [{"sys_id": "c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1", "ui_policy": "Make assigned to read-only when closed", "field": "assigned_to"}]}, {"source": "script_includes", "table": "sys_script_include", "count": 1, "complete": true, "items": [{"sys_id": "d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1", "name": "AssignmentUtils", "api_name": "global.AssignmentUtils", "active": "true"}]}], "not_assessable": [{"source": "acls", "table": "sys_security_acl", "reason": "Access denied (403)"}]}
