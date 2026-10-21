@@ -124,8 +124,12 @@ def instance_info() -> str:
     elif props.get("glide.product.version"):
         result["version"] = props["glide.product.version"]
     elif props:
-        # Other properties came back, so the identity can read them: not set.
-        unavailable["version"] = "neither glide.war nor glide.product.version is set"
+        # Other properties came back, but a property can have its own read
+        # roles, so these may be unset or hidden.
+        unavailable["version"] = (
+            "glide.war and glide.product.version did not come back: not set, or "
+            "not readable with this identity"
+        )
     else:
         unavailable["version"] = props_error or _NO_PROPERTIES
 
@@ -134,7 +138,8 @@ def instance_info() -> str:
         result["timezone"] = timezone
     elif props:
         unavailable["timezone"] = (
-            "glide.sys.default.tz is not set: the instance's built-in default applies"
+            "glide.sys.default.tz is empty or not readable with this identity; if "
+            "empty, the instance's built-in default applies"
         )
     else:
         unavailable["timezone"] = props_error or _NO_PROPERTIES

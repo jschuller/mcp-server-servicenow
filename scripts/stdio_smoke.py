@@ -305,7 +305,7 @@ async def section_b(results, profile, audit, expect_tools=None):
                     )
                     info("scratch incident deleted after a failed step", sid)
                 except Exception as e:  # cleanup must not mask the first error
-                    if "404" in str(e):
+                    if "Not found (404)" in str(e):
                         info("scratch incident already deleted", sid)
                     else:
                         info(

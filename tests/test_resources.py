@@ -271,10 +271,8 @@ class TestInstanceResource:
             user={"roles": None, "time_zone": None},
         )
         unavailable = payload["unavailable"]
-        assert unavailable["version"] == (
-            "neither glide.war nor glide.product.version is set"
-        )
-        assert "not set" in unavailable["timezone"]
+        assert "not set, or not readable" in unavailable["version"]
+        assert "empty or not readable" in unavailable["timezone"]
         assert unavailable["user.roles"] == "the caller's role rows could not be read"
         assert unavailable["user.time_zone"] == "sys_user.time_zone is not readable"
 

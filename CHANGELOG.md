@@ -66,7 +66,7 @@ the repository.
   password costs one failed login. The exploring-tables skill drives it (workflow 7).
 - **Record history** in the exploring-tables skill (2.1.0, workflow 6): a record's work notes and
   comments (`sys_journal_field`) and field changes (`sys_audit`) as one timeline. Without
-  `audit_viewer` the journal returns 0 rows rather than a 403, and the skill reports that
+  `admin` or `audit_viewer` the journal returns 0 rows rather than a 403, and the skill reports that
   as not assessable.
 - **`response_format`** on `list_records` and `list_ci`: `concise` returns reference
   fields as bare sys_ids, without instance URLs. The default, `detailed`, is unchanged.

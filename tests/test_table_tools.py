@@ -601,6 +601,34 @@ def test_missing_field_warning_names_subclasses(
     assert "CMDB" not in warning
 
 
+@pytest.fixture(autouse=True)
+def _no_cached_history_reader(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(table_tools, "_history_reader", (None, None))
+
+
+def test_history_unknown_answer_is_asked_again(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config = SimpleNamespace(api_url="https://test.service-now.com/api/now", timeout=30)
+    roles = {"admin": None, "audit_viewer": None}
+    _history(monkeypatch, "sys_journal_field", [], roles, config=config)
+    _, second = _history(monkeypatch, "sys_journal_field", [], roles, config=config)
+    assert second.call_count == 2
+
+
+def test_history_new_config_drops_the_cached_answer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    roles = {"admin": True}
+    first_config = SimpleNamespace(
+        api_url="https://a.service-now.com/api/now", timeout=30
+    )
+    _history(monkeypatch, "sys_journal_field", [], roles, config=first_config)
+    other = SimpleNamespace(api_url="https://b.service-now.com/api/now", timeout=30)
+    _, second = _history(monkeypatch, "sys_journal_field", [], roles, config=other)
+    second.assert_called_once()
+
+
 def _history(
     monkeypatch: pytest.MonkeyPatch,
     table_name: str,
@@ -675,7 +703,7 @@ def test_history_warning_for_the_audit_table(
     assert result["warning"].startswith(
         "0 rows may mean this identity can't read sys_audit rows"
     )
-    assert "field changes are not assessable" in result["warning"]
+    assert "no field changes are visible to this identity" in result["warning"]
     assert "work_notes" not in result["warning"]
 
 

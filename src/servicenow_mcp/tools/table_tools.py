@@ -392,8 +392,8 @@ def history_warning(
         # Seen as a 403 without the roles, so 0 rows may also be no changes.
         return (
             "0 rows may mean this identity can't read sys_audit rows (that needs "
-            "admin or audit_viewer), not that the record has no changes: field "
-            "changes are not assessable here."
+            "admin or audit_viewer): say that no field changes are visible to this "
+            "identity, not that there are none."
         )
     if reads is False:
         opening = (

@@ -1,6 +1,6 @@
 # Access denials and incomplete answers
 
-How to read what ServiceNow sends back when an identity can't see something. The 403 and 401 messages below are quoted exactly, because they are what you match on. The first two 403s and the first 401 were observed on a Brazil instance through the Table and Aggregate APIs; the "API level" 403 is as documented.
+How to read what ServiceNow sends back when an identity can't see something. The 403, 401 and 404 messages below are quoted exactly, because they are what you match on. The first two 403s, the first 401 and the 404 were observed on a Brazil instance through the Table and Aggregate APIs; the "API level" 403 is as documented.
 
 ## Denials
 
@@ -10,8 +10,8 @@ How to read what ServiceNow sends back when an identity can't see something. The
 | 403 | `Insufficient rights to query records` / `Field(s) present in the query do not have permission to be read` | The query filters on fields the identity can't read, and the instance rejects such queries (the field-ACL check on inbound queries is on). | Drop the condition on the hidden field, or filter on a readable one. If the field matters, it needs a role that can read it. |
 | 403 | `User Not Authorized` / `Failed API level ACL Validation` | An ACL on the REST API itself (not the table) refused the call. Seen on scripted and product APIs. | Not assessable through that API with this identity. |
 | 401 | `User is not authenticated` / `Required to provide Auth information` | Under API-key auth: no REST API access policy maps the key's authentication profile to this API. Table reads can work while the Aggregate API or single-record GET is refused. | Not a bad key. Use `list_records` instead, or ask an admin to add an access policy for that API. |
-| 404 | `No Record found` / `Record doesn't exist or ACL restricts the record retrieval` | `get_record` or `get_ci` on a record that doesn't exist, or that a read ACL hides from this identity: the two answer the same. | Don't say the record doesn't exist. Look for it with `list_records` (`sys_id=<sys_id>`): 0 rows there are just as ambiguous, so say it is missing or not readable with this identity. |
 | 401 | anything else | Wrong or expired credentials, or basic auth refused for this user. | Run `mcp-server-servicenow --check`; it names the cause. |
+| 404 | `No Record found` / `Record doesn't exist or ACL restricts the record retrieval` | `get_record` or `get_ci` on a record that doesn't exist, or that a read ACL hides from this identity: the two answer the same. | Don't say the record doesn't exist. Look for it with `list_records` (`sys_id=<sys_id>`): 0 rows there are just as ambiguous, so say it is missing or not readable with this identity. |
 
 ## Silent effects (no error at all)
 
