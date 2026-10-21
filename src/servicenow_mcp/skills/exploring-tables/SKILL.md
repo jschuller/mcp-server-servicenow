@@ -32,7 +32,8 @@ General-purpose table exploration — schema discovery, data profiling, choice l
 - **Fields missing** from sampled rows: a field ACL may hide them, so the sample shows only what this identity can read.
 - **0 rows**: the table may be empty, or its rows may be hidden. Check with `aggregate_records` where it is allowed.
 - **`not_assessable`** in a `find_references` result: that source is not assessable with this identity. Report the others, and name the sources you couldn't check.
-- **0 journal or audit rows** for a record that has work notes: the identity probably lacks `admin` and `audit_viewer`, so its history is not assessable. `list_records` says so in its `warning`. Don't report "no history": read the record's own journal fields instead (workflow 6, step 2), and say that field changes are not assessable.
+- **0 journal rows** for a record that has work notes: the identity probably lacks `admin` and `audit_viewer`, so its journal is not assessable, and `list_records` says so in its `warning`. Don't report "no history": read the record's own journal fields instead (workflow 6, step 2).
+- **0 audit rows with a `warning`**: say that no field changes are visible to this identity, not that there are none. A **403** on `sys_audit` means field changes are not assessable.
 
 ## Workflows
 
