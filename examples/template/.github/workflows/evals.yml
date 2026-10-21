@@ -19,14 +19,16 @@ on:
       max-cost-usd:
         description: Stop each of the two runs (skills, then tools only) at this list-price estimate
         default: "5"
-permissions:
-  contents: read
+# The workflow grants nothing; the job asks for read access only, and the checkout keeps no token.
+permissions: {}
 concurrency:
   group: evals
   cancel-in-progress: false
 jobs:
   evals:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     timeout-minutes: 60
     env:
       # Pin both. Bump SERVER_VERSION together with validate-skills.yml's server-version
@@ -52,8 +54,16 @@ jobs:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: "22"
-      - run: npm install -g "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}"
+      # An exact version (CLAUDE_CODE_VERSION), installed as a global CLI with no lockfile.
+      - run: npm install -g "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}" # zizmor: ignore[adhoc-packages]
       - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          # uv by exact version, with the sha256 of uv-x86_64-unknown-linux-gnu.tar.gz (the
+          # release digest), since this Action's built-in list stops at 0.12.17. Bump both
+          # together. No cache: this job holds the Claude credential.
+          version: "0.12.24"
+          checksum: "b4dfaef47d491a7296981f8374a4595f55dbf84e8937c8ecd2983574d8bb3da6"
+          enable-cache: false
       - name: Skills, wrapper and mocks match the pinned server
         run: uvx "mcp-server-servicenow==${SERVER_VERSION}" --validate-skills . --strict
       - name: Run the suite

@@ -3,13 +3,17 @@ on:
   push:
     branches: [main]
   pull_request:
-permissions:
-  contents: read
+# The workflow grants nothing; the job asks for read access only, and the checkout keeps no token.
+permissions: {}
 jobs:
   validate:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       # Pin the Action to a full commit SHA (a tag can be moved; the comment names its
       # release) and the server to a release you have tested. The Action runs the
       # validator from server-version and its own citation check, so its pinned release

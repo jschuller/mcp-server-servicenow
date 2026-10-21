@@ -4,14 +4,21 @@ on:
   release:
     types: [created]
 
+# Supply-chain baseline (homelab-governance, 2026-10-20): the workflow grants nothing and the
+# job asks for exactly what it needs; actions pinned by commit SHA; the checkout keeps no token;
+# no cache is restored in a job that holds the publishing OIDC token.
+permissions: {}
+
 jobs:
   publish:
     runs-on: ubuntu-latest
     permissions:
-      id-token: write
+      id-token: write # PyPI trusted publishing (OIDC); no other grant
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Set up Python
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
@@ -30,7 +37,7 @@ jobs:
           fi
 
       - name: Install build tools
-        run: pip install build
+        run: pip install build==1.6.1
 
       - name: Build package
         run: python -m build
