@@ -120,6 +120,11 @@ the release (see Failure modes).
    - Plugin: `claude --plugin-dir .` with only `SERVICENOW_INSTANCE_URL/USERNAME/PASSWORD`
      set must start (the `${VAR:-default}` passthrough check).
    - the four `skill://…/SKILL.md` resources list and read (Claude Code `/mcp` → resources).
+   - Skills off: the smoke's `skills off:` lines must pass (3 resources plus the schema
+     template, no `skill://`, 834-character instructions that name no skill). In Claude Code,
+     `claude mcp add servicenow-off -e SERVICENOW_SKILLS=off -- uv run --directory . mcp-server-servicenow …`
+     must list no `skill://` resource in `/mcp`; through the plugin the four
+     `/servicenow:<skill>` commands stay (the plugin loads them from disk).
    - Run Claude Code as `command claude …` if your shell aliases `claude`
      (e.g. to `--dangerously-skip-permissions`), or the permission checks
      are skipped.

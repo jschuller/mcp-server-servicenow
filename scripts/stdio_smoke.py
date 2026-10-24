@@ -25,6 +25,10 @@ Profiles:
 
 --expect-tools N asserts how many tools the identity lists with no flag, as
 docs/testing.md gives it per identity tier, so a fail-open is a FAIL.
+
+Every run also starts the server with --skills off --read-only: 3 resources
+and the schema template, no skill://, the same read tools, and instructions
+that name no skill. Changes nothing.
 """
 
 import argparse
@@ -44,6 +48,12 @@ REPO = str(Path(__file__).resolve().parents[1])
 sys.path.insert(0, REPO)
 from tests.inventory import ALL_TOOLS, READ_TOOLS  # noqa: E402  (the one tool list)
 
+DATA_RESOURCES = {
+    "servicenow://instance",
+    "servicenow://update-set/current",
+    "servicenow://cmdb/classes",
+}
+SCHEMA_TEMPLATE = "servicenow://schema/{table_name}"
 SKILLS = (
     "analyzing-access",
     "exploring-tables",
@@ -61,10 +71,12 @@ REFUSED = (
 
 
 def transport(*flags):
+    # Each section sets --skills itself when it needs off; the rest test the default.
+    env = {k: v for k, v in os.environ.items() if k != "SERVICENOW_SKILLS"}
     return StdioTransport(
         sys.executable,
         ["-m", "servicenow_mcp.cli", *flags],
-        env=dict(os.environ),
+        env=env,
         cwd=REPO,
     )
 
@@ -409,6 +421,75 @@ async def section_d(results, skills_audit):
     )
 
 
+async def section_f(results: list[bool]) -> None:
+    """--skills off: the data resources and the tools stay; no skill is served or named."""
+    from servicenow_mcp.server import render_instructions
+
+    async with Client(
+        transport("--skills", "off", "--read-only", "--audit-log", "off")
+    ) as c:
+        uris = {str(r.uri) for r in await c.list_resources()}
+        templates = [t.uri_template for t in await c.list_resource_templates()]
+        results.append(
+            ok(
+                "skills off: 3 resources + the schema template, no skill://",
+                uris == DATA_RESOURCES and templates == [SCHEMA_TEMPLATE],
+                f"{len(uris)} resources, {len(templates)} templates",
+            )
+        )
+        refused_reads = []
+        for uri in (
+            "skill://analyzing-access/SKILL.md",
+            "servicenow://help/query-syntax",
+        ):
+            try:
+                await c.read_resource(uri)
+            except Exception:
+                refused_reads.append(uri)
+        results.append(
+            ok(
+                "skills off: skill:// and query-syntax not readable",
+                len(refused_reads) == 2,
+                ", ".join(refused_reads),
+            )
+        )
+        text = c.instructions or ""
+        results.append(
+            ok(
+                "skills off: instructions name no skill",
+                text == render_instructions(skills=False)
+                and "skill" not in text.lower(),
+                f"{len(text)} chars",
+            )
+        )
+        tools = {t.name for t in await c.list_tools()}
+        results.append(
+            ok(
+                f"skills off: {len(READ_TOOLS)} read tools (--read-only)",
+                tools == READ_TOOLS,
+                str(len(tools)),
+            )
+        )
+        try:
+            await c.call_tool(
+                "list_records",
+                {
+                    "table_name": "incident",
+                    "query": "caller_id=javascript:gs.getUserID()",
+                    "limit": 1,
+                },
+            )
+            results.append(ok("skills off: JS refusal names no query-syntax", False))
+        except ToolError as e:
+            results.append(
+                ok(
+                    "skills off: JS refusal names no query-syntax",
+                    "unsafe javascript" in str(e)
+                    and "servicenow://help/query-syntax" not in str(e),
+                )
+            )
+
+
 def pref_rows(data):
     return {r["sys_id"]: r.get("value") for r in data.get("records", [])}
 
@@ -542,6 +623,7 @@ async def main(profile, expect_tools=None):
         check_audit(results, profile, audit)
         await section_d(results, f"{tmp}/skills-audit.jsonl")
         await section_e(results, profile)
+        await section_f(results)
     print(f"\n{sum(results)}/{len(results)} passed")
     return all(results)
 

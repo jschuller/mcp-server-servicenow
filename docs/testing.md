@@ -40,6 +40,9 @@ with-secrets SERVICENOW_CLIENT_SECRET=svc/<scope>/servicenow-<pdi>-<tier>-client
   uv run python scripts/stdio_smoke.py --profile readonly --expect-tools 20
 ```
 
+Every run also starts the server with `--skills off --read-only` and checks the `skills off:` lines: 3 resources plus
+the schema template, no `skill://`, the read tools, and instructions that name no skill.
+
 Use `--profile readonly` for the three read tiers and `--profile write --expect-tools 20` for the writer. The write
 profile deletes what it creates, even after a failed step; afterwards, check that no incident whose short description
 contains `stdio smoke (safe to delete)` is left.

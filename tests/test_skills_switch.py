@@ -13,6 +13,7 @@ start rather than serve skills its instructions don't name.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import subprocess
@@ -41,6 +42,40 @@ SKILLS = (
     "analyzing-access",
 )
 
+# Golden values from the 0.9.2 code (main at 09e5cbc), not from this tree: with
+# skills on, the instructions and the resource list must not move at all.
+# sha256 and length of render_instructions(namespace) in 0.9.2:
+INSTRUCTIONS_092 = {
+    None: ("2fca083101a518819e652cbd1febe550baf6e122a10b079f0f9b37ab882529dc", 1572),
+    "snow": ("6f48f1cb994885ca1c821490e1e8a953cc019bb40c16fd41643d4539963eca02", 1597),
+}
+# resources/list in 0.9.2, in the order the server returns it:
+RESOURCES_092 = [
+    "servicenow://instance",
+    "servicenow://update-set/current",
+    "servicenow://cmdb/classes",
+    "servicenow://help/query-syntax",
+    "skill://servicenow-cmdb/SKILL.md",
+    "skill://servicenow-cmdb/_manifest",
+    "skill://servicenow-cmdb/references/cmdb-tables.md",
+    "skill://servicenow-cmdb/references/csdm5.md",
+    "skill://analyzing-access/SKILL.md",
+    "skill://analyzing-access/_manifest",
+    "skill://analyzing-access/references/access-errors.md",
+    "skill://analyzing-access/references/acl-evaluation.md",
+    "skill://reviewing-update-sets/SKILL.md",
+    "skill://reviewing-update-sets/_manifest",
+    "skill://reviewing-update-sets/references/update-set-fields.md",
+    "skill://exploring-tables/SKILL.md",
+    "skill://exploring-tables/_manifest",
+    "skill://exploring-tables/references/history-and-references.md",
+    "skill://exploring-tables/references/query-syntax.md",
+]
+
+
+def _digest(text: str) -> tuple[str, int]:
+    return hashlib.sha256(text.encode("utf-8")).hexdigest(), len(text)
+
 
 def _args(**overrides: Any) -> argparse.Namespace:
     base: dict[str, Any] = {
@@ -60,6 +95,16 @@ class TestInstructions:
     def test_on_is_the_shipped_text(self) -> None:
         assert render_instructions(skills=True) == SERVER_INSTRUCTIONS
         assert "skill://analyzing-access/SKILL.md" in SERVER_INSTRUCTIONS
+
+    @pytest.mark.parametrize("namespace", [None, "snow"])
+    def test_on_is_byte_identical_to_092(self, namespace: str | None) -> None:
+        assert _digest(render_instructions(namespace)) == INSTRUCTIONS_092[namespace]
+        assert (
+            _digest(render_instructions(namespace, skills=True))
+            == INSTRUCTIONS_092[namespace]
+        )
+        if namespace is None:
+            assert _digest(SERVER_INSTRUCTIONS) == INSTRUCTIONS_092[None]
 
     def test_off_names_no_resource(self) -> None:
         text = render_instructions(skills=False)
@@ -210,8 +255,8 @@ with patch("servicenow_mcp.middleware.read_only_identity.has_role", lambda *a: F
 
 async def probe():
     async with Client(mcp) as client:
-        resources = sorted(str(r.uri) for r in await client.list_resources())
-        templates = sorted(t.uriTemplate for t in await client.list_resource_templates())
+        listed = [str(r.uri) for r in await client.list_resources()]
+        templates = sorted(t.uri_template for t in await client.list_resource_templates())
         reads = {}
         for uri in (
             "skill://analyzing-access/SKILL.md",
@@ -225,7 +270,8 @@ async def probe():
             except Exception as exc:
                 reads[uri] = type(exc).__name__
         return {
-            "resources": resources,
+            "resources": sorted(listed),
+            "listed": listed,
             "templates": templates,
             "reads": reads,
             "instructions": client.instructions,
@@ -270,6 +316,8 @@ class TestServedResources:
     def test_off_serves_data_resources_only(self, tmp_path: Path) -> None:
         got = _probe(tmp_path, env={"SERVICENOW_SKILLS": "off"})
         assert set(got["resources"]) == DATA_RESOURCES
+        # The 0.9.2 order, less the query-syntax alias and the skills.
+        assert got["listed"] == RESOURCES_092[:3]
         assert got["templates"] == [SCHEMA_TEMPLATE]
         assert not any(u.startswith("skill://") for u in got["resources"])
         assert all(outcome != "read" for outcome in got["reads"].values()), got["reads"]
@@ -289,6 +337,8 @@ class TestServedResources:
         assert got["templates"] == [SCHEMA_TEMPLATE]
         assert set(got["reads"].values()) == {"read"}
         assert got["instructions"] == SERVER_INSTRUCTIONS
+        assert got["listed"] == RESOURCES_092
+        assert _digest(got["instructions"]) == INSTRUCTIONS_092[None]
 
 
 def test_plugin_linter_allows_every_server_setting() -> None:
