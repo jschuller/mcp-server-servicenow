@@ -217,6 +217,20 @@ class TestConfig:
         assert "SERVICENOW_SKILLS (--skills) must be 'on' or 'off'" in caplog.text
         assert "MCP_STATIC_TOKENS requires" not in caplog.text
 
+    def test_other_settings_are_not_repeated_either(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """A plugin could set these from ${SERVICENOW_PASSWORD}: never log the value."""
+        marker = "DUMMY-MARKER-not-a-secret"
+        with pytest.raises(ValueError, match="must be one of: basic") as exc:
+            cli.create_config(_args(auth_type=marker))
+        assert marker.lower() not in str(exc.value).lower()
+        monkeypatch.setenv("SERVICENOW_TIMEOUT", marker)
+        with caplog.at_level("WARNING"):
+            assert cli._env_int("SERVICENOW_TIMEOUT", 30) == 30
+        assert "Ignoring non-integer SERVICENOW_TIMEOUT" in caplog.text
+        assert marker not in caplog.text
+
     def test_explicit_empty_flag_is_refused(self) -> None:
         """`--skills ""` (an argument that expanded to nothing) is not the default."""
         with pytest.raises(ValueError, match="must be 'on' or 'off'"):

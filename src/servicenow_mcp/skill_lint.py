@@ -84,7 +84,12 @@ CREDENTIAL_RES = (
 )
 URL_RE = re.compile(r"https?://\S+")
 
-PACKAGE_RE = re.compile(r"^mcp-server-servicenow(==\d+\.\d+\.\d+)?\Z")
+# ASCII digits only (uvx refuses others) and short enough for int().
+PACKAGE_RE = re.compile(
+    r"^mcp-server-servicenow(==[0-9]{1,6}\.[0-9]{1,6}\.[0-9]{1,6})?\Z"
+)
+# A ${NAME} or ${NAME:-default} reference in a setting's value.
+ENV_REF_RE = re.compile(r"\$\{([^}:]*)")
 PLUGIN_METADATA_KEYS = {
     "$schema",
     "name",
@@ -1294,6 +1299,19 @@ def _check_server(name: str, spec: object, report: SkillReport) -> None:
             )
             continue
         own_ref = value in (f"${{{key}}}", f"${{{key}:-}}")
+        # A setting may take the user's value of itself, never of another variable:
+        # the server repeats some values in its log and uses one as a file name, so
+        # ${SERVICENOW_PASSWORD} in another setting would copy the password there.
+        others = sorted({ref for ref in ENV_REF_RE.findall(value) if ref != key})
+        if others:
+            report.add(
+                "error",
+                where,
+                None,
+                f"mcpServers.{name}.env.{key} references "
+                f"{', '.join(f'${{{ref}}}' for ref in others)}: a setting may "
+                f"reference only itself (${{{key}}})",
+            )
         if key in HOST_ENV and value and not own_ref:
             report.add(
                 "error",
@@ -1320,7 +1338,7 @@ def _check_server(name: str, spec: object, report: SkillReport) -> None:
                 f"${{{key}:-on}} / ${{{key}:-off}}",
             )
         reads_from = SERVER_ENV_SINCE.get(key)
-        if reads_from and value and pinned is not None and pinned < reads_from:
+        if reads_from and value.strip() and pinned is not None and pinned < reads_from:
             report.add(
                 "error",
                 where,

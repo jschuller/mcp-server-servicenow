@@ -37,23 +37,20 @@ The server is a building block: mount it into your own FastMCP server and it kee
 
 ```python
 from fastmcp import FastMCP
-from servicenow_mcp.server import mcp as servicenow, render_instructions
-
-app = FastMCP("orchestrator", instructions=render_instructions("snow"))
-app.mount(servicenow, namespace="snow")  # tools snow_*, resources skill://snow/…
-```
-
-The tools and resources register when their modules are imported, after `init_services()` has the config, as `cli.main()` does. To mount the server without the skills, set `skills=False` in that config; `servicenow_mcp.resources` reads it once, when it is first imported:
-
-```python
-from servicenow_mcp.server import init_services
+from servicenow_mcp.server import mcp as servicenow, init_services, render_instructions
 from servicenow_mcp.utils.config import ServerConfig
 
-init_services(ServerConfig(..., skills=False))  # your instance and auth
-import servicenow_mcp.tools.table_tools, servicenow_mcp.tools.cmdb_tools  # noqa: E401,F401
-import servicenow_mcp.tools.system_tools, servicenow_mcp.tools.update_set_tools  # noqa: E401,F401
-import servicenow_mcp.resources  # noqa: F401  (no skill:// with skills=False)
+SKILLS = True  # False: no skill:// resources and no skill part in the instructions
+init_services(ServerConfig(..., skills=SKILLS))  # your instance and auth
 
-app = FastMCP("orchestrator", instructions=render_instructions("snow", skills=False))
-app.mount(servicenow, namespace="snow")
+# The tools and resources register when their modules are imported, so import them
+# after init_services(), as cli.main() does; resources reads the switch once, here.
+import servicenow_mcp.tools.table_tools  # noqa: E402,F401
+import servicenow_mcp.tools.cmdb_tools  # noqa: E402,F401
+import servicenow_mcp.tools.system_tools  # noqa: E402,F401
+import servicenow_mcp.tools.update_set_tools  # noqa: E402,F401
+import servicenow_mcp.resources  # noqa: E402,F401
+
+app = FastMCP("orchestrator", instructions=render_instructions("snow", skills=SKILLS))
+app.mount(servicenow, namespace="snow")  # tools snow_*, resources servicenow://snow/…, skill://snow/…
 ```

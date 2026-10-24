@@ -61,7 +61,13 @@ def _env_int(name: str, default: int) -> int:
     try:
         return int(value)
     except ValueError:
-        logger.warning("Ignoring non-integer %s=%r; using %d", name, value, default)
+        # Not the value itself: a plugin could set it from another variable.
+        logger.warning(
+            "Ignoring non-integer %s (%d characters); using %d",
+            name,
+            len(value),
+            default,
+        )
         return default
 
 
@@ -356,7 +362,14 @@ def create_config(
             **_option_kwargs(args),
         )
 
-    auth_type = AuthType(args.auth_type.lower())
+    try:
+        auth_type = AuthType(args.auth_type.lower())
+    except ValueError:
+        # Not the value itself: a plugin could set it from another variable.
+        raise ValueError(
+            "SERVICENOW_AUTH_TYPE (--auth-type) must be one of: "
+            + ", ".join(t.value for t in AuthType)
+        ) from None
 
     if auth_type == AuthType.BASIC:
         if not args.username or not args.password:

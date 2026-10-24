@@ -27,10 +27,10 @@ Run the server with or without its packaged skills.
   once), and use `render_instructions(..., skills=False)` (docs/architecture.md).
 - `--check` lists `--skills off` among the flags when the skills are off.
 - `--validate-skills` accepts `SERVICENOW_SKILLS` in a plugin's `mcpServers.<name>.env`, and
-  `--skills on` or `--skills off` (also `--skills=off`) in its `args`. Any other value is an
-  error, and so is a reference to another variable (`${SERVICENOW_SKILLS}` only). Setting it
-  either way with a pin older than 0.9.3 is an error too: 0.9.2 stops on `--skills` and
-  ignores the variable.
+  `--skills on` or `--skills off` (also `--skills=off`) in its `args`: `on` or `off` in any
+  case, empty, or `${SERVICENOW_SKILLS}` with an optional `on`/`off` default. Setting it either
+  way with a pin older than 0.9.3 is an error: 0.9.2 stops on `--skills` and ignores the
+  variable.
 
 ### Changed
 - With `SERVICENOW_SKILLS=off`, `servicenow://help/query-syntax` is not served either: it
@@ -42,6 +42,14 @@ Run the server with or without its packaged skills.
   the default `on`, every resource and the instructions are byte-for-byte as in 0.9.2.
 - `scripts/stdio_smoke.py` also starts the server with `--skills off --read-only` and checks the
   three resources, the schema template, the read tools and instructions that name no skill.
+
+### Security
+- `--validate-skills`: a plugin's server setting may reference only itself (`${SERVICENOW_TIMEOUT}`),
+  never another variable. A plugin could set `SERVICENOW_AUTH_TYPE`, `SERVICENOW_TIMEOUT` or
+  `SERVICENOW_AUDIT_LOG` to `${SERVICENOW_PASSWORD}`, and the server would repeat the password
+  in its log or create a file named after it. The server no longer repeats a bad
+  `SERVICENOW_AUTH_TYPE` or `SERVICENOW_TIMEOUT` value. A pin must be ASCII digits (uvx refuses
+  others), and a very long one no longer stops the whole validation run.
 
 ### Fixed
 - `--help`, `--version`, `--validate-skills` and the `--eval-*` modes no longer load a `.env`

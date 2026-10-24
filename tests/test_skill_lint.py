@@ -949,6 +949,41 @@ def test_wrapper_skills_env_needs_a_pin_that_reads_it(tmp_path: Path) -> None:
     assert any("ignores it: pin 0.9.3 or later" in m for m in errors), errors
 
 
+@pytest.mark.parametrize(
+    "key",
+    [
+        "SERVICENOW_AUTH_TYPE",
+        "SERVICENOW_TIMEOUT",
+        "SERVICENOW_AUDIT_LOG",
+        "SERVICENOW_SKILLS",
+    ],
+)
+def test_wrapper_setting_may_not_reference_another(tmp_path: Path, key: str) -> None:
+    """${SERVICENOW_PASSWORD} in another setting would copy it into a log or file name."""
+    spec = _server_spec(["mcp-server-servicenow"], {key: "${SERVICENOW_PASSWORD}"})
+    errors = plugin_messages(lint_skills([make_wrapper(tmp_path, spec)]), "error")
+    assert any("may reference only itself" in m for m in errors), errors
+    own = _server_spec(["mcp-server-servicenow"], {key: f"${{{key}:-}}"})
+    errors = plugin_messages(
+        lint_skills([make_wrapper(tmp_path / "own", own)]), "error"
+    )
+    assert not any("may reference only itself" in m for m in errors), errors
+
+
+@pytest.mark.parametrize(
+    "package",
+    [
+        "mcp-server-servicenow==\u0660.\u0669.\u0663",
+        "mcp-server-servicenow==0.9." + "9" * 5000,
+    ],
+)
+def test_wrapper_pin_must_be_short_ascii(tmp_path: Path, package: str) -> None:
+    """uvx refuses non-ASCII digits; a huge pin must not crash the whole run."""
+    spec = _server_spec([package], {})
+    errors = plugin_messages(lint_skills([make_wrapper(tmp_path, spec)]), "error")
+    assert any("must run `uvx mcp-server-servicenow" in m for m in errors), errors
+
+
 def test_wrapper_skills_flag_pin_error_once(tmp_path: Path) -> None:
     spec = _server_spec(
         ["mcp-server-servicenow==0.9.2", "--skills", "off", "--skills", "on"], {}
