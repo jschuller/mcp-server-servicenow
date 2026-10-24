@@ -104,7 +104,7 @@ The digest covers every file's path and content, so you can pin a skill: if anyt
 |--------|----------|
 | Any key other than metadata (`name`, `displayName`, `version`, `description`, `author`, `homepage`, `repository`, `license`, `keywords`, `metadata`, `$schema`, and the directory listing's `documentationUrl`, `supportUrl`, `privacyPolicyUrl` and `termsOfServiceUrl`), `skills` and `mcpServers`: `hooks`, `agents`, `commands`, `workflows`, `userConfig`, `dependencies` and the rest add code or behaviour | A remote (`url`) server, which the validator can't confirm is this one |
 | Locations Claude Code loads without a key: `hooks/`, `agents/`, `commands/`, `monitors/`, `output-styles/`, `workflows/`, `themes/`, `bin/`, `.mcp.json`, `.lsp.json`, `settings.json`; a `package.json` (installed when the plugin loads); `uv.toml` or `[tool.uv]` settings (they can change which package `uvx` runs) | `--allow-js-queries`, or `SERVICENOW_ALLOW_JS_QUERIES` set to anything but false |
-| `mcpServers` with anything other than one server: `command` `uvx`, `args` starting with `mcp-server-servicenow[==version]` followed only by `--read-only`, `--debug` or `--allow-js-queries`, and no keys besides `command`, `args`, `env` | `SERVICENOW_AUDIT_LOG` naming a file on the evaluator's machine |
+| `mcpServers` with anything other than one server: `command` `uvx`, `args` starting with `mcp-server-servicenow[==version]` followed only by `--read-only`, `--debug`, `--allow-js-queries` or `--skills on|off`, and no keys besides `command`, `args`, `env` | `SERVICENOW_AUDIT_LOG` naming a file on the evaluator's machine |
 | An `env` key that isn't one of this server's `SERVICENOW_*` settings (no `PYTHONPATH`, no `UV_*`) | `evals/mocks/<server>/_tools.json` that differs from this server's tools: names, descriptions, schemas or hints |
 | A password, client secret or API key, or the instance or token URL, that isn't `${NAME}` or `${NAME:-}` with the setting's own name (no literal, no default, no other variable): a repository mustn't choose where the user's credentials go | A `tool_used` grader that names no skill of this plugin, or tools of another plugin or server name |
 | A `skills` path outside the plugin folder, a symlink, or one that holds a symlink. Skills a `skills` path declares are checked wherever they are, `node_modules` included | |
@@ -179,7 +179,7 @@ The action needs a release of mcp-server-servicenow that has `--validate-skills`
   - a template and an example;
   - the guide.
 - **This server's own skills are not converted.** Namespacing them would change `skill://<name>/…`, and they are versioned with the tools they teach. They are the reference implementation of the profile and pass the validator in CI.
-- **Deferred: loading skills through the server.** The design is `--skills DIR` / `SERVICENOW_SKILLS`:
+- **Deferred: loading skills through the server.** The design is `--skills-dir DIR` / `SERVICENOW_SKILLS_DIR` (`--skills` / `SERVICENOW_SKILLS` is the on/off switch for the packaged skills):
   - each folder becomes `add_provider(SkillsDirectoryProvider(DIR, supporting_files="resources"), namespace=<folder name>)` on FastMCP 4.1, served as `skill://<folder>/<skill>/SKILL.md`;
   - it is off by default;
   - startup refuses a duplicate name, a name this server already uses, or a folder that fails validation, because FastMCP otherwise keeps the first duplicate silently;

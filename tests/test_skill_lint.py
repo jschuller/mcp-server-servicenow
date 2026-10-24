@@ -868,6 +868,54 @@ def test_wrapper_problems(
     assert any(expected in m for m in plugin_messages(report, level)), report.plugins
 
 
+def _server_args(*flags: str) -> Dict[str, object]:
+    return {
+        **WRAPPER,
+        "mcpServers": {
+            "servicenow": {
+                "command": "uvx",
+                "args": ["mcp-server-servicenow==0.9.0", *flags],
+            }
+        },
+    }
+
+
+@pytest.mark.parametrize(
+    "flags",
+    [
+        ("--skills", "off"),
+        ("--skills", "on"),
+        ("--skills=off",),
+        ("--skills", "OFF", "--read-only"),
+        ("--read-only", "--skills=on"),
+    ],
+)
+def test_wrapper_may_pass_skills_flag(tmp_path: Path, flags: tuple[str, ...]) -> None:
+    """--skills on|off in args is accepted, like SERVICENOW_SKILLS in env."""
+    report = lint_skills([make_wrapper(tmp_path, _server_args(*flags))])
+    assert plugin_messages(report, "error") == []
+
+
+@pytest.mark.parametrize(
+    ("flags", "expected"),
+    [
+        (("--skills",), "passes --skills '': use --skills on or --skills off"),
+        (("--skills", "maybe"), "passes --skills 'maybe'"),
+        (("--skills=",), "passes --skills ''"),
+        (("--skills", "--read-only"), "passes --skills '--read-only'"),
+        (
+            ("--read-only=yes",),
+            "only --allow-js-queries, --debug, --read-only, --skills on|off",
+        ),
+    ],
+)
+def test_wrapper_skills_flag_needs_on_or_off(
+    tmp_path: Path, flags: tuple[str, ...], expected: str
+) -> None:
+    report = lint_skills([make_wrapper(tmp_path, _server_args(*flags))])
+    assert any(expected in m for m in plugin_messages(report, "error")), report.plugins
+
+
 @pytest.mark.parametrize(
     "rel",
     [

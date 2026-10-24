@@ -160,6 +160,8 @@ SECRET_ENV = {"SERVICENOW_PASSWORD", "SERVICENOW_CLIENT_SECRET", "SERVICENOW_API
 # Where the server sends those credentials: a skills repository mustn't choose it.
 HOST_ENV = {"SERVICENOW_INSTANCE_URL", "SERVICENOW_TOKEN_URL"}
 SERVER_FLAGS = {"--read-only", "--debug", "--allow-js-queries"}
+# Flags that take a value, with the values a plugin may pass (any case, as the CLI).
+SERVER_VALUE_FLAGS = {"--skills": ("on", "off")}
 SERVER_SPEC_KEYS = {"type", "command", "args", "env"}
 # Settings whose literal or default value changes what the server does on the user's machine.
 SAFE_ENV_VALUES = {
@@ -1202,13 +1204,35 @@ def _check_server(name: str, spec: object, report: SkillReport) -> None:
             "package first",
         )
         return
-    for flag in args[1:]:
+    allowed = ", ".join(
+        [
+            *sorted(SERVER_FLAGS),
+            *(f"{f} {'|'.join(v)}" for f, v in sorted(SERVER_VALUE_FLAGS.items())),
+        ]
+    )
+    rest = iter(args[1:])
+    for flag in rest:
+        key, eq, value = flag.partition("=")
+        if key in SERVER_VALUE_FLAGS:
+            # --skills off and --skills=off, as argparse reads them.
+            if not eq:
+                value = next(rest, "")
+            choices = SERVER_VALUE_FLAGS[key]
+            if value.strip().lower() not in choices:
+                report.add(
+                    "error",
+                    where,
+                    None,
+                    f"mcpServers.{name} passes {key} {value!r}: use "
+                    f"{' or '.join(f'{key} {c}' for c in choices)}",
+                )
+            continue
         if flag not in SERVER_FLAGS:
             report.add(
                 "error",
                 where,
                 None,
-                f"mcpServers.{name} passes {flag!r}: only {', '.join(sorted(SERVER_FLAGS))} "
+                f"mcpServers.{name} passes {flag!r}: only {allowed} "
                 "may follow the package; put settings in env",
             )
     if "--allow-js-queries" in args:
