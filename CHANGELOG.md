@@ -1,6 +1,14 @@
 # Changelog
 
-## [Unreleased]
+## [0.9.3] - 2026-10-24
+
+Run the server with or without its packaged skills.
+
+### Upgrade notes
+- With the default (`SERVICENOW_SKILLS=on`) nothing changes: the tools, the resources and the
+  server instructions are byte-for-byte as in 0.9.2.
+- A plugin or config that sets `SERVICENOW_SKILLS` needs 0.9.3. 0.9.2 ignores the variable and
+  still serves the skills, and stops at startup on `--skills` (an unknown argument).
 
 ### Added
 - **`SERVICENOW_SKILLS` (`--skills`): `on` (default) or `off`.** With `off` the server
@@ -15,7 +23,8 @@
 - `render_instructions(namespace, *, skills=True)`: `skills=False` returns the
   instructions without the skill part, for a server that mounts this one without skills.
 - `--validate-skills` accepts `SERVICENOW_SKILLS` in a plugin's `mcpServers.<name>.env`, and
-  `--skills on` or `--skills off` (also `--skills=off`) in its `args`.
+  `--skills on` or `--skills off` (also `--skills=off`) in its `args`. A value the server
+  would refuse at startup is an error, and so is `--skills` with a pin older than 0.9.3.
 
 ### Changed
 - With `SERVICENOW_SKILLS=off`, `servicenow://help/query-syntax` is not served either: it

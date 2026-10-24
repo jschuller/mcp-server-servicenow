@@ -874,7 +874,7 @@ def _server_args(*flags: str) -> Dict[str, object]:
         "mcpServers": {
             "servicenow": {
                 "command": "uvx",
-                "args": ["mcp-server-servicenow==0.9.0", *flags],
+                "args": ["mcp-server-servicenow==0.9.3", *flags],
             }
         },
     }
@@ -914,6 +914,53 @@ def test_wrapper_skills_flag_needs_on_or_off(
 ) -> None:
     report = lint_skills([make_wrapper(tmp_path, _server_args(*flags))])
     assert any(expected in m for m in plugin_messages(report, "error")), report.plugins
+
+
+def _server_spec(args: List[str], env: Dict[str, str]) -> Dict[str, object]:
+    server: Dict[str, object] = {"command": "uvx", "args": args, "env": env}
+    return {**WRAPPER, "mcpServers": {"servicenow": server}}
+
+
+@pytest.mark.parametrize(
+    ("package", "ok"),
+    [
+        ("mcp-server-servicenow==0.9.2", False),
+        ("mcp-server-servicenow==0.8.0", False),
+        ("mcp-server-servicenow==0.9.3", True),
+        ("mcp-server-servicenow==0.10.0", True),
+        ("mcp-server-servicenow", True),
+    ],
+)
+def test_wrapper_skills_flag_needs_a_pin_that_has_it(
+    tmp_path: Path, package: str, ok: bool
+) -> None:
+    """0.9.2 and older stop at startup on --skills: argparse rejects the flag."""
+    spec = _server_spec([package, "--skills", "off"], {})
+    errors = plugin_messages(lint_skills([make_wrapper(tmp_path, spec)]), "error")
+    assert (errors == []) is ok, errors
+    if not ok:
+        assert any("pin 0.9.3 or later" in m for m in errors), errors
+
+
+@pytest.mark.parametrize(
+    ("value", "ok"),
+    [
+        ("on", True),
+        ("OFF", True),
+        ("", True),
+        ("${SERVICENOW_SKILLS}", True),
+        ("${SERVICENOW_SKILLS:-on}", True),
+        ("${SERVICENOW_SKILLS:-off}", True),
+        ("maybe", False),
+        ("${SERVICENOW_SKILLS:-maybe}", False),
+        ("true", False),
+    ],
+)
+def test_wrapper_skills_env_value(tmp_path: Path, value: str, ok: bool) -> None:
+    """A SERVICENOW_SKILLS value the server would refuse is an error here too."""
+    spec = _server_spec(["mcp-server-servicenow"], {"SERVICENOW_SKILLS": value})
+    errors = plugin_messages(lint_skills([make_wrapper(tmp_path, spec)]), "error")
+    assert (errors == []) is ok, errors
 
 
 @pytest.mark.parametrize(

@@ -111,7 +111,7 @@ The digest covers every file's path and content, so you can pin a skill: if anyt
 | A `.claude-plugin/marketplace.json` with keys other than `name`, `owner`, `description`, `version`, `metadata`, `plugins`, `$schema`; a `metadata.pluginRoot`; an entry with keys other than metadata, `source`, `category` and `tags` (no `strict`, no components); or a `source` that isn't a folder in the repository holding `.claude-plugin/plugin.json`. Plugins it lists are checked wherever they are | |
 | Eval case, grader or mock frontmatter that doesn't parse: `claude plugin eval` skips the file | |
 
-The reason is that `claude plugin eval` runs a plugin's hooks, agents and servers on the evaluator's machine, as the evaluator, and the skills' users run what the skills carry. A repository that passes with `--strict` declares nothing that runs except this server, and its skills are instructions only. The validator is a static check, not a sandbox: read what you run, and run unfamiliar suites in a container or CI runner. Pin the server (`mcp-server-servicenow==0.9.2`) in the wrapper and in the Action.
+The reason is that `claude plugin eval` runs a plugin's hooks, agents and servers on the evaluator's machine, as the evaluator, and the skills' users run what the skills carry. A repository that passes with `--strict` declares nothing that runs except this server, and its skills are instructions only. The validator is a static check, not a sandbox: read what you run, and run unfamiliar suites in a container or CI runner. Pin the server (`mcp-server-servicenow==0.9.3`) in the wrapper and in the Action.
 
 ## The eval kit
 
@@ -157,7 +157,7 @@ It never checks servicenow.com by HTTP, because the docs site answers 200 for pa
 - uses: jschuller/mcp-server-servicenow/actions/validate-skills@66ba9254971e36dad67d3c0f609d9161d29d0d1c # v0.9.0
   with:
     path: .                 # space-separated folders; . also checks the plugin wrapper
-    server-version: "0.9.2" # pin it; empty means the latest release
+    server-version: "0.9.3" # pin it; empty means the latest release
     strict: "true"
     citations: "true"
 ```

@@ -162,6 +162,14 @@ HOST_ENV = {"SERVICENOW_INSTANCE_URL", "SERVICENOW_TOKEN_URL"}
 SERVER_FLAGS = {"--read-only", "--debug", "--allow-js-queries"}
 # Flags that take a value, with the values a plugin may pass (any case, as the CLI).
 SERVER_VALUE_FLAGS = {"--skills": ("on", "off")}
+# The first release that reads each value flag; an older pin stops at startup on it.
+SERVER_FLAG_SINCE = {"--skills": (0, 9, 3)}
+# Settings the server refuses to start with unless the value is one of these.
+STRICT_ENV_VALUES = {
+    "SERVICENOW_SKILLS": re.compile(
+        r"^(on|off|)\Z|^\$\{[A-Za-z_][A-Za-z0-9_]*(:-(on|off)?)?\}\Z", re.I
+    ),
+}
 SERVER_SPEC_KEYS = {"type", "command", "args", "env"}
 # Settings whose literal or default value changes what the server does on the user's machine.
 SAFE_ENV_VALUES = {
@@ -1226,6 +1234,17 @@ def _check_server(name: str, spec: object, report: SkillReport) -> None:
                     f"mcpServers.{name} passes {key} {value!r}: use "
                     f"{' or '.join(f'{key} {c}' for c in choices)}",
                 )
+            pin = args[0].partition("==")[2]
+            since = SERVER_FLAG_SINCE[key]
+            if pin and tuple(int(n) for n in pin.split(".")) < since:
+                report.add(
+                    "error",
+                    where,
+                    None,
+                    f"mcpServers.{name} passes {key} to mcp-server-servicenow=={pin}, "
+                    f"which stops at startup on it: pin "
+                    f"{'.'.join(map(str, since))} or later",
+                )
             continue
         if flag not in SERVER_FLAGS:
             report.add(
@@ -1277,6 +1296,15 @@ def _check_server(name: str, spec: object, report: SkillReport) -> None:
                 None,
                 f"mcpServers.{name}.env.{key} holds a literal value or default: "
                 f"use ${{{key}}}",
+            )
+        strict = STRICT_ENV_VALUES.get(key)
+        if strict and not strict.match(value):
+            report.add(
+                "error",
+                where,
+                None,
+                f"mcpServers.{name}.env.{key}={value!r} stops the server at startup: "
+                "use on, off or a ${VAR} reference",
             )
         safe = SAFE_ENV_VALUES.get(key)
         if safe and not safe[0].match(value):

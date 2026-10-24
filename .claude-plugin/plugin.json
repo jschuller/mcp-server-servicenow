@@ -1,7 +1,7 @@
 {
   "name": "servicenow",
   "displayName": "ServiceNow developer data plane",
-  "version": "0.9.2",
+  "version": "0.9.3",
   "description": "ServiceNow MCP server for Claude Code, GitHub Copilot, Codex and any MCP client: Table API, CMDB, schema, aggregates and update sets, plus four Agent Skills. Read-only mode, OAuth client credentials for headless use, audit log.",
   "author": {
     "name": "Josh Schuller"
@@ -25,7 +25,7 @@
     "servicenow": {
       "command": "uvx",
       "args": [
-        "mcp-server-servicenow==0.9.2"
+        "mcp-server-servicenow==0.9.3"
       ],
       "env": {
         "SERVICENOW_INSTANCE_URL": "${SERVICENOW_INSTANCE_URL}",
