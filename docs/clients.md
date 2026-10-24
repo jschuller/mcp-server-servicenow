@@ -43,6 +43,8 @@ claude plugin install servicenow@mcp-server-servicenow
 
 The plugin reads these variables from the shell that starts Claude Code. It runs the server release it ships with (`uvx mcp-server-servicenow==X.Y.Z`), so updating the plugin brings the next server too. To develop on it: `claude --plugin-dir /path/to/mcp-server-servicenow`. 0.8.0 renamed the 0.7.x commands (see the [changelog](../CHANGELOG.md)).
 
+`SERVICENOW_SKILLS=off` doesn't remove the plugin's skills: it controls only what the server serves ([configuration](configuration.md#skills)). With the plugin, it stops the server serving a second copy of the skills the plugin already loads. For the tools only, add the server with `claude mcp add` ([above](#claude-code)) instead of the plugin.
+
 ## Claude Desktop
 
 Edit `claude_desktop_config.json` — macOS: `~/Library/Application Support/Claude/`, Windows: `%APPDATA%\Claude\`:
@@ -178,7 +180,7 @@ pi mcp list   # connects and lists 13 tools, 19 resources
 
 ## How clients use the skills
 
-- **Claude Code** reads them on its own: the server's `instructions` tell the model which skill matches which request, and the model fetches the resource before calling tools. The plugin also installs the same four files as filesystem skills.
+- **Claude Code** reads them on its own: the server's `instructions` tell the model which skill matches which request, and the model fetches the resource before calling tools. The plugin also installs the same four files as filesystem skills; `SERVICENOW_SKILLS=off` removes only the server's copy.
 - **Codex CLI and pi** expose MCP resources to the model (`list_mcp_resources` / `read_mcp_resource`). Codex follows the instructions and reads the matching skill unprompted; pi passes only their first line, so its model reads a skill when asked. Both also load the same `SKILL.md` folders from disk (`~/.agents/skills/`, or pi's `--skill <dir>`).
 - **Antigravity CLI** loads tools on demand and reads the server's `instructions`; it read the CMDB skill and a reference file unprompted before querying.
 - **opencode** gives the model `list_mcp_resources` / `read_mcp_resource`; it read the CMDB skill, a reference file and the query-syntax help unprompted before querying.

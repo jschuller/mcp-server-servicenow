@@ -200,11 +200,15 @@ Pass secrets as environment variables, not CLI args: `--password`, `--client-sec
 |----------|---------|-------------|
 | `SERVICENOW_SKILLS` | `--skills` | `on` (default) or `off`. `off` serves no `skill://` resources and no `servicenow://help/query-syntax` (it is a skill reference file), and the server instructions no longer list the skills; the tools and the other four resources are unchanged. Any other value stops startup |
 
-Turn the skills off when your client already loads your own skills and you don't want the packaged ones competing with them, or to measure what the skills add (the same tools and instructions, without the skill text).
+`off` controls only what this server serves: the `skill://` resources, `servicenow://help/query-syntax` and the skill part of the instructions. Skills a client loads from disk are not affected. The [Claude Code plugin](clients.md#claude-code-plugin) installs the four skills as filesystem skills, so plugin users still get them with `off`.
+
+- **Tools only:** add the server without the plugin (`claude mcp add servicenow -e SERVICENOW_SKILLS=off -e SERVICENOW_INSTANCE_URL=… -- uvx mcp-server-servicenow`, or an `mcp.json` entry with the variable in `env`), then load your own skills, if any, the way your client loads skills.
+- **With the plugin:** `off` stops the server serving a second copy of the skills the plugin already loads.
+- **Measuring what the skills add:** compare `on` and `off` with the server added without the plugin. Through the plugin, `off` leaves the skills loaded.
 
 ### One-shot commands
 
-These run, print a report and exit; they don't start the server.
+These run, print a report and exit; they don't start the server. Only `--check` loads a `.env` file, as the server does; the others read no instance or credential.
 
 | CLI Arg | What it does |
 |---------|--------------|

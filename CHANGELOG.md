@@ -6,12 +6,16 @@
 - **`SERVICENOW_SKILLS` (`--skills`): `on` (default) or `off`.** With `off` the server
   registers no `skill://` resources (no `SKILL.md`, `_manifest` or `references/`), and the
   server instructions leave out the skill list and the "read the matching skill resource"
-  line. The query, access and record-text guidance in the instructions stays. Use it when your
-  client loads your own skills, or to measure what the packaged skills add over the same tools
-  and instructions. Any other value stops startup with a configuration error.
+  line. The query, access and record-text guidance in the instructions stays. Any other value
+  stops startup with a configuration error. `off` controls only what the server serves: the
+  Claude Code plugin still installs the four skills as filesystem skills. For the tools only,
+  add the server without the plugin (`claude mcp add`, or an `mcp.json` entry). The plugin
+  passes the variable through, so with the plugin `off` stops the server serving a second copy
+  of the skills the plugin already loads.
 - `render_instructions(namespace, *, skills=True)`: `skills=False` returns the
   instructions without the skill part, for a server that mounts this one without skills.
-- `--validate-skills` accepts `SERVICENOW_SKILLS` in a plugin's `mcpServers.<name>.env`.
+- `--validate-skills` accepts `SERVICENOW_SKILLS` in a plugin's `mcpServers.<name>.env`, and
+  `--skills on` or `--skills off` (also `--skills=off`) in its `args`.
 
 ### Changed
 - With `SERVICENOW_SKILLS=off`, `servicenow://help/query-syntax` is not served either: it
@@ -21,6 +25,13 @@
   `servicenow://schema/{table_name}` template) are served in both modes, and the
   `javascript:` refusal no longer names the query-syntax resource when it isn't served. With
   the default `on`, every resource and the instructions are byte-for-byte as in 0.9.2.
+- `scripts/stdio_smoke.py` also starts the server with `--skills off --read-only` and checks the
+  three resources, the schema template, the read tools and instructions that name no skill.
+
+### Fixed
+- `--help`, `--version`, `--validate-skills` and the `--eval-*` modes no longer load a `.env`
+  file. They read no instance or credential, so a `.env` no longer puts its credentials into
+  their process. Starting the server and `--check` still load it.
 
 ## [0.9.2] - 2026-10-21
 

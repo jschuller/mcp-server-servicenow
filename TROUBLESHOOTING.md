@@ -68,6 +68,9 @@ Work notes, comments and field changes live in `sys_journal_field` and `sys_audi
 ## 403 on `sys_store_app` / `sys_plugins` even as admin
 These tables fail API-level ACL validation over REST regardless of role. Use `v_plugin` (installed plugins), `sys_scope` (applications) or `sys_db_object` (tables) instead.
 
+## `SERVICENOW_SKILLS=off` but Claude Code still has the `/servicenow:…` skills
+`off` controls only what the server serves (`skill://` resources, `servicenow://help/query-syntax` and the skill part of the instructions). The Claude Code plugin installs the four skills from its own folder, and Claude Code loads them whatever this setting says. For the tools only, add the server without the plugin (`claude mcp add`); see [configuration](docs/configuration.md#skills).
+
 ## Audit log noise in stdio clients
 One JSON line per tool call goes to stderr by default (Claude Desktop: `~/Library/Logs/Claude/mcp-server-servicenow.log`; Claude Code: debug logs only). Use `--audit-log off` to silence it or `--audit-log /path/audit.jsonl` to write a file. Written field values are never logged, only their names. The encoded query is logged (password-, secret- and token-like values masked, 200 characters at most), so it can hold filter values such as names or email addresses; turn the log off or keep the file private if that matters.
 

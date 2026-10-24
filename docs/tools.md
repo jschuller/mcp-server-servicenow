@@ -100,7 +100,7 @@ Application skills, such as incident triage (ITSM), live outside the package: th
 
 Each skill also exposes `skill://<name>/_manifest` (a JSON file list with SHA-256 digests, so a host can verify what it loaded) and its reference material as sibling resources, e.g. `skill://analyzing-access/references/access-errors.md`. Every read is an audit line. The server's `instructions` tell the model which skill matches which request; how each client picks them up is in [clients.md](clients.md#how-clients-use-the-skills).
 
-`SERVICENOW_SKILLS=off` (`--skills off`) serves none of them, nor the query-syntax alias, and leaves the skill list out of the instructions; the query, access and record-text guidance in the instructions stays ([configuration](configuration.md#skills)).
+`SERVICENOW_SKILLS=off` (`--skills off`) serves none of them, nor the query-syntax alias, and leaves the skill list out of the instructions; the query, access and record-text guidance in the instructions stays. Skills a client loads from disk, such as the Claude Code plugin's copy, are not affected ([configuration](configuration.md#skills)).
 
 ## Safety rails
 
