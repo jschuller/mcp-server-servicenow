@@ -189,6 +189,42 @@ class TestConfig:
         assert exc.value.code == 1
         run.assert_not_called()
         assert "SERVICENOW_SKILLS (--skills) must be 'on' or 'off'" in caplog.text
+        assert "maybe" not in caplog.text  # the value is never repeated
+
+    def test_static_tokens_do_not_hide_the_cause(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """With MCP_STATIC_TOKENS set, a bad value is not reported as missing credentials."""
+        monkeypatch.setattr(cli, "load_dotenv", lambda: None)
+        monkeypatch.setenv("SERVICENOW_SKILLS", "bogus")
+        monkeypatch.setenv("MCP_STATIC_TOKENS", "probe:" + "0" * 64)
+        monkeypatch.setattr(
+            "sys.argv",
+            [
+                "mcp-server-servicenow",
+                "--instance-url",
+                "https://test.service-now.com",
+                "--username",
+                "admin",
+                "--password",
+                "secret",
+            ],
+        )
+        with patch("servicenow_mcp.server.mcp.run") as run:
+            with pytest.raises(SystemExit):
+                cli.main()
+        run.assert_not_called()
+        assert "SERVICENOW_SKILLS (--skills) must be 'on' or 'off'" in caplog.text
+        assert "MCP_STATIC_TOKENS requires" not in caplog.text
+
+    def test_explicit_empty_flag_is_refused(self) -> None:
+        """`--skills ""` (an argument that expanded to nothing) is not the default."""
+        with pytest.raises(ValueError, match="must be 'on' or 'off'"):
+            cli.create_config(_args(skills=""), require_sn_creds=False)
+        assert (
+            cli.create_config(_args(skills=" OFF "), require_sn_creds=False).skills
+            is False
+        )
 
     def test_main_refuses_off_after_resources_were_imported(
         self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture

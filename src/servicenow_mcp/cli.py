@@ -241,8 +241,9 @@ def parse_args() -> argparse.Namespace:
         default=_env_str("SERVICENOW_SKILLS", "on"),
         metavar="{on,off}",
         help=(
-            "Serve the packaged skills as skill:// resources and name them in the "
-            "server instructions (default on; SERVICENOW_SKILLS)"
+            "Serve the packaged skills as skill:// resources (and the "
+            "servicenow://help/query-syntax alias) and name them in the server "
+            "instructions (default on; SERVICENOW_SKILLS)"
         ),
     )
 
@@ -277,13 +278,18 @@ def _skills_enabled(args: argparse.Namespace) -> bool:
     """``--skills`` / ``SERVICENOW_SKILLS``: ``on`` (default) or ``off``.
 
     Anything else stops startup, like an unknown ``SERVICENOW_AUTH_TYPE``: a
-    typo must not silently serve (or hide) the skills.
+    typo must not silently serve (or hide) the skills. An empty variable means
+    the default; an explicit empty ``--skills ""`` is refused. The error does
+    not repeat the value: a plugin could set it from another variable.
     """
-    raw = getattr(args, "skills", None) or "on"
+    raw = getattr(args, "skills", None)
+    if raw is None:
+        raw = "on"
     value = _SKILLS_VALUES.get(raw.strip().lower())
     if value is None:
         raise ValueError(
-            f"SERVICENOW_SKILLS (--skills) must be 'on' or 'off', not {raw!r}"
+            "SERVICENOW_SKILLS (--skills) must be 'on' or 'off' "
+            f"(got a value of {len(raw)} characters)"
         )
     return value
 
@@ -625,6 +631,9 @@ def main() -> None:
         # the OAuth proxy.
         require_sn_creds = (not use_mcp_oauth) or bool(static_tokens)
 
+        # Before create_config(): its errors are reported below as missing
+        # credentials when MCP_STATIC_TOKENS is set.
+        _skills_enabled(args)
         try:
             config = create_config(args, require_sn_creds=require_sn_creds)
         except ValueError as exc:

@@ -198,11 +198,11 @@ Pass secrets as environment variables, not CLI args: `--password`, `--client-sec
 
 | Variable | CLI Arg | Description |
 |----------|---------|-------------|
-| `SERVICENOW_SKILLS` | `--skills` | `on` (default) or `off`. `off` serves no `skill://` resources and no `servicenow://help/query-syntax` (it is a skill reference file), and the server instructions no longer list the skills; the tools and the other four resources are unchanged. Any other value stops startup |
+| `SERVICENOW_SKILLS` | `--skills` | `on` (default) or `off`, in any case; empty means `on`. `off` serves no `skill://` resources and no `servicenow://help/query-syntax` (it is a skill reference file), and the server instructions no longer list the skills; the tools and the other four resources are unchanged. Any other value stops startup (it is not a boolean: `true` or `1` stop it too) |
 
 `off` controls only what this server serves: the `skill://` resources, `servicenow://help/query-syntax` and the skill part of the instructions. Skills a client loads from disk are not affected. The [Claude Code plugin](clients.md#claude-code-plugin) installs the four skills as filesystem skills, so plugin users still get them with `off`.
 
-- **Tools only:** add the server without the plugin (`claude mcp add servicenow -e SERVICENOW_SKILLS=off -e SERVICENOW_INSTANCE_URL=… -- uvx mcp-server-servicenow`, or an `mcp.json` entry with the variable in `env`), then load your own skills, if any, the way your client loads skills.
+- **Tools only:** disable the plugin if you installed it (`claude plugin disable servicenow@mcp-server-servicenow`), and add the server on its own (`claude mcp add servicenow -e SERVICENOW_SKILLS=off -e SERVICENOW_INSTANCE_URL=… -- uvx mcp-server-servicenow`, or an `mcp.json` entry with the variable in `env`), then load your own skills, if any, the way your client loads skills.
 - **With the plugin:** `off` stops the server serving a second copy of the skills the plugin already loads.
 - **Measuring what the skills add:** compare `on` and `off` with the server added without the plugin. Through the plugin, `off` leaves the skills loaded.
 
@@ -221,4 +221,4 @@ These run, print a report and exit; they don't start the server. Only `--check` 
 | `--baseline RESULT_JSON` | With `--eval-summary`: the tools-only run, to report what the skills add |
 | `--badge FILE` | With `--eval-summary`: also write a shields.io endpoint badge |
 
-Boolean env vars accept `1`, `true`, `yes`, `on` (case-insensitive). Empty values and unexpanded `${VAR}` placeholders (as Claude Code passes for unset plugin env vars) are treated as unset.
+Boolean env vars accept `1`, `true`, `yes`, `on` (case-insensitive); `SERVICENOW_SKILLS` is not one of them, it takes only `on` or `off`. Empty values and unexpanded `${VAR}` placeholders (as Claude Code passes for unset plugin env vars) are treated as unset.

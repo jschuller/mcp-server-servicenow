@@ -155,6 +155,11 @@ def test_read_only_flag_is_reported(monkeypatch, capsys) -> None:
     assert "flags: --read-only" in out
 
 
+def test_config_line_names_skills_off() -> None:
+    assert "flags: --skills off" in describe_config(make_server_config(skills=False))
+    assert "flags: none" in describe_config(make_server_config())
+
+
 def test_config_line_never_carries_secrets() -> None:
     oauth = AuthConfig(
         type=AuthType.OAUTH,

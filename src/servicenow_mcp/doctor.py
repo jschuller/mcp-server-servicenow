@@ -76,6 +76,7 @@ def describe_config(config: ServerConfig) -> str:
         for name, on in (
             ("--read-only", config.read_only),
             ("--allow-js-queries", config.allow_js_queries),
+            ("--skills off", not config.skills),
         )
         if on
     ]

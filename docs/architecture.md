@@ -43,4 +43,17 @@ app = FastMCP("orchestrator", instructions=render_instructions("snow"))
 app.mount(servicenow, namespace="snow")  # tools snow_*, resources skill://snow/…
 ```
 
-To mount it without the skills, call `init_services()` with a `ServerConfig(skills=False)` before the first `import servicenow_mcp.resources` (the module reads the switch once, when it is imported) and pass `render_instructions(skills=False)`.
+The tools and resources register when their modules are imported, after `init_services()` has the config, as `cli.main()` does. To mount the server without the skills, set `skills=False` in that config; `servicenow_mcp.resources` reads it once, when it is first imported:
+
+```python
+from servicenow_mcp.server import init_services
+from servicenow_mcp.utils.config import ServerConfig
+
+init_services(ServerConfig(..., skills=False))  # your instance and auth
+import servicenow_mcp.tools.table_tools, servicenow_mcp.tools.cmdb_tools  # noqa: E401,F401
+import servicenow_mcp.tools.system_tools, servicenow_mcp.tools.update_set_tools  # noqa: E401,F401
+import servicenow_mcp.resources  # noqa: F401  (no skill:// with skills=False)
+
+app = FastMCP("orchestrator", instructions=render_instructions("snow", skills=False))
+app.mount(servicenow, namespace="snow")
+```

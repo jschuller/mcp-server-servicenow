@@ -164,12 +164,24 @@ SERVER_FLAGS = {"--read-only", "--debug", "--allow-js-queries"}
 SERVER_VALUE_FLAGS = {"--skills": ("on", "off")}
 # The first release that reads each value flag; an older pin stops at startup on it.
 SERVER_FLAG_SINCE = {"--skills": (0, 9, 3)}
-# Settings the server refuses to start with unless the value is one of these.
+# The first release that reads each setting; an older pin ignores it.
+SERVER_ENV_SINCE = {"SERVICENOW_SKILLS": (0, 9, 3)}
+# Settings whose value must be one of these (whitespace around it is ignored, as the
+# server strips it). A reference may name only the setting itself: the server's error
+# for a bad value must not be able to carry another variable, such as a credential.
 STRICT_ENV_VALUES = {
     "SERVICENOW_SKILLS": re.compile(
-        r"^(on|off|)\Z|^\$\{[A-Za-z_][A-Za-z0-9_]*(:-(on|off)?)?\}\Z", re.I
+        r"^((?i:on|off)|)\Z|^\$\{SERVICENOW_SKILLS(:-((?i:on|off))?)?\}\Z"
     ),
 }
+
+
+def _pinned_version(package: str) -> Optional[Tuple[int, ...]]:
+    """The version in `mcp-server-servicenow==X.Y.Z`, or None when unpinned."""
+    pin = package.partition("==")[2]
+    return tuple(int(n) for n in pin.split(".")) if pin else None
+
+
 SERVER_SPEC_KEYS = {"type", "command", "args", "env"}
 # Settings whose literal or default value changes what the server does on the user's machine.
 SAFE_ENV_VALUES = {
@@ -1218,6 +1230,8 @@ def _check_server(name: str, spec: object, report: SkillReport) -> None:
             *(f"{f} {'|'.join(v)}" for f, v in sorted(SERVER_VALUE_FLAGS.items())),
         ]
     )
+    pinned = _pinned_version(args[0])
+    pin_checked: Set[str] = set()
     rest = iter(args[1:])
     for flag in rest:
         key, eq, value = flag.partition("=")
@@ -1234,16 +1248,15 @@ def _check_server(name: str, spec: object, report: SkillReport) -> None:
                     f"mcpServers.{name} passes {key} {value!r}: use "
                     f"{' or '.join(f'{key} {c}' for c in choices)}",
                 )
-            pin = args[0].partition("==")[2]
             since = SERVER_FLAG_SINCE[key]
-            if pin and tuple(int(n) for n in pin.split(".")) < since:
+            if pinned is not None and pinned < since and key not in pin_checked:
+                pin_checked.add(key)
                 report.add(
                     "error",
                     where,
                     None,
-                    f"mcpServers.{name} passes {key} to mcp-server-servicenow=={pin}, "
-                    f"which stops at startup on it: pin "
-                    f"{'.'.join(map(str, since))} or later",
+                    f"mcpServers.{name} passes {key} to {args[0]}, which stops at "
+                    f"startup on it: pin {'.'.join(map(str, since))} or later",
                 )
             continue
         if flag not in SERVER_FLAGS:
@@ -1298,13 +1311,22 @@ def _check_server(name: str, spec: object, report: SkillReport) -> None:
                 f"use ${{{key}}}",
             )
         strict = STRICT_ENV_VALUES.get(key)
-        if strict and not strict.match(value):
+        if strict and not strict.match(value.strip()):
             report.add(
                 "error",
                 where,
                 None,
-                f"mcpServers.{name}.env.{key}={value!r} stops the server at startup: "
-                "use on, off or a ${VAR} reference",
+                f"mcpServers.{name}.env.{key}={value!r}: use on, off, ${{{key}}} or "
+                f"${{{key}:-on}} / ${{{key}:-off}}",
+            )
+        reads_from = SERVER_ENV_SINCE.get(key)
+        if reads_from and value and pinned is not None and pinned < reads_from:
+            report.add(
+                "error",
+                where,
+                None,
+                f"mcpServers.{name}.env.{key}: {args[0]} ignores it: pin "
+                f"{'.'.join(map(str, reads_from))} or later",
             )
         safe = SAFE_ENV_VALUES.get(key)
         if safe and not safe[0].match(value):

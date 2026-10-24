@@ -942,6 +942,21 @@ def test_wrapper_skills_flag_needs_a_pin_that_has_it(
         assert any("pin 0.9.3 or later" in m for m in errors), errors
 
 
+def test_wrapper_skills_env_needs_a_pin_that_reads_it(tmp_path: Path) -> None:
+    """0.9.2 ignores SERVICENOW_SKILLS: a plugin asking for off would get the skills."""
+    spec = _server_spec(["mcp-server-servicenow==0.9.2"], {"SERVICENOW_SKILLS": "off"})
+    errors = plugin_messages(lint_skills([make_wrapper(tmp_path, spec)]), "error")
+    assert any("ignores it: pin 0.9.3 or later" in m for m in errors), errors
+
+
+def test_wrapper_skills_flag_pin_error_once(tmp_path: Path) -> None:
+    spec = _server_spec(
+        ["mcp-server-servicenow==0.9.2", "--skills", "off", "--skills", "on"], {}
+    )
+    errors = plugin_messages(lint_skills([make_wrapper(tmp_path, spec)]), "error")
+    assert sum("pin 0.9.3 or later" in m for m in errors) == 1, errors
+
+
 @pytest.mark.parametrize(
     ("value", "ok"),
     [
@@ -951,9 +966,14 @@ def test_wrapper_skills_flag_needs_a_pin_that_has_it(
         ("${SERVICENOW_SKILLS}", True),
         ("${SERVICENOW_SKILLS:-on}", True),
         ("${SERVICENOW_SKILLS:-off}", True),
+        (" off ", True),
         ("maybe", False),
         ("${SERVICENOW_SKILLS:-maybe}", False),
         ("true", False),
+        # Another variable could carry a credential into the server's error.
+        ("${SERVICENOW_PASSWORD}", False),
+        ("${OTHER:-off}", False),
+        ("${servicenow_skills}", False),
     ],
 )
 def test_wrapper_skills_env_value(tmp_path: Path, value: str, ok: bool) -> None:

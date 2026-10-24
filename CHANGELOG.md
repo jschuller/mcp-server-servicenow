@@ -15,16 +15,22 @@ Run the server with or without its packaged skills.
   registers no `skill://` resources (no `SKILL.md`, `_manifest` or `references/`), and the
   server instructions leave out the skill list and the "read the matching skill resource"
   line. The query, access and record-text guidance in the instructions stays. Any other value
-  stops startup with a configuration error. `off` controls only what the server serves: the
+  stops startup with a configuration error that does not repeat the value, and so does an
+  explicit empty `--skills ""`. `off` controls only what the server serves: the
   Claude Code plugin still installs the four skills as filesystem skills. For the tools only,
   add the server without the plugin (`claude mcp add`, or an `mcp.json` entry). The plugin
   passes the variable through, so with the plugin `off` stops the server serving a second copy
   of the skills the plugin already loads.
-- `render_instructions(namespace, *, skills=True)`: `skills=False` returns the
-  instructions without the skill part, for a server that mounts this one without skills.
+- `render_instructions(namespace, *, skills=True)` and `ServerConfig.skills` (default `True`):
+  for a server that mounts this one without skills. Set `skills=False` in the config passed to
+  `init_services()` before `servicenow_mcp.resources` is first imported (it reads the switch
+  once), and use `render_instructions(..., skills=False)` (docs/architecture.md).
+- `--check` lists `--skills off` among the flags when the skills are off.
 - `--validate-skills` accepts `SERVICENOW_SKILLS` in a plugin's `mcpServers.<name>.env`, and
-  `--skills on` or `--skills off` (also `--skills=off`) in its `args`. A value the server
-  would refuse at startup is an error, and so is `--skills` with a pin older than 0.9.3.
+  `--skills on` or `--skills off` (also `--skills=off`) in its `args`. Any other value is an
+  error, and so is a reference to another variable (`${SERVICENOW_SKILLS}` only). Setting it
+  either way with a pin older than 0.9.3 is an error too: 0.9.2 stops on `--skills` and
+  ignores the variable.
 
 ### Changed
 - With `SERVICENOW_SKILLS=off`, `servicenow://help/query-syntax` is not served either: it
