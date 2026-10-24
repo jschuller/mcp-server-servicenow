@@ -42,3 +42,5 @@ from servicenow_mcp.server import mcp as servicenow, render_instructions
 app = FastMCP("orchestrator", instructions=render_instructions("snow"))
 app.mount(servicenow, namespace="snow")  # tools snow_*, resources skill://snow/…
 ```
+
+To mount it without the skills, call `init_services()` with a `ServerConfig(skills=False)` before the first `import servicenow_mcp.resources` (the module reads the switch once, when it is imported) and pass `render_instructions(skills=False)`.

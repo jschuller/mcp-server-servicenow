@@ -12,6 +12,12 @@ Five hand-written resources:
 Plus the four Agent Skills under src/servicenow_mcp/skills/, served by FastMCP's
 SkillsDirectoryProvider as skill://<name>/SKILL.md, skill://<name>/_manifest
 (SHA-256 per file) and skill://<name>/references/<file> — the SEP-2640 convention.
+
+With SERVICENOW_SKILLS=off (``ServerConfig.skills``) neither the skills nor the
+query-syntax alias is registered: the alias is a skill reference file, and "off"
+means no packaged skill text reaches the model by any URI. The other four
+resources are data, not skills, and are served either way. The switch is read
+when this module is first imported, which the CLI does after init_services().
 """
 
 import json
@@ -22,9 +28,10 @@ from importlib.resources import files
 from pathlib import Path
 from typing import Any, Dict
 
+from fastmcp import FastMCP
 from fastmcp.server.providers.skills import SkillsDirectoryProvider
 
-from servicenow_mcp.server import mcp, get_config, make_sn_request
+from servicenow_mcp.server import get_config, get_config_or_none, make_sn_request, mcp
 from servicenow_mcp.utils.http import build_url, parse_json_response, result_rows
 from servicenow_mcp.utils.schema import _reference_value, fetch_table_schema
 from servicenow_mcp.utils.user import fetch_current_user
@@ -297,12 +304,6 @@ def _query_syntax_text() -> str:
     return files("servicenow_mcp").joinpath(*_QUERY_SYNTAX_PATH).read_text("utf-8")
 
 
-@mcp.resource(
-    "servicenow://help/query-syntax",
-    description="ServiceNow encoded query operators reference — prevents hallucinated query syntax",
-    mime_type="text/markdown",
-    tags={"read"},
-)
 def query_syntax_help() -> str:
     """Return the encoded query syntax reference."""
     return _query_syntax_text()
@@ -316,6 +317,32 @@ def query_syntax_help() -> str:
 # each as skill://<name>/SKILL.md plus a skill://<name>/_manifest (SHA-256 per
 # file) and, with supporting_files="resources", every reference file by URI.
 _SKILLS_ROOT = Path(str(files("servicenow_mcp").joinpath("skills")))
-mcp.add_provider(
-    SkillsDirectoryProvider(roots=_SKILLS_ROOT, supporting_files="resources")
-)
+
+
+def register_skills(server: FastMCP) -> None:
+    """Serve the packaged skills, and the query-syntax alias, on ``server``."""
+    server.resource(
+        "servicenow://help/query-syntax",
+        description="ServiceNow encoded query operators reference — prevents hallucinated query syntax",
+        mime_type="text/markdown",
+        tags={"read"},
+    )(query_syntax_help)
+    server.add_provider(
+        SkillsDirectoryProvider(roots=_SKILLS_ROOT, supporting_files="resources")
+    )
+
+
+def _skills_configured() -> bool:
+    """On unless the config says off; a library import without a config gets them."""
+    config = get_config_or_none()
+    return config is None or config.skills
+
+
+# Whether this process serves the skills; the CLI checks it against its config.
+SKILLS_SERVED = _skills_configured()
+if SKILLS_SERVED:
+    register_skills(mcp)
+else:
+    logger.info(
+        "SERVICENOW_SKILLS=off: skill:// resources and the query-syntax alias not registered"
+    )

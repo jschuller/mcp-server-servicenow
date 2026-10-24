@@ -194,6 +194,14 @@ Pass secrets as environment variables, not CLI args: `--password`, `--client-sec
 | `SERVICENOW_ALLOW_JS_QUERIES` | `--allow-js-queries` | Permit arbitrary `javascript:` in caller queries (default: only `gs.*` date helpers) |
 | `SERVICENOW_AUDIT_LOG` | `--audit-log` | `stderr` (default), `off`, or a file path for the JSON audit log |
 
+### Skills
+
+| Variable | CLI Arg | Description |
+|----------|---------|-------------|
+| `SERVICENOW_SKILLS` | `--skills` | `on` (default) or `off`. `off` serves no `skill://` resources and no `servicenow://help/query-syntax` (it is a skill reference file), and the server instructions no longer list the skills; the tools and the other four resources are unchanged. Any other value stops startup |
+
+Turn the skills off when your client already loads your own skills and you don't want the packaged ones competing with them, or to measure what the skills add (the same tools and instructions, without the skill text).
+
 ### One-shot commands
 
 These run, print a report and exit; they don't start the server.

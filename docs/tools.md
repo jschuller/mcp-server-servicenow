@@ -81,7 +81,7 @@ Read-only context a client can fetch without a tool call.
 | `servicenow://instance` | Instance URL, build (`glide.war`) and release family, default time zone, and the logged-in user with roles and time zone; `unavailable` names each value this identity can't read, and why |
 | `servicenow://update-set/current` | Current update set name, sys_id, state |
 | `servicenow://cmdb/classes` | CMDB CI class hierarchy (names, labels, parent classes) |
-| `servicenow://help/query-syntax` | Encoded query operators, including date ranges (the same file as `skill://exploring-tables/references/query-syntax.md`) |
+| `servicenow://help/query-syntax` | Encoded query operators, including date ranges (the same file as `skill://exploring-tables/references/query-syntax.md`, so not served with `SERVICENOW_SKILLS=off`) |
 
 ## Skills (served over MCP)
 
@@ -99,6 +99,8 @@ Each skill states the tables it reads and the roles they need, in its text and i
 Application skills, such as incident triage (ITSM), live outside the package: the one that shipped here until 0.9.0 is now [`examples/incident-triage`](../examples/incident-triage/), and [EXTENDING.md](../EXTENDING.md) covers writing your own.
 
 Each skill also exposes `skill://<name>/_manifest` (a JSON file list with SHA-256 digests, so a host can verify what it loaded) and its reference material as sibling resources, e.g. `skill://analyzing-access/references/access-errors.md`. Every read is an audit line. The server's `instructions` tell the model which skill matches which request; how each client picks them up is in [clients.md](clients.md#how-clients-use-the-skills).
+
+`SERVICENOW_SKILLS=off` (`--skills off`) serves none of them, nor the query-syntax alias, and leaves the skill list out of the instructions; the query, access and record-text guidance in the instructions stays ([configuration](configuration.md#skills)).
 
 ## Safety rails
 

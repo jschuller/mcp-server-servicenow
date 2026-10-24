@@ -1,5 +1,27 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+- **`SERVICENOW_SKILLS` (`--skills`): `on` (default) or `off`.** With `off` the server
+  registers no `skill://` resources (no `SKILL.md`, `_manifest` or `references/`), and the
+  server instructions leave out the skill list and the "read the matching skill resource"
+  line. The query, access and record-text guidance in the instructions stays. Use it when your
+  client loads your own skills, or to measure what the packaged skills add over the same tools
+  and instructions. Any other value stops startup with a configuration error.
+- `render_instructions(namespace, *, skills=True)`: `skills=False` returns the
+  instructions without the skill part, for a server that mounts this one without skills.
+- `--validate-skills` accepts `SERVICENOW_SKILLS` in a plugin's `mcpServers.<name>.env`.
+
+### Changed
+- With `SERVICENOW_SKILLS=off`, `servicenow://help/query-syntax` is not served either: it
+  is the skill reference file `skill://exploring-tables/references/query-syntax.md` under
+  another name. The other four resources (`servicenow://instance`,
+  `servicenow://update-set/current`, `servicenow://cmdb/classes` and the
+  `servicenow://schema/{table_name}` template) are served in both modes, and the
+  `javascript:` refusal no longer names the query-syntax resource when it isn't served. With
+  the default `on`, every resource and the instructions are byte-for-byte as in 0.9.2.
+
 ## [0.9.2] - 2026-10-21
 
 Read-only developer-loop tools (where-used, record history, structured output), readable

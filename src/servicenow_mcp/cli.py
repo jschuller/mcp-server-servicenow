@@ -234,6 +234,17 @@ def parse_args() -> argparse.Namespace:
         default=_env_str("SERVICENOW_AUDIT_LOG", "stderr"),
         help="Audit log target: 'stderr' (default), 'off', or a file path (SERVICENOW_AUDIT_LOG)",
     )
+    parser.add_argument(
+        "--skills",
+        # Not choices=: argparse does not check a default against choices, so
+        # create_config() validates the flag and the variable alike.
+        default=_env_str("SERVICENOW_SKILLS", "on"),
+        metavar="{on,off}",
+        help=(
+            "Serve the packaged skills as skill:// resources and name them in the "
+            "server instructions (default on; SERVICENOW_SKILLS)"
+        ),
+    )
 
     args = parser.parse_args()
     modes = [
@@ -259,11 +270,31 @@ def parse_args() -> argparse.Namespace:
     return args
 
 
-def _safety_kwargs(args: argparse.Namespace) -> dict[str, Any]:
+_SKILLS_VALUES = {"on": True, "off": False}
+
+
+def _skills_enabled(args: argparse.Namespace) -> bool:
+    """``--skills`` / ``SERVICENOW_SKILLS``: ``on`` (default) or ``off``.
+
+    Anything else stops startup, like an unknown ``SERVICENOW_AUTH_TYPE``: a
+    typo must not silently serve (or hide) the skills.
+    """
+    raw = getattr(args, "skills", None) or "on"
+    value = _SKILLS_VALUES.get(raw.strip().lower())
+    if value is None:
+        raise ValueError(
+            f"SERVICENOW_SKILLS (--skills) must be 'on' or 'off', not {raw!r}"
+        )
+    return value
+
+
+def _option_kwargs(args: argparse.Namespace) -> dict[str, Any]:
+    """ServerConfig fields that do not depend on the auth type."""
     return {
         "read_only": bool(getattr(args, "read_only", False)),
         "allow_js_queries": bool(getattr(args, "allow_js_queries", False)),
         "audit_log": getattr(args, "audit_log", None) or "stderr",
+        "skills": _skills_enabled(args),
     }
 
 
@@ -316,7 +347,7 @@ def create_config(
             auth=auth_config,
             debug=args.debug,
             timeout=args.timeout,
-            **_safety_kwargs(args),
+            **_option_kwargs(args),
         )
 
     auth_type = AuthType(args.auth_type.lower())
@@ -365,7 +396,7 @@ def create_config(
         auth=auth_config,
         debug=args.debug,
         timeout=args.timeout,
-        **_safety_kwargs(args),
+        **_option_kwargs(args),
     )
 
 
@@ -640,7 +671,23 @@ def main() -> None:
         import servicenow_mcp.tools.cmdb_tools  # noqa: F401
         import servicenow_mcp.tools.system_tools  # noqa: F401
         import servicenow_mcp.tools.update_set_tools  # noqa: F401
-        import servicenow_mcp.resources  # noqa: F401
+        import servicenow_mcp.resources as resources
+
+        # resources.py reads the config when it is first imported, just above:
+        # with skills off it registers neither skill:// nor the query-syntax
+        # alias, and the instructions must not name them either.
+        if resources.SKILLS_SERVED != config.skills:
+            raise RuntimeError(
+                "servicenow_mcp.resources was imported before init_services(), so "
+                f"SERVICENOW_SKILLS={'on' if config.skills else 'off'} cannot apply"
+            )
+        if not config.skills:
+            from servicenow_mcp.server import render_instructions
+
+            mcp.instructions = render_instructions(skills=False)
+            logger.info(
+                "Skills off: no skill:// resources, and none named in the instructions"
+            )
 
         # Safety rails
         if config.read_only:

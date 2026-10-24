@@ -103,6 +103,12 @@
           "isRequired": false,
           "description": "Audit log target: stderr (default), off, or a file path",
           "format": "string"
+        },
+        {
+          "name": "SERVICENOW_SKILLS",
+          "isRequired": false,
+          "description": "on (default) or off: serve the packaged skill:// resources",
+          "format": "string"
         }
       ]
     }

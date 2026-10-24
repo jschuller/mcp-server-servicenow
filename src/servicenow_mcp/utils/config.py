@@ -82,6 +82,13 @@ class ServerConfig(BaseModel):
         default="stderr",
         description="Audit log target: 'stderr', 'off', or a file path.",
     )
+    skills: bool = Field(
+        default=True,
+        description=(
+            "Serve the packaged skills (skill:// resources, the query-syntax alias) "
+            "and name them in the server instructions."
+        ),
+    )
 
     @property
     def api_url(self) -> str:

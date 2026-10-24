@@ -132,12 +132,14 @@ def check_query(name: str, value: Any, config: ServerConfig) -> None:
         return
     offending = find_unsafe_js(value)
     if offending is not None:
+        # The query-syntax resource is served only with the skills on.
+        see = " (servicenow://help/query-syntax)" if config.skills else ""
         raise PolicyError(
             f"Query rejected: unsafe javascript: expression in {name} "
             f"({offending!r}). Only GlideSystem date helpers such as "
             "javascript:gs.daysAgo(7), javascript:gs.beginningOfToday() or "
             "javascript:gs.dateGenerate('2026-10-01','start') are allowed; use the "
-            "RELATIVE* operators or ON/BETWEEN ranges instead (servicenow://help/query-syntax), "
+            f"RELATIVE* operators or ON/BETWEEN ranges instead{see}, "
             "or start the server with --allow-js-queries (SERVICENOW_ALLOW_JS_QUERIES=true). "
             "To filter on records of another table, query that table first, then pass "
             "their sys_ids with the IN operator (fieldINsys_id1,sys_id2)."

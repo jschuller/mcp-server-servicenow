@@ -154,6 +154,7 @@ SERVER_ENV = {
     "SERVICENOW_READ_ONLY",
     "SERVICENOW_ALLOW_JS_QUERIES",
     "SERVICENOW_AUDIT_LOG",
+    "SERVICENOW_SKILLS",
 }
 SECRET_ENV = {"SERVICENOW_PASSWORD", "SERVICENOW_CLIENT_SECRET", "SERVICENOW_API_KEY"}
 # Where the server sends those credentials: a skills repository mustn't choose it.
