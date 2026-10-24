@@ -1,6 +1,7 @@
 """Tests for the CLI entry point: arg parsing, auth wiring, fail-closed startup."""
 
 import argparse
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
@@ -625,3 +626,63 @@ class TestStaticTokensNeedServiceAccount:
             with pytest.raises(SystemExit):
                 cli.main()
         mock_run.assert_not_called()
+
+
+class TestDotenv:
+    """Only the server and --check load a .env; the offline modes never read it."""
+
+    @pytest.fixture
+    def loads(self, monkeypatch):
+        calls: list[str] = []
+
+        def fake_load_dotenv() -> bool:
+            calls.append("loaded")
+            monkeypatch.setenv(
+                "SERVICENOW_INSTANCE_URL", "https://dotenv.service-now.com"
+            )
+            return True
+
+        monkeypatch.setattr(cli, "load_dotenv", fake_load_dotenv)
+        return calls
+
+    @pytest.mark.parametrize(
+        "argv",
+        [
+            ["--help"],
+            ["--version"],
+            ["--validate-skills", str(Path(cli.__file__).parent / "skills")],
+            ["--eval-summary", "/nonexistent/eval-run"],
+            ["--eval-baseline", "/nonexistent/plugin", "/nonexistent/out"],
+        ],
+    )
+    def test_offline_modes_skip_it(self, monkeypatch, loads, argv):
+        monkeypatch.setattr("sys.argv", ["mcp-server-servicenow", *argv])
+        with patch("servicenow_mcp.server.mcp.run") as mock_run:
+            with pytest.raises(SystemExit):
+                cli.main()
+        assert loads == []
+        mock_run.assert_not_called()
+
+    def test_check_reads_it(self, monkeypatch, loads):
+        seen: list[str | None] = []
+        monkeypatch.setattr(
+            cli, "run_check", lambda args: seen.append(args.instance_url) or 0
+        )
+        monkeypatch.setattr("sys.argv", ["mcp-server-servicenow", "--check"])
+        with pytest.raises(SystemExit) as exc_info:
+            cli.main()
+        assert exc_info.value.code == 0
+        assert loads == ["loaded"]
+        assert seen == ["https://dotenv.service-now.com"]
+
+    def test_server_reads_it(self, monkeypatch, loads, caplog):
+        monkeypatch.setattr("sys.argv", ["mcp-server-servicenow"])
+        with patch("servicenow_mcp.server.mcp.run") as mock_run:
+            with pytest.raises(SystemExit) as exc_info:
+                cli.main()
+        # The .env gave the instance URL; the credentials are still missing.
+        assert exc_info.value.code == 1
+        assert loads == ["loaded"]
+        mock_run.assert_not_called()
+        assert "instance URL" not in caplog.text
+        assert "Username and password required" in caplog.text

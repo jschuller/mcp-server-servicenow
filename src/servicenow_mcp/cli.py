@@ -575,12 +575,24 @@ def run_eval_summary(
     return 0
 
 
+def _reads_settings(args: argparse.Namespace) -> bool:
+    """False for the offline one-shot modes, which use no instance or credential."""
+    return not any(
+        getattr(args, mode, None)
+        for mode in ("validate_skills", "eval_mocks", "eval_summary", "eval_baseline")
+    )
+
+
 def main() -> None:
     """Main entry point."""
-    load_dotenv()
-
     try:
+        # A .env is loaded only to start the server or run --check: --help and
+        # --version exit inside parse_args(), before it, and the offline modes
+        # skip it, so they never put its credentials in this process.
         args = parse_args()
+        if _reads_settings(args) and load_dotenv():
+            # parse_args() takes its defaults from the environment the .env set.
+            args = parse_args()
 
         if args.debug:
             logging.getLogger().setLevel(logging.DEBUG)
