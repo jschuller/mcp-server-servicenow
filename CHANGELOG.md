@@ -9,6 +9,11 @@ Run the server with or without its packaged skills.
   server instructions are byte-for-byte as in 0.9.2.
 - A plugin or config that sets `SERVICENOW_SKILLS` needs 0.9.3. 0.9.2 ignores the variable and
   still serves the skills, and stops at startup on `--skills` (an unknown argument).
+- 0.9.3 needs fastmcp 4.1.3 and certifi 2026.10.19 (see Security). A machine whose uv
+  waits out new releases (`exclude-newer`) cannot resolve them until they are old enough (from
+  2026-10-27 23:00 UTC for a one-week window); until then a pin
+  `==0.9.3` fails with "No solution found", and an unpinned `uvx mcp-server-servicenow` stays
+  on 0.9.2.
 
 ### Added
 - **`SERVICENOW_SKILLS` (`--skills`): `on` (default) or `off`.** With `off` the server
@@ -51,19 +56,23 @@ Run the server with or without its packaged skills.
   `SERVICENOW_AUTH_TYPE` or `SERVICENOW_TIMEOUT` value. A pin must be ASCII digits (uvx refuses
   others), and a very long one no longer stops the whole validation run.
 - **certifi 2026.10.19 or later is now required** (GHSA-6q48-6c7w-9gw2, critical). The server
-  makes every ServiceNow call with `requests`, which trusts certifi's CA bundle, and earlier
-  bundles trust emSign roots whose eMudhra intermediate keys were compromised: an on-path attacker
-  with one of those keys could read or change the server's traffic to the instance, credentials
-  included. A `REQUESTS_CA_BUNDLE` you set replaces certifi's bundle, so keep that file current
-  yourself.
+  makes its ServiceNow API calls with `requests`, which trusts certifi's CA bundle, and earlier
+  bundles trust the `emSign ECC Root CA - G3` root, whose eMudhra intermediate keys were
+  compromised: an on-path attacker with one of those keys could read or change the server's
+  traffic to the instance, credentials included. A `REQUESTS_CA_BUNDLE` you set replaces
+  certifi's bundle, so keep that file current yourself. (In HTTP mode, the OAuth proxy's token
+  exchange and token checks go through httpx2 and the operating system's trust store, not
+  certifi.)
 - **FastMCP floor is 4.1.3** (`fastmcp>=4.1.3,<5`). 4.1.2 fixed GHSA-7xgj-8392-5q4r (a component
   authorization check skipped after a transform) and GHSA-vqqp-x5qm-5qp4 (OAuth client-credentials
-  providers without issuer binding). Neither affects this server: it sets no per-component
-  authorization (read-only mode hides write tools server-wide) and does not use FastMCP's OAuth
-  client providers. The floor keeps scanners quiet and every install on the fixed line.
-- Dependencies refreshed to releases at least 7 days old (authlib 1.9.1, httpx2 2.14.0,
-  starlette 1.9.0, truststore 0.10.5, pydantic-settings 2.16.0). fastmcp 4.1.3 and certifi
-  2026.10.19 are younger than that, taken early for the fixes above.
+  providers without issuer binding), and 4.1.3 also requires certifi 2026.10.19. Neither FastMCP
+  advisory affects this server: it sets no per-component authorization (read-only mode hides
+  write tools server-wide) and does not use FastMCP's OAuth client providers. The floor keeps
+  scanners quiet and every install on the fixed line.
+- Dependencies refreshed to releases at least 7 days old, among them authlib 1.9.1, httpx2 and
+  httpcore2 2.14.0, starlette 1.9.0, truststore 0.10.5 and pydantic-settings 2.16.0. fastmcp
+  4.1.3, fastmcp-slim 4.1.3 and certifi 2026.10.19 are younger than that, taken early for the
+  fixes above.
 
 ### Fixed
 - `--help`, `--version`, `--validate-skills` and the `--eval-*` modes no longer load a `.env`
