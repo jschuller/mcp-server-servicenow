@@ -50,6 +50,20 @@ Run the server with or without its packaged skills.
   in its log or create a file named after it. The server no longer repeats a bad
   `SERVICENOW_AUTH_TYPE` or `SERVICENOW_TIMEOUT` value. A pin must be ASCII digits (uvx refuses
   others), and a very long one no longer stops the whole validation run.
+- **certifi 2026.10.19 or later is now required** (GHSA-6q48-6c7w-9gw2, critical). The server
+  makes every ServiceNow call with `requests`, which trusts certifi's CA bundle, and earlier
+  bundles trust emSign roots whose eMudhra intermediate keys were compromised: an on-path attacker
+  with one of those keys could read or change the server's traffic to the instance, credentials
+  included. A `REQUESTS_CA_BUNDLE` you set replaces certifi's bundle, so keep that file current
+  yourself.
+- **FastMCP floor is 4.1.3** (`fastmcp>=4.1.3,<5`). 4.1.2 fixed GHSA-7xgj-8392-5q4r (a component
+  authorization check skipped after a transform) and GHSA-vqqp-x5qm-5qp4 (OAuth client-credentials
+  providers without issuer binding). Neither affects this server: it sets no per-component
+  authorization (read-only mode hides write tools server-wide) and does not use FastMCP's OAuth
+  client providers. The floor keeps scanners quiet and every install on the fixed line.
+- Dependencies refreshed to releases at least 7 days old (authlib 1.9.1, httpx2 2.14.0,
+  starlette 1.9.0, truststore 0.10.5, pydantic-settings 2.16.0). fastmcp 4.1.3 and certifi
+  2026.10.19 are younger than that, taken early for the fixes above.
 
 ### Fixed
 - `--help`, `--version`, `--validate-skills` and the `--eval-*` modes no longer load a `.env`
