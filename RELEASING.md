@@ -140,6 +140,19 @@ the release (see Failure modes).
      the rest 0, so read the `NOTES` column before treating a low score as a
      regression (`--eval-summary` refuses such a run). Not a gate yet: the owner
      decides the suite's size and cadence.
+   - Log a finished run to MLflow (the maintainer's homelab; optional):
+     `scripts/log_evals_to_mlflow.py` writes one run per `evals/results/<timestamp>`
+     folder (default: the newest) into the experiment `mcp-servicenow-evals`, after the
+     homelab MLflow standard: per-arm pass rate, run counts, mean score and cost as
+     metrics, the case set (names and a digest, no prompts) as a dataset input. A folder
+     already logged is skipped; `--dry-run` prints the run and contacts nothing.
+     ```sh
+     MLFLOW_TRACKING_URI=http://127.0.0.1:5001 MLFLOW_TRACKING_USERNAME=homelab-service \
+       with-secrets MLFLOW_TRACKING_PASSWORD=svc/observability/mlflow-service-password -- \
+       uv run --frozen --isolated --group mlflow python scripts/log_evals_to_mlflow.py
+     ```
+     `--isolated` leaves `.venv` alone and `--frozen` leaves `uv.lock` alone. Exit 0
+     logged or already logged, 1 MLflow failed, 2 bad input.
 
 4. Push the release branch, open the PR and wait for CI green — the test matrix
    (3.11–3.14) plus the `package` job (version consistency, `uv lock --check`,
