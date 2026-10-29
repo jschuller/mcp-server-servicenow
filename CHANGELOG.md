@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.9.3] - 2026-10-24
+## [0.9.3] - 2026-10-28
 
 Run the server with or without its packaged skills.
 
@@ -71,8 +71,12 @@ Run the server with or without its packaged skills.
   scanners quiet and every install on the fixed line.
 - Dependencies refreshed to releases at least 7 days old, among them authlib 1.9.1, httpx2 and
   httpcore2 2.14.0, starlette 1.9.0, truststore 0.10.5 and pydantic-settings 2.16.0. fastmcp
-  4.1.3, fastmcp-slim 4.1.3 and certifi 2026.10.19 are younger than that, taken early for the
-  fixes above.
+  4.1.3, fastmcp-slim 4.1.3 and certifi 2026.10.19 were taken before they were 7 days old, for
+  the fixes above.
+- authlib 1.9.1 (replacing 1.8.0 in the lock) carries the fixes for the authlib advisories
+  published on 2026-10-27, among them GHSA-8m4g-j4wp-wgcg and GHSA-7vr2-2fgp-9w7p (JWT signature
+  forgery, high). They don't affect this server: FastMCP uses only authlib's error class and
+  token generator, not its JWT, JAR or OpenID code.
 
 ### Fixed
 - `--help`, `--version`, `--validate-skills` and the `--eval-*` modes no longer load a `.env`
