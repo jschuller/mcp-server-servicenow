@@ -49,7 +49,9 @@ INSTRUCTIONS_092 = {
     None: ("2fca083101a518819e652cbd1febe550baf6e122a10b079f0f9b37ab882529dc", 1572),
     "snow": ("6f48f1cb994885ca1c821490e1e8a953cc019bb40c16fd41643d4539963eca02", 1597),
 }
-# resources/list in 0.9.2, in the order the server returns it:
+# resources/list in 0.9.2, in the order the server returns it on macOS. FastMCP
+# lists skill folders in the order the filesystem gives them (root.iterdir()),
+# so Linux orders the skill blocks differently; inside a skill the order is fixed.
 RESOURCES_092 = [
     "servicenow://instance",
     "servicenow://update-set/current",
@@ -71,6 +73,14 @@ RESOURCES_092 = [
     "skill://exploring-tables/references/history-and-references.md",
     "skill://exploring-tables/references/query-syntax.md",
 ]
+
+
+def _by_skill(uris: list[str]) -> dict[str, list[str]]:
+    """Skill resource URIs grouped by skill, in listed order within each skill."""
+    grouped: dict[str, list[str]] = {}
+    for uri in uris:
+        grouped.setdefault(uri.removeprefix("skill://").split("/")[0], []).append(uri)
+    return grouped
 
 
 def _digest(text: str) -> tuple[str, int]:
@@ -387,7 +397,9 @@ class TestServedResources:
         assert got["templates"] == [SCHEMA_TEMPLATE]
         assert set(got["reads"].values()) == {"read"}
         assert got["instructions"] == SERVER_INSTRUCTIONS
-        assert got["listed"] == RESOURCES_092
+        assert len(got["listed"]) == len(RESOURCES_092)
+        assert got["listed"][:4] == RESOURCES_092[:4]
+        assert _by_skill(got["listed"][4:]) == _by_skill(RESOURCES_092[4:])
         assert _digest(got["instructions"]) == INSTRUCTIONS_092[None]
 
 
