@@ -1,0 +1,67 @@
+{
+  "schemaVersion": 1,
+  "claudeVersion": "2.1.303",
+  "startedAt": "2026-10-20T10:00:00.000Z",
+  "durationSeconds": 42,
+  "costUsd": 0.5,
+  "partial": false,
+  "suite": {
+    "root": "/home/someone/private-plugin",
+    "ablation": "none",
+    "modelOverride": "sonnet",
+    "judgeModel": "haiku",
+    "threshold": 1,
+    "concurrency": 2,
+    "plugins": [
+      {"name": "servicenow", "version": "0.9.3", "path": "/home/someone/private-plugin"}
+    ]
+  },
+  "cases": [
+    {
+      "name": "where-used",
+      "dir": "evals/where-used",
+      "source": "prose",
+      "promptMarkdown": "PROMPT-TEXT-NEVER-LOGGED where is this script include used?",
+      "runsPerCase": 2,
+      "graders": [
+        {"name": "skill-fired", "type": "tool_used", "weight": 1, "config": {"tool": "Skill"}},
+        {"name": "names-callers", "type": "regex", "weight": 2, "config": {"pattern": "caller"}}
+      ],
+      "arms": {
+        "with": [
+          {"score": 1, "passed": true, "turns": 3, "costUsd": 0.1, "judgeCostUsd": 0.01, "durationSeconds": 10,
+           "error": null, "tracePath": "/tmp/fake-run/trace.jsonl",
+           "graders": [{"name": "skill-fired", "passed": true, "weight": 1, "explanation": "EXPLANATION-NEVER-LOGGED", "scored": true}]},
+          {"score": 0.5, "passed": false, "turns": 5, "costUsd": 0.1, "judgeCostUsd": 0.01, "durationSeconds": 12,
+           "error": null, "tracePath": "/tmp/fake-run/trace.jsonl",
+           "graders": [{"name": "skill-fired", "passed": false, "weight": 1, "explanation": "EXPLANATION-NEVER-LOGGED", "scored": true}]}
+        ],
+        "without": [
+          {"score": 0, "passed": false, "turns": 2, "costUsd": 0.05, "judgeCostUsd": 0, "durationSeconds": 8,
+           "error": null, "tracePath": "/tmp/fake-run/trace.jsonl", "graders": []},
+          {"score": 0, "passed": false, "turns": 2, "costUsd": 0.05, "judgeCostUsd": 0, "durationSeconds": 8,
+           "error": null, "tracePath": "/tmp/fake-run/trace.jsonl", "graders": []}
+        ]
+      },
+      "aggregates": {"score": 0.75, "passRate": 0.5}
+    },
+    {
+      "name": "access-hygiene",
+      "dir": "/home/someone/private-plugin/evals/access-hygiene",
+      "source": "prose",
+      "promptMarkdown": "PROMPT-TEXT-NEVER-LOGGED who can read incidents?",
+      "runsPerCase": 2,
+      "graders": [{"name": "no-admin", "type": "tool_used", "weight": 1, "config": {"tool": "list_records"}}],
+      "arms": {
+        "with": [
+          {"score": 1, "passed": true, "turns": 4, "costUsd": 0.1, "judgeCostUsd": 0, "durationSeconds": 9,
+           "error": null, "tracePath": "/tmp/fake-run/trace.jsonl", "graders": []},
+          {"score": 1, "passed": true, "turns": 4, "costUsd": 0.1, "judgeCostUsd": 0, "durationSeconds": 9,
+           "error": null, "tracePath": "/tmp/fake-run/trace.jsonl", "graders": []}
+        ]
+      },
+      "aggregates": {"score": 1, "passRate": 1}
+    }
+  ],
+  "aggregates": {"casesTotal": 2, "casesPassed": 1, "overallScore": 0.875, "overallPassRate": 0.5}
+}

@@ -101,6 +101,7 @@ exclude = [
     "dist/",
     "evals/",
     "examples/",
+    "CLAUDE.md",
     "actions/",
     "*.png",
     "uv.lock",
@@ -130,3 +131,10 @@ warn_unused_configs = true
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
+
+# Not part of the package: scripts/log_evals_to_mlflow.py logs eval results to a
+# homelab MLflow server (RELEASING.md, "Behaviour evals").
+[dependency-groups]
+mlflow = [
+    "mlflow-skinny>=3.17,<4",
+]
