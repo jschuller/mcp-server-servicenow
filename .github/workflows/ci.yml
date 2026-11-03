@@ -133,7 +133,7 @@ jobs:
           print(f"Template Action pin {sha[:12]} carries this Action")
           EOF
 
-      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
         with:
           # uv by exact version, with the sha256 of
           # uv-x86_64-unknown-linux-gnu.tar.gz (the release digest, checked 2026-10-20),
