@@ -148,6 +148,11 @@ jobs:
       - name: Validate lockfile resolves and matches pyproject
         run: uv lock --check
 
+      # The test matrix installs unlocked versions, where tests/test_contract.py skips the snapshot comparison;
+      # this checks docs/contract.json and the generated block of docs/tools.md against the locked dependencies.
+      - name: Check the MCP contract snapshot against the lock
+        run: uv run --frozen --extra dev python scripts/contract.py
+
       - name: Build and validate distribution
         run: |
           pip install build==1.6.1 twine==7.0.0

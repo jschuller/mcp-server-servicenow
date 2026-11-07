@@ -1,5 +1,18 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+- **`docs/contract.json`**: the server's MCP contract as a client receives it (every tool's
+  description, input and output schema, annotations and tags; the resources, resource templates
+  and prompts; the server instructions), read offline with the default settings by
+  `scripts/contract.py`. The server version is left out, so only real changes show up as a diff.
+- **"What the model sees (generated)"** at the end of `docs/tools.md`: one row per tool with the
+  description the model reads, its parameters and whether it returns structured output. The
+  hand-written tables above it stay as they are.
+- `tests/test_contract.py` fails when either drifts from the code; `scripts/contract.py --write`
+  regenerates both.
+
 ## [0.9.3] - 2026-10-28
 
 Run the server with or without its packaged skills.
