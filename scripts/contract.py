@@ -69,11 +69,7 @@ async def read_contract() -> Dict[str, Any]:
             resources = _dump(await client.list_resources())
             templates = _dump(await client.list_resource_templates())
             prompts = _dump(await client.list_prompts())
-            instructions = (
-                client.instructions
-                if hasattr(client, "instructions")
-                else mcp.instructions
-            )
+            instructions = client.instructions
     return {
         "generated_by": "scripts/contract.py (default settings: skills on, write tools served); "
         f"do not edit, run `{REGENERATE}`",
@@ -93,13 +89,20 @@ def _cell(text: str) -> str:
     return " ".join(str(text).split()).replace("|", "\\|")
 
 
+def _json(value: Any) -> str:
+    return json.dumps(value).replace("|", "\\|")
+
+
 def _type(schema: Dict[str, Any]) -> str:
     if "enum" in schema:
-        return " \\| ".join(json.dumps(v) for v in schema["enum"])
+        return " \\| ".join(_json(v) for v in schema["enum"])
     if "anyOf" in schema:
         kinds = [_type(s) for s in schema["anyOf"] if s.get("type") != "null"]
         return " \\| ".join(kinds) or "null"
-    return str(schema.get("type", "any"))
+    kind = schema.get("type", "any")
+    if isinstance(kind, list):
+        return " \\| ".join(str(k) for k in kind if k != "null") or "null"
+    return str(kind)
 
 
 def _params(tool: Dict[str, Any]) -> str:
@@ -110,7 +113,7 @@ def _params(tool: Dict[str, Any]) -> str:
         text = f"**{name}**" if name in required else name
         text += f": {_type(prop)}"
         if prop.get("default") is not None:
-            text += f" = {json.dumps(prop['default'])}"
+            text += f" = {_json(prop['default'])}"
         parts.append(text)
     return " · ".join(parts) or "none"
 
@@ -119,7 +122,8 @@ def _kind(tool: Dict[str, Any]) -> str:
     hints = tool.get("annotations") or {}
     if hints.get("readOnlyHint"):
         return "read"
-    return "write, destructive" if hints.get("destructiveHint") else "write"
+    # MCP's default for destructiveHint is true when a tool is not read-only.
+    return "write, destructive" if hints.get("destructiveHint", True) else "write"
 
 
 def render_reference(contract: Dict[str, Any]) -> str:
@@ -128,7 +132,7 @@ def render_reference(contract: Dict[str, Any]) -> str:
         BEGIN,
         "",
         f"Read from the server itself with the default settings (skills on, write tools served) by "
-        f"`scripts/contract.py`. The descriptions are the ones the model reads; the tables above are written for "
+        f"`scripts/contract.py`. The descriptions, parameter names and types are the ones the model reads; the tables above are written for "
         f"people. The full contract, with input and output schemas, annotations, resources and the server "
         f"instructions, is [contract.json](contract.json). Tests fail when either drifts from the code: "
         f"`{REGENERATE}` regenerates both.",
@@ -161,10 +165,10 @@ def render_reference(contract: Dict[str, Any]) -> str:
     instructions = len(contract["instructions"] or "")
     lines += [
         "",
-        f"**Resources:** {codes(plain)}; and {skill_files} skill files for {len(skills)} skills ({codes(skills)}).",
-        f"**Resource templates:** {templates}.",
-        f"**Prompts:** {prompts}.",
-        f"**Server instructions:** {instructions} characters (the text is in contract.json).",
+        f"- **Resources:** {codes(plain)}; and {skill_files} skill files for {len(skills)} skills ({codes(skills)}).",
+        f"- **Resource templates:** {templates}.",
+        f"- **Prompts:** {prompts}.",
+        f"- **Server instructions:** {instructions} characters (the text is in contract.json).",
         "",
         END,
     ]
@@ -182,7 +186,9 @@ def expected() -> Dict[Path, str]:
     contract = asyncio.run(read_contract())
     return {
         CONTRACT: contract_text(contract),
-        TOOLS_MD: with_reference(TOOLS_MD.read_text(), render_reference(contract)),
+        TOOLS_MD: with_reference(
+            TOOLS_MD.read_text(encoding="utf-8"), render_reference(contract)
+        ),
     }
 
 
@@ -198,11 +204,12 @@ def main(argv: List[str]) -> int:
     args = parser.parse_args(argv)
     drift = 0
     for path, text in expected().items():
-        current = path.read_text() if path.exists() else ""
+        current = path.read_text(encoding="utf-8") if path.exists() else ""
         if current == text:
             continue
         if args.write:
-            path.write_text(text)
+            with path.open("w", encoding="utf-8", newline="\n") as fh:
+                fh.write(text)
             print(f"wrote {path.relative_to(REPO)}")
             continue
         drift += 1
