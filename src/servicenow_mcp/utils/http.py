@@ -1,12 +1,30 @@
-"""HTTP request helper with proper error handling for ServiceNow API responses."""
+"""HTTP request helper with proper error handling for ServiceNow API responses.
+
+What an error message shows depends on who reads it. Over stdio the MCP client
+is the process that launched this server and gave it the instance URL, so the
+message names the URL, ServiceNow's diagnostic headers and the low-level cause.
+Everywhere else (HTTP, SSE, an in-process client, a library call) the reader
+may be remote: the message keeps the status, ServiceNow's own error message,
+the API path and the hints, and leaves out the instance host and the headers.
+
+Two things appear in no form, and in no log line either. A response body is
+never quoted: it can hold a record's field values (a system property's value,
+say), so only the ``error.message`` and ``error.detail`` of ServiceNow's JSON
+error are shown, and any other body is described by its content type, its
+length and whether it parsed. A query string is never shown: it can carry
+filter values.
+"""
 
 import logging
 import re
 import socket
-from urllib.parse import quote
-from typing import Any, Dict, Optional
+from contextlib import contextmanager
+from contextvars import ContextVar
+from urllib.parse import quote, urlsplit
+from typing import Any, Dict, Iterator, Mapping, Optional
 
 import requests
+from fastmcp.exceptions import ToolError
 
 from servicenow_mcp.auth.auth_manager import AuthManager
 
@@ -20,29 +38,199 @@ _DOCS = "https://github.com/jschuller/mcp-server-servicenow/blob/main"
 _TROUBLESHOOTING = f"{_DOCS}/TROUBLESHOOTING.md"
 _PDI_WAKE_URL = "https://developer.servicenow.com/dev.do#!/home?wu=true"
 
+_CAUSE_MAX = 500  # characters of a low-level cause in a local message
+_QUERY_STRING = re.compile(r"\?[\w.%~+-]+=\S*")
+_PART_MAX = 300  # characters of ServiceNow's message or detail, or of a cause
 
-class ServiceNowAPIError(Exception):
-    """Raised when the ServiceNow API returns an unexpected response."""
+
+class ServiceNowAPIError(ToolError):
+    """A ServiceNow request failed in a way the caller can act on.
+
+    A FastMCP ``ToolError``: a tool that lets it propagate returns this message
+    as it is in a result with ``isError: true`` (a resource read returns it as
+    a JSON-RPC error), and FastMCP logs no traceback for it. FastMCP's own log
+    line for the failure is set to DEBUG, because ``ApiErrorMiddleware`` writes
+    the one WARNING line, with ``details`` and ``diagnostics``.
+
+    ``status`` is the HTTP status when ServiceNow answered, else None.
+    ``details`` holds the parts of the message that any client may see, as
+    data: ``kind``, ``status``, ``method``, ``path``, ``sn_message``,
+    ``sn_detail`` and ``hint``, each only when known. ``diagnostics`` holds what
+    only the operator's log gets: ServiceNow's diagnostic ``headers``, what the
+    ``body`` was when it is not ServiceNow's JSON error (type, length, parsed or
+    not: never its content), and the low-level ``cause``. Neither holds a query
+    string, body content or a credential.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        status: Optional[int] = None,
+        details: Optional[Mapping[str, Any]] = None,
+        diagnostics: Optional[Mapping[str, Any]] = None,
+    ) -> None:
+        super().__init__(message, log_level=logging.DEBUG)
+        self.status = status
+        self.details: Dict[str, Any] = dict(details or {})
+        self.diagnostics: Dict[str, Any] = dict(diagnostics or {})
+
+
+_local_detail: ContextVar[bool] = ContextVar(
+    "servicenow_mcp_local_detail", default=False
+)
+
+
+@contextmanager
+def local_error_detail() -> Iterator[None]:
+    """Full error detail for a caller that is local by construction (``--check``)."""
+    token = _local_detail.set(True)
+    try:
+        yield
+    finally:
+        _local_detail.reset(token)
+
+
+def _local_reader() -> bool:
+    """True when the reader of an error message is the local user.
+
+    That is an MCP request FastMCP reports as stdio (the client launched this
+    process and gave it the instance URL, so naming the host tells it nothing
+    new) or a caller inside ``local_error_detail()``. Anything else gets the
+    trimmed message: when the transport is not known, assume a remote reader.
+    """
+    if _local_detail.get():
+        return True
+    try:
+        from fastmcp.server.dependencies import get_context
+
+        return get_context().transport == "stdio"
+    except RuntimeError:  # no MCP request is active
+        return False
+
+
+def error_target(url: str) -> str:
+    """How an error message names a request: the URL for a local reader, else
+    only its path. Never the query string."""
+    parts = urlsplit(url)
+    if not _local_reader():
+        return parts.path or "/"
+    return f"{parts.scheme}://{parts.netloc}{parts.path}" if parts.netloc else url
+
+
+def _clip(text: object, limit: int = _PART_MAX) -> str:
+    """``text`` on one line, without query strings, at most ``limit`` characters."""
+    flat = " ".join(_QUERY_STRING.sub("", str(text)).split())
+    return flat if len(flat) <= limit else flat[:limit] + "…"
+
+
+def _diagnostic_headers(response: "requests.Response") -> Dict[str, str]:
+    return {
+        h: response.headers[h] for h in _DIAGNOSTIC_HEADERS if h in response.headers
+    }
+
+
+def _sn_error(response: "requests.Response") -> Dict[str, str]:
+    """ServiceNow's own error message and detail, when the body is its JSON error.
+
+    Only ``{"error": {"message": ..., "detail": ...}}`` counts: nothing else in
+    a body is ever shown.
+    """
+    try:
+        body = response.json()
+    except ValueError:
+        return {}
+    error = body.get("error") if isinstance(body, dict) else None
+    if not isinstance(error, dict):
+        return {}
+    found: Dict[str, str] = {}
+    for key in ("message", "detail"):
+        value = error.get(key)
+        if isinstance(value, str) and value.strip():
+            found[f"sn_{key}"] = _clip(value)
+    return found
+
+
+def _body_summary(response: "requests.Response") -> str:
+    """What a body was, never what it said: its content type, length and shape."""
+    content_type = response.headers.get("Content-Type", "").split(";")[0].strip()
+    try:
+        response.json()
+        shape = "JSON but not an error object"
+    except ValueError:
+        shape = "not JSON"
+    return (
+        f"{content_type or 'no content type'}, {len(response.text)} characters, "
+        f"{shape}, not shown"
+    )
 
 
 def _error_context(response: "requests.Response") -> str:
-    """Extract diagnostic context from a ServiceNow error response.
+    """What ServiceNow answered, as the tail of an error message.
 
-    Returns a string with response body preview and key headers.
+    ServiceNow's parsed error message and detail; any other body is described,
+    not quoted (an HTML page, a truncated or unexpected JSON body can hold
+    record values or name hosts). A local reader also gets the diagnostic
+    headers.
     """
     parts: list[str] = []
+    sn_error = _sn_error(response)
+    if sn_error:
+        parts.append("ServiceNow error: " + ": ".join(sn_error.values()))
+    elif response.text:
+        parts.append(f"Response: {_body_summary(response)}")
+    if _local_reader():
+        diag = _diagnostic_headers(response)
+        if diag:
+            parts.append(f"Headers: {diag}")
+    return " | ".join(parts)
 
-    body = response.text[:500] if response.text else None
-    if body:
-        parts.append(f"Response: {body}")
 
-    diag = {
-        h: response.headers[h] for h in _DIAGNOSTIC_HEADERS if h in response.headers
-    }
-    if diag:
-        parts.append(f"Headers: {diag}")
+def _cause(error: object, label: str = "Detail") -> str:
+    """The low-level cause as a message tail: for a local reader only (it names the host)."""
+    return f" {label}: {_clip(error, _CAUSE_MAX)}" if _local_reader() else ""
 
-    return " | ".join(parts) if parts else ""
+
+def _failure(
+    kind: str,
+    message: str,
+    *,
+    url: str,
+    method: Optional[str] = None,
+    response: Optional["requests.Response"] = None,
+    hint: Optional[str] = None,
+    cause: object = None,
+) -> ServiceNowAPIError:
+    """The error for one failed request: the message, and the same facts as data."""
+    parts = urlsplit(url)
+    details: Dict[str, Any] = {"kind": kind}
+    diagnostics: Dict[str, Any] = {}
+    status: Optional[int] = None
+    if response is not None:
+        status = response.status_code
+        details["status"] = status
+    if method:
+        details["method"] = method.upper()
+    details["path"] = parts.path or "/"
+    if response is not None:
+        sn_error = _sn_error(response)
+        details.update(sn_error)
+        headers = _diagnostic_headers(response)
+        if headers:
+            diagnostics["headers"] = headers
+        if not sn_error and response.text:
+            diagnostics["body"] = _body_summary(response)
+    if hint:
+        details["hint"] = hint
+    if cause is not None:
+        diagnostics["cause"] = _clip(f"{type(cause).__name__}: {cause}")
+    if parts.netloc and not _local_reader():
+        # The message was built without the host; this keeps it out even when
+        # ServiceNow's own error text names it.
+        message = message.replace(parts.netloc, "<instance>")
+    return ServiceNowAPIError(
+        message, status=status, details=details, diagnostics=diagnostics
+    )
 
 
 def _is_name_resolution_error(error: BaseException) -> bool:
@@ -129,6 +317,26 @@ def api_request(
     directly instead of the auth manager. This supports per-user OAuth
     proxy tokens.
     """
+    where = error_target(url)
+
+    def failure(kind: str, message: str, **facts: Any) -> ServiceNowAPIError:
+        return _failure(kind, message, url=url, method=method, **facts)
+
+    def refused(
+        kind: str,
+        message: str,
+        response: requests.Response,
+        hint: Optional[str] = None,
+    ) -> ServiceNowAPIError:
+        """A refusal ServiceNow answered: the message ends with where and what it said."""
+        ctx = _error_context(response)
+        return failure(
+            kind,
+            f"{message} URL: {where}" + (f" | {ctx}" if ctx else ""),
+            response=response,
+            hint=hint,
+        )
+
     if bearer_token:
         headers = {
             "Accept": "application/json",
@@ -136,7 +344,26 @@ def api_request(
             "Authorization": f"Bearer {bearer_token}",
         }
     elif auth_manager:
-        headers = auth_manager.get_headers()
+        try:
+            headers = auth_manager.get_headers()
+        except requests.RequestException as e:
+            # The first OAuth token is requested here.
+            raise failure(
+                "connection",
+                "Cannot connect to ServiceNow to get an OAuth token. Check that the "
+                "instance URL is correct and the instance is awake." + _cause(e),
+                cause=e,
+            ) from e
+        except ValueError as e:
+            # The token endpoint refused the grant or answered without a token.
+            raise failure(
+                "token_request",
+                _clip(e, _CAUSE_MAX)
+                if _local_reader()
+                else "Could not get an OAuth token for the ServiceNow identity this "
+                "server uses; the server's log has the token endpoint's answer.",
+                cause=e,
+            ) from e
     else:
         raise ServiceNowAPIError("Either auth_manager or bearer_token must be provided")
 
@@ -150,46 +377,69 @@ def api_request(
             timeout=timeout,
         )
     except requests.exceptions.SSLError as e:
-        raise ServiceNowAPIError(
-            f"TLS certificate check failed for {url}. Behind a proxy that inspects "
+        raise failure(
+            "tls",
+            f"TLS certificate check failed for {where}. Behind a proxy that inspects "
             f"TLS, set REQUESTS_CA_BUNDLE to your company's CA bundle. "
-            f"See {_TROUBLESHOOTING}#certificate-verify-failed. Detail: {e}"
+            f"See {_TROUBLESHOOTING}#certificate-verify-failed." + _cause(e),
+            cause=e,
         ) from e
     except requests.ConnectionError as e:
         if _is_name_resolution_error(e):
-            raise ServiceNowAPIError(
-                f"Cannot resolve the host in {url}. Check the instance URL for a typo; "
+            subject = (
+                f"the host in {where}"
+                if _local_reader()
+                else f"the host in the instance URL (request to {where})"
+            )
+            raise failure(
+                "dns",
+                f"Cannot resolve {subject}. Check the instance URL for a typo; "
                 f"a reclaimed PDI no longer resolves. "
-                f"See {_TROUBLESHOOTING}#instance-not-found. Detail: {e}"
+                f"See {_TROUBLESHOOTING}#instance-not-found." + _cause(e),
+                cause=e,
             ) from e
-        raise ServiceNowAPIError(
-            f"Cannot connect to ServiceNow at {url}. "
-            f"Check that the instance URL is correct and the instance is awake. "
-            f"Detail: {e}"
+        raise failure(
+            "connection",
+            f"Cannot connect to ServiceNow at {where}. "
+            f"Check that the instance URL is correct and the instance is awake."
+            + _cause(e),
+            cause=e,
         ) from e
     except requests.Timeout as e:
-        raise ServiceNowAPIError(
-            f"Request to {url} timed out after {timeout}s. "
-            f"The instance may be hibernating or overloaded."
+        raise failure(
+            "timeout",
+            f"Request to {where} timed out after {timeout}s. "
+            f"The instance may be hibernating or overloaded.",
+            cause=e,
+        ) from e
+    except requests.RequestException as e:
+        # Too many redirects, a broken transfer encoding and the like.
+        raise failure(
+            "request",
+            f"Request to {where} failed ({type(e).__name__})." + _cause(e),
+            cause=e,
         ) from e
 
     # On 401, attempt one token refresh and retry (OAuth only, not for bearer tokens)
     if response.status_code == 401:
         if bearer_token:
-            ctx = _error_context(response)
-            raise ServiceNowAPIError(
-                f"Authentication failed (401) for the bearer-token request. "
-                f"The token may be expired or not valid for this instance. URL: {url}"
-                + (f" | {ctx}" if ctx else "")
+            raise refused(
+                "unauthorized",
+                "Authentication failed (401) for the bearer-token request. "
+                "The token may be expired or not valid for this instance.",
+                response,
             )
         if auth_manager and auth_manager.config.type.value == "oauth":
             logger.info("Got 401, attempting OAuth token refresh and retry")
             try:
                 auth_manager.refresh_token()
             except Exception as e:
-                raise ServiceNowAPIError(
+                raise failure(
+                    "token_refresh",
                     f"Authentication failed (401) and token refresh also failed. "
-                    f"URL: {url}. Refresh error: {e}"
+                    f"URL: {where}." + _cause(e, "Refresh error"),
+                    response=response,
+                    cause=e,
                 ) from e
 
             # Retry with fresh headers
@@ -204,19 +454,25 @@ def api_request(
                     timeout=timeout,
                 )
             except (requests.ConnectionError, requests.Timeout) as e:
-                raise ServiceNowAPIError(
-                    f"Retry after token refresh failed: {e}"
+                raise failure(
+                    "connection",
+                    "Retry after token refresh failed: "
+                    + (
+                        _clip(e, _CAUSE_MAX)
+                        if _local_reader()
+                        else f"the instance did not answer ({type(e).__name__})."
+                    ),
+                    cause=e,
                 ) from e
 
             if response.status_code == 401:
-                ctx = _error_context(response)
-                raise ServiceNowAPIError(
-                    f"Authentication failed (401) even after token refresh. "
-                    f"Check your OAuth credentials. URL: {url}"
-                    + (f" | {ctx}" if ctx else "")
+                raise refused(
+                    "unauthorized",
+                    "Authentication failed (401) even after token refresh. "
+                    "Check your OAuth credentials.",
+                    response,
                 )
         else:
-            ctx = _error_context(response)
             if auth_manager and auth_manager.config.type.value == "api_key":
                 hint = api_key_401_hint(method, url)
             else:
@@ -226,31 +482,32 @@ def api_request(
                     "otherwise check the username and password. "
                     f"See {_TROUBLESHOOTING}#401-unauthorized."
                 )
-            raise ServiceNowAPIError(
-                f"Authentication failed (401). {hint} "
-                f"URL: {url}" + (f" | {ctx}" if ctx else "")
+            raise refused(
+                "unauthorized", f"Authentication failed (401). {hint}", response, hint
             )
 
     if response.status_code == 403:
-        ctx = _error_context(response)
-        raise ServiceNowAPIError(
-            f"Access denied (403). The user may lack permissions for this API; "
-            f"roles per tool: {_DOCS}/docs/tools.md#roles. "
-            f"URL: {url}" + (f" | {ctx}" if ctx else "")
+        hint = (
+            "The user may lack permissions for this API; "
+            f"roles per tool: {_DOCS}/docs/tools.md#roles."
         )
+        raise refused("forbidden", f"Access denied (403). {hint}", response, hint)
     if response.status_code == 404:
-        ctx = _error_context(response)
-        raise ServiceNowAPIError(
-            f"Not found (404). The table or record doesn't exist, or an ACL "
-            f"hides the record from this identity. "
-            f"URL: {url}" + (f" | {ctx}" if ctx else "")
+        hint = (
+            "The table or record doesn't exist, or an ACL "
+            "hides the record from this identity."
         )
+        raise refused("not_found", f"Not found (404). {hint}", response, hint)
 
-    # For other errors, raise with response body context
+    # For other errors, raise with what ServiceNow said, never the raw body
     if not response.ok:
-        body_preview = response.text[:500] if response.text else "(empty)"
-        raise ServiceNowAPIError(
-            f"HTTP {response.status_code} from {url}. Response: {body_preview}"
+        said = _error_context(response)
+        if not response.text:
+            said = "Response: (empty)" + (f" | {said}" if said else "")
+        raise failure(
+            "http_error",
+            f"HTTP {response.status_code} from {where}. {said}",
+            response=response,
         )
 
     return response
@@ -273,24 +530,36 @@ def result_rows(data: Any) -> list:
 
 def parse_json_response(response: requests.Response, url: str) -> Dict[str, Any]:
     """Parse a JSON response, raising ServiceNowAPIError on failure."""
+    where = error_target(url)
     if not response.text or not response.text.strip():
-        raise ServiceNowAPIError(
-            f"Empty response body from {url} (HTTP {response.status_code}). "
-            f"The instance may be hibernating: wake it at {_PDI_WAKE_URL}"
+        raise _failure(
+            "empty_body",
+            f"Empty response body from {where} (HTTP {response.status_code}). "
+            f"The instance may be hibernating: wake it at {_PDI_WAKE_URL}",
+            url=url,
+            response=response,
         )
 
     content_type = response.headers.get("Content-Type", "")
     if "text/html" in content_type:
-        raise ServiceNowAPIError(
-            f"Got HTML instead of JSON from {url}. That is a hibernating PDI or a "
+        raise _failure(
+            "html_body",
+            f"Got HTML instead of JSON from {where}. That is a hibernating PDI or a "
             f"login page: wake the instance at {_PDI_WAKE_URL}, or check the "
-            f"credentials. See {_TROUBLESHOOTING}#instance-is-hibernating"
+            f"credentials. See {_TROUBLESHOOTING}#instance-is-hibernating",
+            url=url,
+            response=response,
         )
 
     try:
         return response.json()
     except ValueError as e:
-        body_preview = response.text[:200]
-        raise ServiceNowAPIError(
-            f"Invalid JSON from {url}: {e}. Response starts with: {body_preview!r}"
+        # The parser's message gives a position, never the text; the body is
+        # not quoted either: a cut-off list of records still holds their values.
+        raise _failure(
+            "invalid_json",
+            f"Invalid JSON from {where}: {_clip(e, 120)}. "
+            f"Response: {_body_summary(response)}",
+            url=url,
+            response=response,
         ) from e

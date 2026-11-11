@@ -11,6 +11,27 @@ from servicenow_mcp.utils.config import AuthConfig, AuthType
 logger = logging.getLogger(__name__)
 
 
+def _token_error(response: requests.Response) -> str:
+    """What a token endpoint refused with: the OAuth ``error`` and
+    ``error_description`` of its JSON answer. Any other body (an HTML page from
+    a hibernating instance, say) is described, never quoted: this text goes
+    into tool errors and logs.
+    """
+    try:
+        body = response.json()
+    except ValueError:
+        body = None
+    if isinstance(body, dict):
+        said = [
+            body[key][:200]
+            for key in ("error", "error_description")
+            if isinstance(body.get(key), str) and body[key]
+        ]
+        if said:
+            return ": ".join(said)
+    return f"(a body of {len(response.text or '')} characters, not an OAuth error, not shown)"
+
+
 class AuthManager:
     """Handles authentication with the ServiceNow API."""
 
@@ -133,7 +154,8 @@ class AuthManager:
                 "OAuth Application User on the client record)"
             )
         raise ValueError(
-            f"Failed to get OAuth token: {response.status_code} {response.text}{hint}"
+            f"Failed to get OAuth token: {response.status_code} "
+            f"{_token_error(response)}{hint}"
         )
 
     def refresh_token(self) -> None:

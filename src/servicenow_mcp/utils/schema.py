@@ -134,13 +134,19 @@ def fetch_table_schema(
                 },
             )
         except ServiceNowAPIError as exc:
-            if "(403)" not in str(exc):
+            if exc.status != 403:
                 raise
             # The base system's sys_dictionary ACLs need personalize_dictionary
             # (admin includes it); itil and snc_read_only are not enough.
-            raise ServiceNowAPIError(
-                f"{exc} | Hint: reading table schemas (sys_dictionary) needs the "
+            hint = (
+                "reading table schemas (sys_dictionary) needs the "
                 "personalize_dictionary role"
+            )
+            raise ServiceNowAPIError(
+                f"{exc} | Hint: {hint}",
+                status=exc.status,
+                details={**exc.details, "hint": hint},
+                diagnostics=exc.diagnostics,
             ) from exc
         rows = result_rows(parse_json_response(response, url))
         kept = 0
