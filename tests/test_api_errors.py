@@ -325,6 +325,7 @@ def test_5xx_html_page_is_described_not_quoted() -> None:
     page = f"<html><body>Bad gateway: upstream {HOST} at gw-7.internal</body></html>"
     local, remote = call_both(lambda: response(502, page, "text/html; charset=utf-8"))
     said = f"Response: text/html, {len(page)} characters, not JSON, not shown"
+    assert "body" not in call(response(502, NOT_AUTHORIZED)).diagnostics
     assert str(local).startswith(f"HTTP 502 from {URL}. {said} | Headers: {{")
     assert assert_trimmed(remote) == f"HTTP 502 from {PATH}. {said}"
     for error in (local, remote):
@@ -339,7 +340,15 @@ def test_5xx_empty_body() -> None:
         f"HTTP 503 from {URL}. Response: (empty) | Headers: {{"
     )
     assert assert_trimmed(remote) == f"HTTP 503 from {PATH}. Response: (empty)"
-    assert "body" not in remote.diagnostics
+    assert remote.diagnostics["body"] == "(empty)"
+
+
+def test_an_empty_refusal_says_so() -> None:
+    local, remote = call_both(lambda: response(401, ""))
+    assert str(local).endswith(
+        f" URL: {URL} | Response: (empty) | Headers: {SN_HEADERS}"
+    )
+    assert assert_trimmed(remote).endswith(f" URL: {PATH} | Response: (empty)")
 
 
 def test_servicenow_text_that_names_the_instance_is_masked_remotely() -> None:
@@ -516,7 +525,7 @@ def test_first_oauth_token_failure(
         (
             response(200, f"{{not json at {HOST}"),
             "invalid_json",
-            "Invalid JSON from {where}: ",
+            "Invalid JSON from {where}. Response: ",
         ),
     ],
 )
@@ -534,8 +543,28 @@ def test_parse_json_response(reply: requests.Response, kind: str, start: str) ->
         if kind == "invalid_json":
             assert str(raised).endswith(
                 f". Response: application/json, {len(reply.text)} characters, "
-                "not JSON, not shown"
+                "invalid JSON at position 1, not shown"
             )
+            # The parser's error holds the whole body in ``doc``: not chained.
+            assert raised.__cause__ is None and raised.__suppress_context__
+
+
+def test_the_json_parsers_own_error_text_holds_no_body() -> None:
+    """Pinned because a traceback would print it: a message and a position only."""
+    cut_off = response(200, '{"result":[{"name":"p","value":"' + "canary-in-a-cut-off")
+    with pytest.raises(ValueError) as parser_error:
+        cut_off.json()
+    assert str(parser_error.value) == (
+        "Unterminated string starting at: line 1 column 32 (char 31)"
+    )
+    assert "canary" not in repr(parser_error.value) + repr(parser_error.value.args)
+    assert parser_error.value.pos == 31
+    with pytest.raises(ServiceNowAPIError) as raised:
+        parse_json_response(cut_off, URL)
+    assert str(raised.value) == (
+        f"Invalid JSON from {PATH}. Response: application/json, "
+        f"{len(cut_off.text)} characters, invalid JSON at position 31, not shown"
+    )
 
 
 # --- a response body is never quoted: it can hold a record's values -----------
@@ -595,6 +624,11 @@ def test_no_error_quotes_a_response_body(body: tuple, local: bool) -> None:
                 fetch()
         else:
             fetch()
+    said = str(raised.value)
+    if status == 403 and isinstance(content, dict):
+        assert "ServiceNow error: m: d" in said  # the two allowed fields, no others
+    else:
+        assert "ServiceNow error: " not in said  # nothing from this body is shown
     assert CANARY not in _everything(raised.value)
     assert "glide.example.password" not in _everything(raised.value)
     assert ("https://" + HOST in str(raised.value)) is local  # the mode did apply
@@ -778,7 +812,19 @@ async def test_expected_failures_log_one_warning_each_and_no_traceback(
     assert FILTER not in "".join(record.getMessage() for record in logged.records)
 
 
-@pytest.mark.parametrize("transport", ["stdio", "streamable-http"])
+@pytest.fixture
+def every_level() -> Iterator[None]:
+    """Let this server's and FastMCP's loggers emit everything, DEBUG included."""
+    loggers = [logging.getLogger("fastmcp"), logging.getLogger("servicenow_mcp")]
+    levels = [logger.level for logger in loggers]
+    for logger in loggers:
+        logger.setLevel(logging.DEBUG)
+    yield
+    for logger, level in zip(loggers, levels):
+        logger.setLevel(level)
+
+
+@pytest.mark.parametrize("transport", ["stdio", "streamable-http", None])
 @pytest.mark.parametrize(
     "body",
     [
@@ -788,17 +834,28 @@ async def test_expected_failures_log_one_warning_each_and_no_traceback(
             "a 200 that is an HTML page",
             "a 500 with rows, not an error",
             "a 403 HTML page",
+            "a 403 error object with extra keys",
         )
     ],
-    ids=["cut-off 200", "html 200", "500 rows", "403 html"],
+    ids=["cut-off 200", "html 200", "500 rows", "403 html", "403 extra keys"],
 )
 async def test_a_body_reaches_no_result_log_record_or_audit_line(
-    served: None, logged: _Records, capfd, tmp_path, body: tuple, transport: str
+    served: None,
+    every_level: None,
+    logged: _Records,
+    capfd,
+    tmp_path,
+    body: tuple,
+    transport: Optional[str],
 ) -> None:
-    """A system property's value in a body the server could not use stays there."""
+    """A system property's value in a body the server could not use stays there.
+
+    At every log level: with DEBUG on, FastMCP logs a failed resource read with
+    its traceback, and this server logs the lookups it gave up on.
+    """
     status, content, content_type = body
     log = tmp_path / "audit.jsonl"
-    audit.configure_audit_log(str(log), transport=transport)
+    audit.configure_audit_log(str(log), transport=transport or "stdio")
     calls = [
         ("get_system_properties", {"query": "nameLIKEpassword"}),
         ("list_records", {"table_name": "sys_properties"}),
@@ -828,6 +885,7 @@ async def test_a_body_reaches_no_result_log_record_or_audit_line(
     audit_lines = log.read_text()
     assert len(_warnings(logged)) == len(calls) + 1  # the logs were written
     assert audit_lines.count('"outcome":"error"') == len(calls) + 1
+    assert any(record.levelno == logging.DEBUG for record in logged.records)
     for where in (*seen, *records, audit_lines, captured.err, captured.out):
         assert CANARY not in where
 

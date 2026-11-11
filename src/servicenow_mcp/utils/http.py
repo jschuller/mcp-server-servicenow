@@ -152,13 +152,23 @@ def _sn_error(response: "requests.Response") -> Dict[str, str]:
 
 
 def _body_summary(response: "requests.Response") -> str:
-    """What a body was, never what it said: its content type, length and shape."""
+    """What a body was, never what it said: its content type, length and shape.
+
+    A body that stops being JSON part-way gets the parser's position, as a
+    number: the parser's own message is not used, and neither is its ``doc``.
+    """
+    if not response.text:
+        return "(empty)"
     content_type = response.headers.get("Content-Type", "").split(";")[0].strip()
     try:
         response.json()
-        shape = "JSON but not an error object"
-    except ValueError:
-        shape = "not JSON"
+        shape = "not a ServiceNow error object"
+    except ValueError as e:
+        position = getattr(e, "pos", None)
+        if isinstance(position, int) and position > 0:
+            shape = f"invalid JSON at position {position}"
+        else:
+            shape = "not JSON"
     return (
         f"{content_type or 'no content type'}, {len(response.text)} characters, "
         f"{shape}, not shown"
@@ -168,16 +178,16 @@ def _body_summary(response: "requests.Response") -> str:
 def _error_context(response: "requests.Response") -> str:
     """What ServiceNow answered, as the tail of an error message.
 
-    ServiceNow's parsed error message and detail; any other body is described,
-    not quoted (an HTML page, a truncated or unexpected JSON body can hold
-    record values or name hosts). A local reader also gets the diagnostic
-    headers.
+    ServiceNow's parsed error message and detail; any other body, an empty
+    one included, is described, not quoted (an HTML page, a truncated or
+    unexpected JSON body can hold record values or name hosts). A local reader
+    also gets the diagnostic headers.
     """
     parts: list[str] = []
     sn_error = _sn_error(response)
     if sn_error:
         parts.append("ServiceNow error: " + ": ".join(sn_error.values()))
-    elif response.text:
+    else:
         parts.append(f"Response: {_body_summary(response)}")
     if _local_reader():
         diag = _diagnostic_headers(response)
@@ -218,7 +228,7 @@ def _failure(
         headers = _diagnostic_headers(response)
         if headers:
             diagnostics["headers"] = headers
-        if not sn_error and response.text:
+        if not sn_error:
             diagnostics["body"] = _body_summary(response)
     if hint:
         details["hint"] = hint
@@ -501,12 +511,9 @@ def api_request(
 
     # For other errors, raise with what ServiceNow said, never the raw body
     if not response.ok:
-        said = _error_context(response)
-        if not response.text:
-            said = "Response: (empty)" + (f" | {said}" if said else "")
         raise failure(
             "http_error",
-            f"HTTP {response.status_code} from {where}. {said}",
+            f"HTTP {response.status_code} from {where}. {_error_context(response)}",
             response=response,
         )
 
@@ -553,13 +560,13 @@ def parse_json_response(response: requests.Response, url: str) -> Dict[str, Any]
 
     try:
         return response.json()
-    except ValueError as e:
-        # The parser's message gives a position, never the text; the body is
-        # not quoted either: a cut-off list of records still holds their values.
+    except ValueError:
+        # The body is not quoted: a cut-off list of records still holds their
+        # values. Not chained either: the parser's error keeps the whole body
+        # in its ``doc``.
         raise _failure(
             "invalid_json",
-            f"Invalid JSON from {where}: {_clip(e, 120)}. "
-            f"Response: {_body_summary(response)}",
+            f"Invalid JSON from {where}. Response: {_body_summary(response)}",
             url=url,
             response=response,
-        ) from e
+        ) from None
