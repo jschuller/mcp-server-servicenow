@@ -430,13 +430,22 @@ def api_request(
                 "server uses; the server's log has the token endpoint's answer.",
                 cause=e,
             ) from e
-        except (requests.RequestException, ValueError) as e:
+        except requests.RequestException as e:
             # The first OAuth token is requested here. ``from None``: a
             # traceback would print the library's text.
             raise failure(
                 "connection",
                 "Cannot connect to ServiceNow to get an OAuth token. Check that the "
                 "instance URL is correct and the instance is awake." + _cause(e),
+                cause=e,
+            ) from None
+        except Exception as e:
+            # Whatever else the HTTP stack raises under the token request:
+            # named by class, like a failure of the request itself.
+            raise failure(
+                "token_request",
+                "Could not get an OAuth token for the ServiceNow identity this "
+                f"server uses ({cause_chain(e)}).",
                 cause=e,
             ) from None
     else:
@@ -520,9 +529,9 @@ def api_request(
                     cause=e,
                 ) from None
 
-            # Retry with fresh headers
-            headers = auth_manager.get_headers()
+            # Retry with fresh headers (a token request, if none is held)
             try:
+                headers = auth_manager.get_headers()
                 response = requests.request(
                     method=method,
                     url=url,

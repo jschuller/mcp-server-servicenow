@@ -57,6 +57,8 @@ URL = BASE + PATH
 # A filter value the caller sent: it must never come back in an error.
 FILTER = "u_api_tokenSTARTSWITHfilter-value-9f3"
 TXN = "txn0a1b2c3d4e5f"
+# Stands for bytes of a response, or a credential, inside a library's message.
+LIBRARY_CANARY = "canary-4Zt9-inside-a-library-error"
 SN_HEADERS = {"X-Is-Logged-In": "false", "X-Transaction-ID": TXN}
 ROLES_LINK = (
     "https://github.com/jschuller/mcp-server-servicenow/blob/main/docs/tools.md#roles"
@@ -522,7 +524,27 @@ def test_retry_after_a_refresh_that_gets_no_answer() -> None:
             "uses; the server's log has the token endpoint's answer.",
             "Failed to get OAuth token: 401 invalid_client: access_denied",
         ),
+        (
+            # Not a requests error and not this server's own: still no text of it.
+            RuntimeError(f"unexpected {LIBRARY_CANARY} at {HOST} ?sysparm_query=x"),
+            "token_request",
+            "Could not get an OAuth token for the ServiceNow identity this server "
+            "uses (RuntimeError).",
+            "Could not get an OAuth token for the ServiceNow identity this server "
+            "uses (RuntimeError).",
+            "RuntimeError",
+        ),
+        (
+            ValueError(f"Invalid header value b'{LIBRARY_CANARY}'"),
+            "token_request",
+            "Could not get an OAuth token for the ServiceNow identity this server "
+            "uses (ValueError).",
+            "Could not get an OAuth token for the ServiceNow identity this server "
+            "uses (ValueError).",
+            "ValueError",
+        ),
     ],
+    ids=["ConnectionError", "AuthError", "RuntimeError", "ValueError"],
 )
 def test_first_oauth_token_failure(
     failure: Exception, kind: str, local_text: str, remote_text: str, cause: str
@@ -544,12 +566,44 @@ def test_first_oauth_token_failure(
         assert raised.details["kind"] == kind
         assert raised.diagnostics["cause"] == cause
         assert HOST not in _everything(raised)
+        assert LIBRARY_CANARY not in _everything(raised)
+        if not isinstance(failure, AuthError):
+            # A traceback prints the chain: the foreign error is not on it.
+            assert raised.__cause__ is None and raised.__suppress_context__
+
+
+def test_a_token_request_for_the_retry_that_fails_is_named_by_class() -> None:
+    """After a refresh that left no token, the retry asks for one again."""
+    foreign = RuntimeError(f"unexpected {LIBRARY_CANARY} ?sysparm_query=x")
+
+    def errors() -> ServiceNowAPIError:
+        with (
+            patch.object(AuthManager, "refresh_token"),
+            patch.object(
+                AuthManager,
+                "get_headers",
+                side_effect=[{"Authorization": "Bearer held-token"}, foreign],
+            ),
+            patch(REQUEST, return_value=response(401, NOT_AUTHENTICATED)),
+            pytest.raises(ServiceNowAPIError) as raised,
+        ):
+            api_request("GET", URL, manager("oauth"))
+        return raised.value
+
+    with local_error_detail():
+        local = errors()
+    remote = errors()
+    for error in (local, remote):
+        assert str(error) == (
+            "Retry after token refresh failed: the instance did not answer "
+            "(RuntimeError)."
+        )
+        assert LIBRARY_CANARY not in _everything(error)
+        assert error.__cause__ is None and error.__suppress_context__
 
 
 # --- a library's own error text is never used: it can quote a body or a key ----
 
-# Stands for bytes of a response, or a credential, inside a library's message.
-LIBRARY_CANARY = "canary-4Zt9-inside-a-library-error"
 CHUNKED_CHAIN = "ChunkedEncodingError <- ProtocolError <- InvalidChunkLength"
 
 
@@ -1274,6 +1328,41 @@ async def test_debug_logging_does_print_the_query_string(
     lines = [record.getMessage() for record in library_logs.records]
     assert any("Failed to parse headers" in line for line in lines)
     assert any("sysparm_query=" in line and FILTER_VALUE in line for line in lines)
+
+
+@pytest.mark.parametrize("transport", ["stdio", "streamable-http"])
+async def test_a_foreign_error_under_the_token_request_reaches_no_text_or_log(
+    served: None, every_level: None, logged: _Records, capfd, tmp_path, transport: str
+) -> None:
+    """Through a tool: no text of it in the result, the logs or the audit line."""
+    foreign = RuntimeError(f"unexpected {LIBRARY_CANARY} ?sysparm_query={FILTER}")
+    log = tmp_path / "audit.jsonl"
+    audit.configure_audit_log(str(log), transport=transport)
+    with over(transport), patch.object(AuthManager, "get_headers", side_effect=foreign):
+        async with Client(mcp) as client:
+            result = await client.call_tool(
+                "list_records", {"table_name": "incident"}, raise_on_error=False
+            )
+            with pytest.raises(MCPError) as raised:
+                await client.read_resource("servicenow://update-set/current")
+    said = (
+        "Could not get an OAuth token for the ServiceNow identity this server uses "
+        "(RuntimeError)."
+    )
+    assert result.is_error is True
+    assert [block.text for block in result.content] == [said]
+    assert str(raised.value) == said
+    assert [w["cause"] for w in _warnings(logged)] == ["RuntimeError", "RuntimeError"]
+    formatter = logging.Formatter()
+    captured = capfd.readouterr()
+    for text in (
+        *(formatter.format(record) for record in logged.records),
+        log.read_text(),
+        captured.err,
+        captured.out,
+    ):
+        assert LIBRARY_CANARY not in text and FILTER not in text
+    assert log.read_text().count(f"ServiceNowAPIError: {said}") == 2
 
 
 async def test_an_unexpected_exception_still_logs_its_traceback(
