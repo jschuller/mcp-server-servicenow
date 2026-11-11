@@ -52,7 +52,13 @@ dependencies = [
     # and it carries the fixes for GHSA-7xgj-8392-5q4r and GHSA-vqqp-x5qm-5qp4;
     # fastmcp itself requires fastmcp-slim[client,server] at the matching
     # version, so no direct dependency on the slim package is needed.
-    "fastmcp>=4.1.3,<5",
+    # Capped below 4.3: resources.py imports SkillsDirectoryProvider from
+    # fastmcp.server.providers.skills at module level, and FastMCP 4.2.0a3's
+    # release notes say the 4.1 skills providers warn "ahead of removal in
+    # 4.3", so the first 4.3 would stop every fresh install from starting.
+    # Lift the cap once 4.2 is final and that import has moved to the new
+    # path (fastmcp.skills.provider).
+    "fastmcp>=4.1.3,<4.3",
     "requests>=2.28.0",
     # requests trusts certifi's CA bundle for every ServiceNow call; versions
     # before 2026.10.19 trust compromised emSign roots (GHSA-6q48-6c7w-9gw2).

@@ -13,6 +13,14 @@
 - `tests/test_contract.py` fails when either drifts from the code; `scripts/contract.py --write`
   regenerates both.
 
+### Changed
+- **FastMCP is capped below 4.3** (`fastmcp>=4.1.3,<4.3`, was `<5`). The server imports
+  FastMCP's 4.1 skills provider on every start, with the skills on or off, and FastMCP
+  4.2.0a3's release notes say the 4.1 skills providers warn "ahead of removal in 4.3". Without
+  the cap, the first 4.3 release would stop every fresh `uvx mcp-server-servicenow` from
+  starting. The cap is lifted once 4.2 is final and the import has moved to the new path
+  (`fastmcp.skills.provider`). Nothing changes for an install on 4.1.x.
+
 ## [0.9.3] - 2026-10-28
 
 Run the server with or without its packaged skills.
