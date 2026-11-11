@@ -472,10 +472,12 @@ def test_read_tools_display_value(
         "sysparm_offset": 0,
         **extra,
     }
+    make_sn_request.return_value = sn_response({"result": {}})
     table_tools.get_record(
         table_name="incident", sys_id="a" * 32, display_value=display_value
     )
     assert make_sn_request.call_args.kwargs["params"] == extra
+    make_sn_request.return_value = sn_response({"result": []})
     table_tools.aggregate_records(
         table_name="incident", group_by="assignment_group", display_value=display_value
     )

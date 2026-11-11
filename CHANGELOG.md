@@ -22,17 +22,32 @@
     `class_name="sys_properties"`, a dot-walk from another table (`fields="property.value"`),
     the record that `create_record`, `update_record`, `create_ci` and `update_ci` echo back,
     the old and new values of `sys_audit` and `sys_history_line` rows that record a change to
-    `sys_properties.value` (every property: these rows carry no type), and a field that holds
-    a property's record XML, such as an update set payload.
+    `sys_properties.value` (every property: these rows carry no type), read from the table or
+    through a dot-walk to it, and a field that holds a property's record XML, such as an
+    update set payload. Such a field is withheld whole when its text has a `<sys_properties>`
+    element, whatever type the record states, so the payloads of ordinary properties are
+    withheld too; `list_update_set_changes` still lists what changed.
   - `aggregate_records` refuses `group_by` and aggregates on a field whose values a row read
     would withhold (`value` on `sys_properties`, a dot-walk to a `value` field, the old and new
-    values of `sys_audit` and `sys_history_line`), since the Stats API returns bare values.
-    `get_current_user` refuses a dot-walk to a `value` field in `fields=`.
+    values of `sys_audit` and `sys_history_line`, a dot-walk to an old or new value), since
+    the Stats API returns bare values. `get_current_user` refuses such dot-walks in `fields=`.
+  - **A field name with an empty segment is refused** in `fields`, `order_by`, `group_by` and
+    the aggregate field lists, on every table: a leading, trailing or doubled dot. The
+    instance reads `value.` as `value` and returns it under that spelling, which no check
+    recognised. Around a name only spaces and tabs are accepted now (other whitespace was).
   - `update_record` and `update_ci` refuse to set the `type` of a `sys_properties` record to
-    anything but a credential type: retyped, the stored value would be an ordinary one.
+    anything but a credential type: retyped, the stored value would be an ordinary one. A
+    write to `sys_properties` takes plain field names as the keys of `data`, nothing else.
+  - A 200 answer whose `result` is not what the tool expects (a string or a list where one
+    record belongs) is an error that names the type. Before, FastMCP's own error quoted it.
   - `servicenow://instance` reads its four properties with their type and reports one that is
     typed as a credential under `unavailable`.
-  - The audit line masks whatever a query on `sys_properties` compares `value` with.
+  - The audit line masks whatever a query on `sys_properties` compares `value` with, and
+    leaves out a query on it that has a text-search term.
+- **The audit line's query masking takes linear time.** The pattern that masks password-,
+  secret- and token-like values needed quadratic time on a long run of such words (11 seconds
+  for 64 KB), on the event loop. It is bounded now, and a query over 4,000 characters is
+  logged as `<query of N characters, not logged>`.
   - Limits, stated in [docs/tools.md](docs/tools.md#credential-type-system-properties): withheld
     is not the same as impossible to infer (a filter on `value` still shows which properties
     match, so an identity that can read the table can work a value out with enough queries;
@@ -99,8 +114,15 @@
   `description`, and its result can carry a `warning` (new in its `outputSchema`; its
   description says that credential-type values are never returned). `docs/contract.json`, the
   generated block of `docs/tools.md` and the eval mocks' `_tools.json` carry that one change.
+- **`aggregate_records` refuses some fields on every table.** `group_by` and the aggregate
+  field lists can no longer name a dot-walk to a field called `value` (such as
+  `sc_item_option.value`), `oldvalue`, `newvalue`, `old`, `old_value`, `new` or `new_value`,
+  nor the old and new values of `sys_audit` and `sys_history_line` themselves, whatever the
+  rows are about: the Stats API returns bare values, and the server can't tell a system
+  property's from any other. Read the rows with `list_records` and `fields=` instead, and
+  count them there.
 - On `sys_properties`, `sys_audit` and `sys_history_line`, and for a `fields=` with a dot-walk
-  to a `value` field, the server asks the instance for the fields that say what a row is and
+  to a `value` field or to an old or new value, the server asks the instance for the fields that say what a row is and
   removes them from the rows again, and reads `display_value="true"` as `"all"` and returns the
   display form: a display label is not the stored type. The rows have the shape they had.
 - **FastMCP is capped below 4.3** (`fastmcp>=4.1.3,<4.3`, was `<5`). The server imports

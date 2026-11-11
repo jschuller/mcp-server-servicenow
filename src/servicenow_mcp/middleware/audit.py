@@ -5,7 +5,8 @@ Lines go to ``stderr`` by default (``--audit-log stderr``), to a file
 stdout: on stdio transport that is the protocol channel. Written values are
 never logged, only the ``data`` keys; the encoded query is logged redacted
 (secret-like values masked, and on ``sys_properties`` whatever a term compares
-``value`` with) and truncated, so it can hold other filter values.
+``value`` with) and truncated, so it can hold other filter values. A query
+too long to be worth reading is not logged at all, only its length.
 """
 
 from __future__ import annotations
@@ -23,13 +24,23 @@ from fastmcp.exceptions import NotFoundError
 from fastmcp.server.middleware import CallNext, Middleware, MiddlewareContext
 from mcp.types import TextContent
 
-from servicenow_mcp.middleware.policy import SCHEMA_URI_RE, PolicyError, resolve_table
+from servicenow_mcp.middleware.policy import (
+    SCHEMA_URI_RE,
+    TEXT_SEARCH_TERMS,
+    VALUE_TERM_RE,
+    PolicyError,
+    resolve_table,
+)
 from servicenow_mcp.middleware.response_limit import TRUNCATED_META
 
 AUDIT_LOGGER_NAME = "servicenow_mcp.audit"
 TRUNCATION_SUFFIX = "\n\n[Response truncated due to size limit]"
 RUN_ID = uuid.uuid4().hex
 QUERY_MAX_CHARS = 200
+# The line keeps 200 characters of a query; one longer than this is no
+# filter a person wrote, and masking it would be work done on the event loop
+# for nothing.
+QUERY_MAX_INPUT = 4000
 
 logger = logging.getLogger(AUDIT_LOGGER_NAME)
 logger.propagate = False
@@ -37,16 +48,12 @@ logger.propagate = False
 _enabled = False
 _transport = "stdio"
 
+# The rest of a field name and the space before its operator are bounded
+# (a column name has at most 80 characters): unbounded, a run of keywords
+# with no operator costs quadratic time.
 _REDACT_RE = re.compile(
-    r"(?i)((?:password|secret|token|api_key|apikey)[A-Za-z0-9_]*\s*"
+    r"(?i)((?:password|secret|token|api_key|apikey)[A-Za-z0-9_]{0,80}\s{0,8}"
     r"(?:!=|=|LIKE|STARTSWITH|ENDSWITH|IN))([^^]*)"
-)
-# A filter on sys_properties.value can hold a credential the caller knows or
-# is guessing. Column names are lowercase and operators are not, so this
-# stops at the operator; "^^" is an escaped caret inside the compared text.
-_PROPERTY_VALUE_RE = re.compile(
-    r"((?:^|\^)[\x00-\x20]*(?:(?:OR|NQ)[\x00-\x20]*)?value)(?![a-z0-9_.])"
-    r"((?:[^^]|\^\^)*)"
 )
 
 
@@ -83,11 +90,18 @@ def is_enabled() -> bool:
 def redact_query(query: str, table: Optional[str] = None) -> str:
     """Mask values of password/secret/token-like fields and cap the length.
 
-    On ``sys_properties`` every term on ``value`` is masked after the field name.
+    On ``sys_properties`` a filter on ``value`` can hold a credential the
+    caller knows or is guessing: every term on ``value`` is masked after the
+    field name, and a query with a text-search term, which names no field, is
+    not logged. Linear in the query's length, and bounded.
     """
+    if len(query) > QUERY_MAX_INPUT:
+        return f"<query of {len(query)} characters, not logged>"
     masked = _REDACT_RE.sub(r"\1[REDACTED]", query)
     if isinstance(table, str) and table.strip().lower() == "sys_properties":
-        masked = _PROPERTY_VALUE_RE.sub(r"\1[REDACTED]", masked)
+        if any(term in query for term in TEXT_SEARCH_TERMS):
+            return "<query with a text-search term on sys_properties, not logged>"
+        masked = VALUE_TERM_RE.sub(r"\1[REDACTED]", masked)
     if len(masked) > QUERY_MAX_CHARS:
         return masked[:QUERY_MAX_CHARS] + "…"
     return masked

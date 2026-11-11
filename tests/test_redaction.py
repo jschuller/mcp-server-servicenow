@@ -11,6 +11,7 @@ that differ from the stored values, and a write changes the row it echoes.
 
 import json
 import logging
+import time
 from typing import Any, Dict, List, Optional
 
 import pytest
@@ -18,9 +19,14 @@ from fastmcp import Client
 from fastmcp.exceptions import ToolError
 
 from servicenow_mcp import resources, server
-from servicenow_mcp.middleware import audit
+from servicenow_mcp.middleware import audit, policy
 from servicenow_mcp.server import mcp
-from servicenow_mcp.tools import cmdb_tools, system_tools, table_tools
+from servicenow_mcp.tools import (
+    cmdb_tools,
+    system_tools,
+    table_tools,
+    update_set_tools,
+)
 from servicenow_mcp.utils import redaction
 from servicenow_mcp.utils.redaction import REDACTED, Guard
 from tests.conftest import init_test_services, sn_response
@@ -155,6 +161,18 @@ class Harness:
         for module in (table_tools, cmdb_tools, system_tools, resources, server):
             self.monkeypatch.setattr(module, "make_sn_request", self.fake)
         return self.fake
+
+    def answer(self, body: Any) -> None:
+        """Every request gets this JSON body, whatever it asks for."""
+
+        def fake(*args: Any, **kwargs: Any) -> Any:
+            self.fake.served += json.dumps(body)
+            self.fake.calls.append({"method": args[0], "url": args[1], "params": {}})
+            return sn_response(body)
+
+        for module in (table_tools, cmdb_tools, system_tools, resources, server):
+            self.monkeypatch.setattr(module, "make_sn_request", fake)
+        self.monkeypatch.setattr(update_set_tools, "make_sn_request", fake)
 
     async def call(self, tool: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
         async with Client(mcp) as client:
@@ -387,7 +405,6 @@ async def test_table_name_is_matched_whatever_its_case(sn: Harness) -> None:
     [
         "name,value,TYPE",
         "name,value,Type ",
-        "name,value,type\u00a0",
         "value,VALUE",
         "Value,value,name",
         "VALUE",
@@ -418,7 +435,6 @@ async def test_spellings_of_value_and_type(
     "fields",
     [
         "property.value,property.TYPE,property.SYS_CLASS_NAME",
-        "property.value,property.type\u00a0,property.sys_class_name\u00a0",
         "property.value,property.Value,property.name",
         "property.value, property.type ,property.sys_class_name",
     ],
@@ -436,6 +452,97 @@ async def test_spellings_of_a_dot_walk(
     values = [text for key, text in record.items() if key.lower() == "property.value"]
     assert values and set(values) == {REDACTED}
     sn.assert_clean()
+
+
+# --- a name the instance would read differently never reaches it ---------------
+
+# The instance accepts "value." and returns the field under that key, trims
+# control characters, and may ignore more: only names made of column names
+# joined by single dots get through, with spaces or tabs around them.
+ODD_NAMES = [
+    "value.",
+    ".value",
+    "value..",
+    "property..value",
+    "property.value.",
+    ".property.value",
+    "name,value.",
+    "value,",
+    ",value",
+    "value,,type",
+    "value\n",
+    "value\r",
+    "value\u00a0",
+    "\u00a0value",
+    "value\x00",
+    "\x01value",
+    "value\x1c",
+    "value\u200b",
+    "va lue",
+    "value+",
+    "value%20",
+    "value%2e",
+    "value;type",
+    "value type",
+    "",
+    " ",
+    ".",
+]
+
+
+@pytest.mark.parametrize("fields", ODD_NAMES)
+@pytest.mark.parametrize(
+    ("tool", "argument", "others"),
+    [
+        ("list_records", "fields", {"table_name": "sys_properties"}),
+        ("get_record", "fields", {"table_name": "sys_properties", "sys_id": SYS_ID}),
+        ("list_ci", "fields", {"class_name": "sys_properties"}),
+        ("get_current_user", "fields", {}),
+        ("aggregate_records", "group_by", {"table_name": "sys_properties"}),
+        ("aggregate_records", "min_fields", {"table_name": "sys_audit"}),
+        ("aggregate_records", "max_fields", {"table_name": "sys_properties"}),
+        ("aggregate_records", "avg_fields", {"table_name": "sys_properties"}),
+        ("aggregate_records", "sum_fields", {"table_name": "sys_properties"}),
+        ("list_records", "order_by", {"table_name": "sys_properties"}),
+    ],
+)
+async def test_field_names_with_anything_odd_are_refused(
+    sn: Harness, tool: str, argument: str, others: Dict[str, Any], fields: str
+) -> None:
+    fake = sn.serve(PROPERTIES)
+    message = await sn.refused(tool, {**others, argument: fields})
+    assert f"Invalid {argument}" in message
+    assert fake.calls == []
+    assert json.loads(sn.audit_lines[-1])["outcome"] == "denied"
+
+
+@pytest.mark.parametrize("name", ["value.", "-value.", ".value", "a..b", "-", "--a"])
+def test_order_by_takes_one_whole_name(name: str) -> None:
+    from servicenow_mcp.middleware.policy import ORDER_BY_RE
+
+    assert not ORDER_BY_RE.match(name)
+    assert ORDER_BY_RE.match("-sys_scope.name") and ORDER_BY_RE.match("value")
+
+
+@pytest.mark.parametrize(
+    "fields", ["value", " value , type ", "\tname,\tvalue", "a.b.c,value", "Value"]
+)
+async def test_plain_field_lists_still_pass(sn: Harness, fields: str) -> None:
+    sn.serve(PROPERTIES)
+    data = await sn.call(
+        "list_records", {"table_name": "sys_properties", "fields": fields}
+    )
+    assert data["count"] == 4
+    sn.assert_clean(served=False)
+
+
+def test_the_field_list_check_is_linear() -> None:
+    from servicenow_mcp.middleware.policy import FIELD_LIST_RE
+
+    started = time.perf_counter()
+    for text in ("a," * 500_000 + "!", "a" + " " * 1_000_000 + "!", "a." * 500_000):
+        assert not FIELD_LIST_RE.match(text)
+    assert time.perf_counter() - started < 5
 
 
 # --- fail closed --------------------------------------------------------------
@@ -633,13 +740,79 @@ async def test_value_filter_that_matches_a_withheld_row_is_named(
     if tool == "list_records":
         arguments["table_name"] = "sys_properties"
     data = await sn.call(tool, arguments)
-    assert "query= filters on value and matched a withheld row" in data["warning"]
+    assert (
+        "query= filters on value or searches text, and matched a withheld"
+        in (data["warning"])
+    )
     assert "not the same as impossible to infer" in data["warning"]
     # What the caller compared value with is not kept in the audit line either.
     line = json.loads(sn.audit_lines[-1])
     assert line["table"] == "sys_properties"
     assert line["query"] == "type=password2^value[REDACTED]"
     sn.assert_clean()
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        f"GOTOvalue={CANARY}",
+        f"name=x^GOTOvalue>={CANARY}",
+        f"name=x^ORGOTOvalueSTARTSWITH{CANARY}",
+        f"VALUE={CANARY}",
+        f"name=x^Value>{CANARY}",
+        f"value.={CANARY}",
+        f"\tvalue ={CANARY}",
+        f"name=a^^^value={CANARY}",
+        f"123TEXTQUERY321={CANARY}",
+        f"name=x^IR_AND_OR_QUERY={CANARY}",
+        f"IR_OR_QUERY={CANARY}",
+    ],
+)
+async def test_every_spelling_of_a_value_search_is_masked_and_named(
+    sn: Harness, query: str
+) -> None:
+    sn.serve(PROPERTIES)
+    assert CANARY not in audit.redact_query(query, "sys_properties")
+    assert redaction.searches_value(query)
+    data = await sn.call("get_system_properties", {"query": query})
+    assert "filters on value or searches text" in data["warning"]
+    assert CANARY not in sn.audit_lines[-1]
+    sn.assert_clean()
+
+
+@pytest.mark.parametrize(
+    "query",
+    ["", "nameLIKEvalue", "ORDERBYvalue", "value_type=1", "valued=1", "x.value=1"],
+)
+def test_other_queries_are_no_value_search(query: str) -> None:
+    assert not redaction.searches_value(query)
+    assert audit.redact_query(query, "sys_properties") == query
+
+
+def test_audit_masking_is_linear_and_bounded() -> None:
+    """A query no person wrote is not logged; a shorter one costs linear time."""
+    started = time.perf_counter()
+    long_query = "password" * 32_000
+    assert audit.redact_query(long_query, "sys_properties") == (
+        "<query of 256000 characters, not logged>"
+    )
+    assert audit.redact_query("a" * (audit.QUERY_MAX_INPUT + 1)).startswith("<query of")
+    for text in (
+        "password" * 500,
+        "password " * 440,
+        "^value=" + "a^^" * 1300,
+        ("^" + " " * 50) * 78,
+        "^ORvalue" * 500,
+        "token" + "_" * 3990,
+    ):
+        assert len(text) <= audit.QUERY_MAX_INPUT
+        assert len(audit.redact_query(text, "sys_properties")) <= 201
+    # The patterns themselves, with no cap: 64 KB took 11 s before.
+    audit._REDACT_RE.sub("", "password" * 8_000)
+    audit._REDACT_RE.sub("", ("secret" + " " * 100) * 600)
+    policy.VALUE_TERM_RE.sub("", "^value=" + "a^^" * 100_000)
+    policy.VALUE_TERM_RE.sub("", "^ORvalue" * 50_000 + ("^" + " " * 50) * 5_000)
+    assert time.perf_counter() - started < 5
 
 
 def test_audit_masks_value_terms_on_sys_properties_only() -> None:
@@ -788,6 +961,98 @@ async def test_dot_walk_to_another_tables_value_is_untouched(sn: Harness) -> Non
     assert data == {"count": 1, "records": rows}
 
 
+# A table whose rows point at an audit row, and at a history line.
+AUDIT_REF = [
+    {
+        "sys_id": f"{20:032x}",
+        "audit.tablename": "sys_properties",
+        "audit.fieldname": "value",
+        "audit.oldvalue": f"{CANARY}-old",
+        "audit.newvalue": f"{CANARY}-new",
+        "line.set.table": "sys_properties",
+        "line.field": "value",
+        "line.old": f"{CANARY}-o",
+        "line.new_value": f"{CANARY}-n",
+    },
+    {
+        "sys_id": f"{21:032x}",
+        "audit.tablename": "incident",
+        "audit.fieldname": "state",
+        "audit.oldvalue": "1",
+        "audit.newvalue": "2",
+        "line.set.table": "incident",
+        "line.field": "state",
+        "line.old": "New",
+        "line.new_value": "2",
+    },
+]
+
+
+@pytest.mark.parametrize("display_value", ["false", "true", "all"])
+@pytest.mark.parametrize(
+    ("fields", "sent"),
+    [
+        ("audit.newvalue", "audit.newvalue,audit.tablename,audit.fieldname"),
+        (
+            "audit.oldvalue,audit.newvalue,audit.tablename",
+            "audit.oldvalue,audit.newvalue,audit.tablename,audit.fieldname",
+        ),
+        (
+            "line.old,line.new_value",
+            "line.old,line.new_value,line.set.table,line.field",
+        ),
+    ],
+)
+async def test_dot_walk_to_an_audit_or_history_copy(
+    sn: Harness, fields: str, sent: str, display_value: str
+) -> None:
+    fake = sn.serve(AUDIT_REF)
+    data = await sn.call(
+        "list_records",
+        {"table_name": "x_demo_ref", "fields": fields, "display_value": display_value},
+    )
+    assert fake.params["sysparm_fields"] == sent
+    names = fields.split(",")
+    assert [list(row) for row in data["records"]] == [names, names]
+    copies = [name for name in names if name.split(".")[-1] not in ("tablename",)]
+    for name in copies:
+        first, second = (row[name] for row in data["records"])
+        if display_value == "all":
+            first, second = first["value"], second["value"]
+        assert first == REDACTED
+        assert second == AUDIT_REF[1][name]
+    assert "Withheld the old and new values in 1 row that records" in data["warning"]
+    sn.assert_clean()
+
+
+async def test_dot_walk_to_an_audit_row_that_hides_its_table_fails_closed(
+    sn: Harness,
+) -> None:
+    sn.serve(AUDIT_REF, hidden=("audit.tablename",))
+    data = await sn.call(
+        "list_records", {"table_name": "x_demo_ref", "fields": "audit.newvalue"}
+    )
+    # The first row says "value", the second "state": only the first is withheld.
+    assert [row["audit.newvalue"] for row in data["records"]] == [REDACTED, "2"]
+    sn.serve(AUDIT_REF, hidden=("audit.fieldname",))
+    data = await sn.call(
+        "list_records", {"table_name": "x_demo_ref", "fields": "audit.newvalue"}
+    )
+    assert [row["audit.newvalue"] for row in data["records"]] == [REDACTED, "2"]
+    sn.assert_clean()
+
+
+async def test_dot_walk_to_another_tables_new_or_old_is_untouched(sn: Harness) -> None:
+    """A record with neither helper field is no audit or history row."""
+    rows = [{"plan.new": "v2", "plan.old": "v1", "plan.newvalue": "x"}]
+    sn.serve(rows)
+    data = await sn.call(
+        "list_records",
+        {"table_name": "x_demo_ref", "fields": "plan.new,plan.old,plan.newvalue"},
+    )
+    assert data == {"count": 1, "records": rows}
+
+
 async def test_get_current_user_refuses_a_walk_to_value(sn: Harness) -> None:
     sn.serve([])
     message = await sn.refused("get_current_user", {"fields": "u_setting.value"})
@@ -813,6 +1078,10 @@ async def test_get_current_user_refuses_a_walk_to_value(sn: Harness) -> None:
         ("sys_audit", "group_by", "newvalue"),
         ("sys_audit", "min_fields", "oldvalue"),
         ("sys_history_line", "group_by", "new_value"),
+        ("x_demo_ref", "group_by", "audit.newvalue"),
+        ("x_demo_ref", "min_fields", "audit.oldvalue"),
+        ("x_demo_ref", "group_by", "line.new"),
+        ("x_demo_ref", "max_fields", "a.line.old_value"),
     ],
 )
 async def test_aggregates_that_would_return_values_are_refused(
@@ -886,7 +1155,7 @@ async def test_write_echo_is_withheld(
     "data",
     [
         {"type": "string"},
-        {"TYPE": "string", "description": "x"},
+        {"type": "true_false", "description": "x"},
         {"type": ""},
         {"type": None},
         {"type": {"value": "string"}},
@@ -905,6 +1174,42 @@ async def test_an_update_may_not_make_a_credential_readable(
     assert "doesn't change a system property's type" in message
     assert fake.calls == []
     assert json.loads(sn.audit_lines[-1])["outcome"] == "denied"
+    sn.assert_clean(served=False)
+
+
+@pytest.mark.parametrize(
+    "tool", ["update_record", "update_ci", "create_record", "create_ci"]
+)
+@pytest.mark.parametrize(
+    "key",
+    [
+        "TYPE",
+        "Type",
+        " type",
+        "type ",
+        "type\x00",
+        "\x01type",
+        "type\x1b",
+        "type\u200b",
+        "type\u00a0",
+        "type.",
+        "sys_scope.name",
+        "",
+        "1type",
+    ],
+)
+async def test_a_property_write_takes_plain_field_names_only(
+    sn: Harness, tool: str, key: str
+) -> None:
+    """Whatever the instance makes of an odd key, it is not asked."""
+    fake = sn.serve([PROPERTIES[1]])
+    arguments: Dict[str, Any] = {"data": {key: "string", "description": "x"}}
+    arguments["class_name" if tool.endswith("_ci") else "table_name"] = "sys_properties"
+    if tool.startswith("update"):
+        arguments["sys_id"] = SYS_ID
+    message = await sn.refused(tool, arguments)
+    assert "must be plain field names" in message and "1 key is not" in message
+    assert fake.calls == []
     sn.assert_clean(served=False)
 
 
@@ -1066,20 +1371,25 @@ def payload(kind: str) -> str:
 
 
 @pytest.mark.parametrize(
-    ("kind", "withheld"),
+    "kind",
     [
-        ("<type>password2</type>", True),
-        ("<type>password</type>", True),
-        ("<type> PASSWORD2 </type>", True),
-        ("<type/>", True),  # no readable type: fail closed
-        ("", True),
-        ("<type><![CDATA[password2]]></type>", True),
-        ("<type>string</type>", False),
+        "<type>password2</type>",
+        "<type>password</type>",
+        "<type/>",
+        "",
+        "<type><![CDATA[password2]]></type>",
+        # An ordinary property's payload is withheld too: the markup is not
+        # parsed, so nothing in it is taken to say that the type is plain.
+        "<type>string</type>",
+        # A description can hold what looks like the end of the record.
+        "<description><![CDATA[<type>string</type></sys_properties>]]></description>"
+        "<type>password2</type>",
+        "<description><![CDATA[<type>string</type>]]></description><type/>",
     ],
 )
 @pytest.mark.parametrize("display_value", ["false", "all"])
-async def test_record_xml_of_a_property(
-    sn: Harness, kind: str, withheld: bool, display_value: str
+async def test_record_xml_of_a_property_is_withheld_whole(
+    sn: Harness, kind: str, display_value: str
 ) -> None:
     sn.serve([{"name": "sys_properties_abc", "payload": payload(kind)}])
     data = await sn.call(
@@ -1090,34 +1400,58 @@ async def test_record_xml_of_a_property(
             "display_value": display_value,
         },
     )
-    got = data["records"][0]["payload"]
+    marker: Any = REDACTED
     if display_value == "all":
-        assert got["display_value"] == got["value"]
-        got = got["value"]
-    assert (got == REDACTED) is withheld
-    if withheld:
-        assert "the record XML of a system property" in data["warning"]
-        sn.assert_clean()
-    else:
-        assert "warning" not in data
+        marker = {"display_value": REDACTED, "value": REDACTED}
+    assert data["records"][0]["payload"] == marker
+    assert data["records"][0]["name"] != marker
+    assert "a system property's record XML" in data["warning"]
+    assert "whatever the property's type" in data["warning"]
+    sn.assert_clean()
 
 
-def test_record_xml_is_judged_one_record_at_a_time() -> None:
-    """Another element's <type> must not vouch for a property that has none."""
-    credential = f"<sys_properties><type/><value>{CANARY}</value></sys_properties>"
-    plain = "<sys_properties><type>string</type><value>v</value></sys_properties>"
-    other = "<sys_dictionary><type>string</type></sys_dictionary>"
-    held = redaction._holds_credential_xml
-    assert held(credential + other) and held(other + credential)
-    assert held(plain + credential) and held(credential + plain)
-    assert held(plain.replace("<type>", '<type display_value="Text">'))
-    assert held(plain.replace("</sys_properties>", "<type>string</type>") + "<x>")
-    assert held("<sys_properties><type>string</type><type>password2</type>")
-    assert not held(plain) and not held(plain + other + plain)
-    assert redaction.scrub({"a": [credential + other, plain]}) == (
-        {"a": [REDACTED, plain]},
-        1,
-    )
+@pytest.mark.parametrize(
+    "text",
+    [
+        f"<sys_properties><value>{CANARY}</value></sys_properties>",
+        f'<sys_properties action="INSERT_OR_UPDATE"><value>{CANARY}',
+        f"<SYS_PROPERTIES><VALUE>{CANARY}</VALUE></SYS_PROPERTIES>",
+        f"<Sys_Properties\n action='x'><value>{CANARY}</value>",
+        f"<x:sys_properties><value>{CANARY}</value></x:sys_properties>",
+        f"<unload><sys_properties\taction='x'><value>{CANARY}</value>",
+        f"<sys_properties/><sys_properties><value>{CANARY}</value>",
+        f"&lt;sys_properties&gt;&lt;value&gt;{CANARY}&lt;/value&gt;",
+        f"&LT;sys_properties action=&quot;x&quot;&gt;{CANARY}",
+        f"\\u003csys_properties\\u003e\\u003cvalue\\u003e{CANARY}",
+        f"\\U003Csys_properties>{CANARY}",
+    ],
+)
+def test_any_sys_properties_element_counts(text: str) -> None:
+    assert redaction.scrub(text) == (REDACTED, 1)
+    assert redaction.scrub({"a": [text, "kept"]}) == ({"a": [REDACTED, "kept"]}, 1)
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "no markup here",
+        "the table sys_properties holds them",
+        "<sys_properties_category><name>Mail</name></sys_properties_category>",
+        "<sys_properties_category_m2m/>",
+        '<record_update table="sys_properties_category">',
+        "<sys_script><script>gs.getProperty('x')</script></sys_script>",
+    ],
+)
+def test_other_text_is_not_taken_for_a_property_record(text: str) -> None:
+    assert redaction.scrub(text) == (text, 0)
+
+
+def test_the_record_xml_check_is_linear() -> None:
+    started = time.perf_counter()
+    for text in ("<sys_properties_" * 200_000, "<a:" * 300_000, "<" * 1_000_000):
+        assert redaction.scrub(text)[1] == 0
+    assert redaction.scrub("x" * 1_000_000 + "<sys_properties>")[1] == 1
+    assert time.perf_counter() - started < 5
 
 
 async def test_record_xml_in_a_stats_result_and_a_single_record(sn: Harness) -> None:
@@ -1132,6 +1466,87 @@ async def test_record_xml_in_a_stats_result_and_a_single_record(sn: Harness) -> 
     )
     assert record == {"sys_id": SYS_ID, "payload": REDACTED}
     sn.assert_clean()
+
+
+# --- an answer that is not what the call expects -------------------------------
+
+ODD_ANSWERS = [
+    {"result": f"{CANARY} as a string"},
+    {"result": [f"{CANARY} in a list"]},
+    {"result": [[{"value": CANARY}]]},
+    {"result": None, "note": CANARY},
+    {"result": 7, "note": CANARY},
+    {"note": CANARY},
+    [{"value": CANARY}],
+    f"{CANARY} as the whole answer",
+]
+
+
+@pytest.mark.parametrize("answer", ODD_ANSWERS)
+@pytest.mark.parametrize(
+    ("tool", "arguments"),
+    [
+        ("get_record", {"table_name": "sys_properties", "sys_id": SYS_ID}),
+        ("get_ci", {"class_name": "sys_properties", "sys_id": SYS_ID}),
+        ("get_update_set", {"sys_id": SYS_ID}),
+        ("aggregate_records", {"table_name": "sys_properties"}),
+        ("create_record", {"table_name": "sys_properties", "data": {"name": "x"}}),
+        (
+            "update_record",
+            {"table_name": "incident", "sys_id": SYS_ID, "data": {"state": "2"}},
+        ),
+        ("create_ci", {"data": {"name": "x"}}),
+        ("update_ci", {"sys_id": SYS_ID, "data": {"name": "x"}}),
+        ("create_update_set", {"name": "x"}),
+        ("set_current_update_set", {"sys_id": SYS_ID}),
+    ],
+)
+async def test_an_answer_of_the_wrong_shape_is_named_by_type_only(
+    sn: Harness, tool: str, arguments: Dict[str, Any], answer: Any
+) -> None:
+    sn.serve([])
+    sn.answer(answer)
+    message = await sn.refused(tool, arguments)
+    assert "Unexpected answer from ServiceNow" in message
+    assert "Its content is not shown" in message
+    assert "structured_content" not in message
+    sn.assert_clean()
+
+
+@pytest.mark.parametrize("answer", ODD_ANSWERS)
+@pytest.mark.parametrize(
+    ("tool", "arguments", "key"),
+    [
+        ("list_records", {"table_name": "sys_properties"}, "records"),
+        ("list_ci", {"class_name": "sys_properties"}, "records"),
+        ("get_system_properties", {}, "properties"),
+        ("list_update_sets", {}, "update_sets"),
+        ("list_update_set_changes", {"update_set_sys_id": SYS_ID}, "changes"),
+        ("get_ci_relationships", {"sys_id": SYS_ID}, "relationships"),
+    ],
+)
+async def test_a_list_tool_drops_what_is_not_a_row(
+    sn: Harness, tool: str, arguments: Dict[str, Any], key: str, answer: Any
+) -> None:
+    sn.serve([])
+    sn.answer(answer)
+    data = await sn.call(tool, arguments)
+    assert data[key] == [] and data["count"] == 0
+    sn.assert_clean()
+
+
+async def test_a_stats_answer_may_be_an_object_or_a_list_of_objects(
+    sn: Harness,
+) -> None:
+    sn.serve([])
+    sn.answer({"result": {"stats": {"count": "3"}}})
+    assert await sn.call("aggregate_records", {"table_name": "incident"}) == {
+        "stats": {"count": "3"}
+    }
+    sn.answer({"result": []})
+    assert await sn.call(
+        "aggregate_records", {"table_name": "incident", "group_by": "state"}
+    ) == {"count": 0, "groups": []}
 
 
 # --- the other surfaces -----------------------------------------------------------
@@ -1232,6 +1647,10 @@ def test_guard_adds_helpers_only_where_fields_is_given() -> None:
     assert Guard("sys_properties", " name , TYPE ").fields == "name , TYPE,type"
     assert Guard("sys_properties", "name,\ttype ").fields == "name,\ttype "
     assert Guard("sys_properties", "name,type\u00a0").fields == "name,type\u00a0,type"
+    assert Guard("task", "audit.newvalue").fields == (
+        "audit.newvalue,audit.tablename,audit.fieldname"
+    )
+    assert Guard("task", "h.old,h.new").fields == "h.old,h.new,h.set.table,h.field"
     assert Guard("sys_properties", None, "true").display_value == "all"
     assert (
         Guard("sys_audit", "newvalue", "all").fields == "newvalue,tablename,fieldname"
@@ -1252,6 +1671,27 @@ def test_two_spellings_of_one_field_take_the_stricter_reading() -> None:
     row = {"type": "string", "Type": None, "value": CANARY}
     assert "did not come back" in (Guard("sys_properties").apply([row]) or "")
     assert row["value"] == REDACTED
+
+
+@pytest.mark.parametrize(
+    "module",
+    [
+        "servicenow_mcp.utils.redaction",
+        "servicenow_mcp.utils.records",
+        "servicenow_mcp.middleware.audit",
+        "servicenow_mcp.middleware.policy",
+    ],
+)
+def test_each_module_imports_on_its_own(module: str) -> None:
+    """The guard, the audit mask and the validator share patterns: whichever
+    is imported first, in a fresh interpreter, must load."""
+    import subprocess
+    import sys
+
+    done = subprocess.run(
+        [sys.executable, "-c", f"import {module}"], capture_output=True, text=True
+    )
+    assert done.returncode == 0, done.stderr[-500:]
 
 
 def test_guard_skips_rows_that_are_not_objects() -> None:
@@ -1290,5 +1730,3 @@ def test_marker_has_one_length_and_names_no_value() -> None:
     short_row = {"type": "password2", "value": "x"}
     Guard("sys_properties").apply([long_row, short_row])
     assert long_row["value"] == short_row["value"] == REDACTED
-    assert redaction._holds_credential_xml("no markup here") is False
-    assert redaction._holds_credential_xml("<sys_properties_category>x") is False

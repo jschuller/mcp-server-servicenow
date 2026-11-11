@@ -18,7 +18,6 @@ from servicenow_mcp.server import (
 from servicenow_mcp.tools import annotations
 from servicenow_mcp.middleware.policy import check_identifier
 from servicenow_mcp.tools.results import PropertyList, ReferenceReport, TableSchema
-from servicenow_mcp.tools.table_tools import query_field_names
 from servicenow_mcp.utils.http import (
     ServiceNowAPIError,
     build_url,
@@ -63,7 +62,7 @@ def get_system_properties(
     response = make_sn_request("GET", url, config.timeout, params=query_params)
     data = parse_json_response(response, url)
     result = result_rows(data)
-    warning = guard.apply(result, query_field_names(query)[0])
+    warning = guard.apply(result, query)
     payload: PropertyList = {"count": len(result), "properties": result}
     if warning:
         payload["warning"] = warning

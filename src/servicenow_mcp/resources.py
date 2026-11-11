@@ -33,6 +33,7 @@ from fastmcp.server.providers.skills import SkillsDirectoryProvider
 
 from servicenow_mcp.server import get_config, get_config_or_none, make_sn_request, mcp
 from servicenow_mcp.utils.http import build_url, parse_json_response, result_rows
+from servicenow_mcp.utils.records import record_result
 from servicenow_mcp.utils.redaction import PROPERTY_TABLE, REDACTED, Guard
 from servicenow_mcp.utils.schema import _reference_value, fetch_table_schema
 from servicenow_mcp.utils.user import fetch_current_user
@@ -211,8 +212,7 @@ def current_update_set() -> str:
         "sysparm_fields": "value",
     }
     resp = make_sn_request("GET", pref_url, config.timeout, params=pref_params)
-    pref_data = parse_json_response(resp, pref_url)
-    prefs = pref_data.get("result", [])
+    prefs = result_rows(parse_json_response(resp, pref_url))
 
     if not prefs or not prefs[0].get("value"):
         return json.dumps({"error": "No current update set found in user preferences"})
@@ -225,8 +225,7 @@ def current_update_set() -> str:
         "sysparm_fields": "sys_id,name,state,description,application",
     }
     us_resp = make_sn_request("GET", us_url, config.timeout, params=us_params)
-    us_data = parse_json_response(us_resp, us_url)
-    update_set = us_data.get("result", {})
+    update_set = record_result(parse_json_response(us_resp, us_url))
 
     return json.dumps(
         {
@@ -273,7 +272,7 @@ def cmdb_classes() -> str:
             "sysparm_offset": page * CLASS_PAGE_SIZE,
         }
         response = make_sn_request("GET", url, config.timeout, params=query_params)
-        batch = parse_json_response(response, url).get("result", [])
+        batch = result_rows(parse_json_response(response, url))
         result.extend(batch)
         if len(batch) < CLASS_PAGE_SIZE:
             break

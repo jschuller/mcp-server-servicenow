@@ -31,9 +31,28 @@ class PolicyError(ToolError):
 # ``?``, ``^``, ``..``) is a traversal or query-injection attempt. Patterns end in
 # ``\Z``, not ``$``, which also matches before a final newline.
 IDENTIFIER_RE = re.compile(r"^[A-Za-z0-9_]+\Z")
-ORDER_BY_RE = re.compile(r"^-?[A-Za-z0-9_.]+\Z")
-FIELD_LIST_RE = re.compile(r"^\s*[A-Za-z0-9_.]+(\s*,\s*[A-Za-z0-9_.]+)*\s*$")
+# A field name is column names joined by single dots (a dot-walk). The
+# instance accepts a name with an empty segment ("value.") and returns the
+# field under that spelling, which no check after this one would recognise,
+# so a leading, trailing or doubled dot is refused. Around a name only spaces
+# and tabs are allowed: the instance trims them, and so does everything here.
+_FIELD_NAME = r"[A-Za-z0-9_]+(?:\.[A-Za-z0-9_]+)*"
+ORDER_BY_RE = re.compile(rf"^-?{_FIELD_NAME}\Z")
+FIELD_LIST_RE = re.compile(
+    rf"^[ \t]*{_FIELD_NAME}(?:[ \t]*,[ \t]*{_FIELD_NAME})*[ \t]*\Z"
+)
 STATE_RE = re.compile(r"^[A-Za-z_ ]+\Z")
+# A term of an encoded query that compares a field named value, as
+# sys_properties has it: at the start of a term, after ^OR or ^NQ, or behind
+# GOTO. Column names are lowercase and operators are not; "^^" is an escaped
+# caret inside the compared text. The audit log masks such a term, and the
+# tools say when one matched a property whose value they withhold.
+VALUE_TERM_RE = re.compile(
+    r"((?:^|\^)[\x00-\x20]*(?:(?:OR|NQ)[\x00-\x20]*)?(?:GOTO)?[Vv][Aa][Ll][Uu][Ee])"
+    r"(?![a-z0-9_])((?:[^^]|\^\^)*)"
+)
+# Text-search terms name no field, so they may search value as well.
+TEXT_SEARCH_TERMS = ("123TEXTQUERY321", "IR_")
 
 JS_PREFIX_RE = re.compile(r"javascript:", re.IGNORECASE)
 # The only server-side script allowed in an encoded query: GlideSystem date
@@ -99,6 +118,15 @@ def resolve_table(tool_name: str, arguments: Dict[str, Any]) -> Optional[str]:
         class_name = arguments.get("class_name")
         return class_name if isinstance(class_name, str) else "cmdb_ci"
     return FIXED_TABLES.get(tool_name)
+
+
+def searches_value(query: Optional[str]) -> bool:
+    """Whether an encoded query compares a ``value`` field or searches text."""
+    if not query:
+        return False
+    return bool(VALUE_TERM_RE.search(query)) or any(
+        term in query for term in TEXT_SEARCH_TERMS
+    )
 
 
 def check_identifier(name: str, value: Any) -> None:
@@ -167,8 +195,9 @@ def validate_tool_call(
         not isinstance(order_by, str) or not ORDER_BY_RE.match(order_by)
     ):
         raise PolicyError(
-            f"Invalid order_by {str(order_by)[:60]!r}: expected a field name, "
-            "optionally prefixed with '-'"
+            f"Invalid order_by {str(order_by)[:60]!r}: expected a field name "
+            "(letters, digits and underscores, a dot-walk joined by single "
+            "dots), optionally prefixed with '-'"
         )
 
     for arg in FIELD_LIST_ARGS:
@@ -178,7 +207,8 @@ def validate_tool_call(
         ):
             raise PolicyError(
                 f"Invalid {arg} {str(value)[:60]!r}: expected a comma-separated "
-                "list of field names"
+                "list of field names (letters, digits and underscores, a "
+                "dot-walk joined by single dots)"
             )
 
     for arg in QUERY_ARGS:

@@ -75,7 +75,7 @@ def list_ci(
     data = parse_json_response(response, url)
     result = result_rows(data)
     warnings = [
-        guard.apply(result, query_names),
+        guard.apply(result, query),
         list_warning(class_name, fields, query_names, unknown, result),
     ]
     warning = " ".join(text for text in warnings if text)
@@ -103,7 +103,7 @@ def get_ci(
     params = display_value_params(guard.display_value)
     response = make_sn_request("GET", url, config.timeout, params=params or None)
     data = parse_json_response(response, url)
-    return guarded_record(guard, data.get("result", {}))
+    return guarded_record(guard, data)
 
 
 @mcp.tool(tags={"write", "cmdb"}, annotations=annotations.CREATE)
@@ -115,12 +115,12 @@ def create_ci(
     class_name: Annotated[str, Field(description="CMDB class name")] = "cmdb_ci",
 ) -> Dict[str, Any]:
     """Create a new CMDB configuration item"""
+    check_property_write(class_name, data, update=False)
     config = get_config()
 
     url = build_url(config.api_url, "table", class_name)
     response = make_sn_request("POST", url, config.timeout, json_data=data)
-    resp_data = parse_json_response(response, url)
-    return written_record(class_name, resp_data.get("result", {}))
+    return written_record(class_name, parse_json_response(response, url))
 
 
 @mcp.tool(tags={"write", "cmdb"}, annotations=annotations.UPDATE)
@@ -130,13 +130,12 @@ def update_ci(
     class_name: Annotated[str, Field(description="CMDB class name")] = "cmdb_ci",
 ) -> Dict[str, Any]:
     """Update a CMDB configuration item"""
-    check_property_write(class_name, data)
+    check_property_write(class_name, data, update=True)
     config = get_config()
 
     url = build_url(config.api_url, "table", class_name, sys_id)
     response = make_sn_request("PATCH", url, config.timeout, json_data=data)
-    resp_data = parse_json_response(response, url)
-    return written_record(class_name, resp_data.get("result", {}))
+    return written_record(class_name, parse_json_response(response, url))
 
 
 @mcp.tool(tags={"read", "cmdb"}, annotations=annotations.READ)
