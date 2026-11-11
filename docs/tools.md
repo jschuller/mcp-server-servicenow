@@ -125,7 +125,7 @@ All off by default except the audit log and the credential-type property rule, w
 | Where | What the server does |
 |---|---|
 | `get_system_properties`, and `list_records`, `get_record`, `list_ci`, `get_ci` on `sys_properties` | Withholds `value` when the type is `password` or `password2` (any type that starts with `password`). The list tools name the properties in `warning`; a single record carries only the marker |
-| A dot-walk from another table, such as `fields="property.value"` | Withholds it when the referenced record is a credential-type property |
+| A dot-walk from another table, such as `fields="property.value"` on `sys_properties_category_m2m` | Withholds it unless the referenced record has a known plain type, a class that names another table, or neither a `type` nor a `sys_class_name` field at all (it is no property then) |
 | `create_record`, `update_record`, `create_ci`, `update_ci` | Treats the record the instance echoes back the same way, and says so in `warning`. An update of a `sys_properties` record that sets `type` to anything but a credential type is refused: from then on the stored value would be an ordinary one |
 | `servicenow://instance` | Reads four fixed properties (the build and the default time zone). One that is typed as a credential is reported under `unavailable` |
 | `aggregate_records` | The Stats API returns group keys, minima and maxima as bare values, without the row that says what they are. So `group_by` and the aggregate field lists are refused when they name `value` on `sys_properties`, a dot-walk to any `value` field, or the old and new values of `sys_audit` and `sys_history_line`. Read the rows with `list_records` instead |
@@ -133,7 +133,7 @@ All off by default except the audit log and the credential-type property rule, w
 | A field that holds a property's record XML, such as `sys_update_xml.payload` or `sys_update_version.payload` | Withholds the whole field when a property record in it has a `<type>` that is `password`, `password2`, empty or missing. Any text that contains `<sys_properties ...>` markup is read this way, a script or an article that quotes it included |
 
 - **The stored type decides.** When `fields=` leaves out the fields that say what a row is (`type`; `<reference>.type` and `<reference>.sys_class_name` for a dot-walk; `tablename` and `fieldname` on `sys_audit`; `set.table` and `field` on `sys_history_line`), or names them in another spelling, the server asks the instance for them as well and removes them from the rows again. A display label is not the stored type (`boolean` is labelled `true | false`), so on these tables `display_value="true"` is read from the instance as `"all"` and reduced to the display form before it is returned.
-- **An unreadable type fails closed.** If `type` is missing from a row (an ACL can hide it), empty, or not a string, the value is withheld and the `warning` says the type did not come back. The same holds for an audit row that doesn't say which table and field it records.
+- **An unreadable type fails closed.** The value is returned only for the known plain types (`boolean`, `choicelist`, `color`, `date_format`, `image`, `integer`, `short_string`, `string`, `time_format`, `timezone`, `uploaded_image`). If `type` is missing from a row (an ACL can hide it), empty, or anything else, the value is withheld and the `warning` says so; a base instance has a handful of such properties. The same holds for an audit row that doesn't say which table and field it records.
 - **Set or empty stays visible.** An empty value is returned empty, so a health check can still tell whether a credential is configured. The marker has one length, whatever it replaces.
 - **No result is logged.** The audit line never holds results. It does hold the caller's query: there, on `sys_properties`, whatever a term compares `value` with is masked; other filter text, and the first 200 characters of an error, are kept as before.
 
@@ -144,7 +144,7 @@ All off by default except the audit log and the credential-type property rule, w
 - Only the type decides. A secret kept in a `string` property is returned like any other string.
 - Credential fields of other tables (`oauth_entity`, `sys_auth_profile_basic`, `discovery_credentials` and the like) come back as the instance returns them. Keep the integration identity away from those tables with ACLs and REST API access policies.
 - A table that extends `sys_properties`, or a database view over it, is not recognised as holding properties.
-- A dot-walk is recognised by the referenced record's `sys_class_name` and `type`. If the instance returns the walked `value` but neither of those, the server can't tell the record from any other and returns it.
+- A dot-walk is judged by the referenced record's `type` and `sys_class_name`. If the instance returns the walked `value` and neither of those fields, not even empty, the server takes the record for one of another table and returns it. A record of another table that has a `type` the server doesn't know and no class is withheld, though it is no property.
 - Copies of a value that the instance keeps in free text (a log line, an email, an attachment, XML inside another field's markup) are not recognised.
 
 ## What the model sees (generated)

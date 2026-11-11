@@ -38,6 +38,7 @@ LABELS = {
     ("type", "password2"): "Encrypted text",
     ("type", "password"): "Masked text",
     ("type", "string"): "Text",
+    ("type", "boolean"): "true | false",
     ("sys_class_name", "sys_properties"): "System Property",
     ("property.type", "password2"): "Encrypted text",
     ("property.sys_class_name", "sys_properties"): "System Property",
@@ -88,6 +89,8 @@ class FakeInstance:
         label = stored
         if isinstance(stored, str):
             label = LABELS.get((name, stored), stored)
+        if stored == "" and name.endswith("type"):
+            label = None  # an empty choice has no label: null, not ""
         if mode == "false":
             return stored
         return label if mode == "true" else {"display_value": label, "value": stored}
@@ -427,7 +430,7 @@ async def test_spellings_of_a_dot_walk(
     sn.serve(M2M[:1], loose=loose)
     table_argument = "class_name" if tool == "list_ci" else "table_name"
     data = await sn.call(
-        tool, {table_argument: "sys_property_category_m2m", "fields": fields}
+        tool, {table_argument: "sys_properties_category_m2m", "fields": fields}
     )
     record = data["records"][0]
     values = [text for key, text in record.items() if key.lower() == "property.value"]
@@ -479,21 +482,128 @@ async def test_a_hidden_type_fails_closed(
     data = await sn.call(tool, arguments)
     rows = data["records" if tool == "list_records" else "properties"]
     assert [row["value"] for row in rows] == [REDACTED, REDACTED, REDACTED, ""]
-    assert "whose type is empty or did not come back" in data["warning"]
+    assert (
+        "whose type is empty, not a known plain type, or did not" in (data["warning"])
+    )
     assert "treated as credential-type" in data["warning"]
     sn.assert_clean()
 
 
-async def test_a_non_credential_type_is_returned(sn: Harness) -> None:
+PLAIN_TYPES = [
+    "boolean",
+    "choicelist",
+    "color",
+    "date_format",
+    "image",
+    "integer",
+    "short_string",
+    "string",
+    "time_format",
+    "timezone",
+    "uploaded_image",
+]
+
+
+async def test_the_known_plain_types_are_returned(sn: Harness) -> None:
     rows = [
-        prop(1, "a", "string", "one"),
-        prop(2, "b", "boolean", "true"),
-        prop(3, "c", "choicelist", "x"),
+        prop(n, f"p.{kind}", kind, f"v-{kind}") for n, kind in enumerate(PLAIN_TYPES)
     ]
     sn.serve(rows)
-    data = await sn.call("get_system_properties", {})
-    assert [row["value"] for row in data["properties"]] == ["one", "true", "x"]
+    data = await sn.call("get_system_properties", {"limit": 50})
+    assert [row["value"] for row in data["properties"]] == [
+        f"v-{kind}" for kind in PLAIN_TYPES
+    ]
     assert "warning" not in data
+
+
+@pytest.mark.parametrize("kind", ["true", "true_false", "secret", "encrypted", "x"])
+async def test_a_type_that_is_not_known_to_be_plain_is_withheld(
+    sn: Harness, kind: str
+) -> None:
+    sn.serve([prop(1, "p.odd", kind, CANARY)])
+    data = await sn.call("get_system_properties", {})
+    assert data["properties"][0]["value"] == REDACTED
+    assert "not a known plain type" in data["warning"]
+    sn.assert_clean()
+
+
+ODD = [
+    *PROPERTIES,
+    prop(7, "p.flag", "boolean", "true"),
+    # Some properties have no type, class or scope set at all.
+    {**prop(8, "p.bare", "", CANARY), "sys_class_name": "", "sys_scope": ""},
+]
+
+
+@pytest.mark.parametrize("display_value", ["false", "true", "all"])
+@pytest.mark.parametrize(
+    "fields",
+    [None, "name,type,sys_class_name,sys_scope", "name,value,sys_scope", "value"],
+)
+@pytest.mark.parametrize("response_format", ["detailed", "concise"])
+async def test_rows_are_what_the_instance_returns_for_the_mode_asked(
+    sn: Harness, display_value: str, fields: Optional[str], response_format: str
+) -> None:
+    """The helper fields and the "all" the server reads leave no trace: each
+    row is, key for key, the instance's own answer to the caller's request,
+    with the marker where a value is withheld."""
+    fake = sn.serve(ODD)
+    arguments = {
+        "table_name": "sys_properties",
+        "display_value": display_value,
+        "response_format": response_format,
+        "limit": 50,
+    }
+    asked: Dict[str, Any] = {"sysparm_display_value": display_value}
+    if fields:
+        arguments["fields"] = asked["sysparm_fields"] = fields
+    if response_format == "concise":
+        asked["sysparm_exclude_reference_link"] = "true"
+    data = await sn.call("list_records", arguments)
+    marker: Any = REDACTED
+    if display_value == "all":
+        marker = {"display_value": REDACTED, "value": REDACTED}
+    expected = []
+    for row in ODD:
+        answer = fake._row(row, asked)
+        if "value" in answer and row["type"] not in PLAIN_TYPES and row["value"]:
+            answer["value"] = marker
+        expected.append(answer)
+    assert data["records"] == expected
+    assert json.dumps(data["records"]) == json.dumps(expected)  # key order too
+    sn.assert_clean(served=fields is None or "value" in fields)
+
+
+def test_the_fake_answers_in_the_shapes_seen_on_an_instance() -> None:
+    """What a Brazil instance returned for a boolean property and for one
+    with no type, per display_value (checked 2026-11-11, shapes only)."""
+    fake = FakeInstance([])
+    flag, bare = ODD[-2], ODD[-1]
+    fields = {"sysparm_fields": "type,sys_class_name,sys_scope"}
+    assert fake._row(flag, {**fields, "sysparm_display_value": "true"}) == {
+        "type": "true | false",
+        "sys_class_name": "System Property",
+        "sys_scope": {"display_value": "Global", "link": SCOPE_LINK},
+    }
+    assert fake._row(flag, {**fields, "sysparm_display_value": "all"}) == {
+        "type": {"display_value": "true | false", "value": "boolean"},
+        "sys_class_name": {
+            "display_value": "System Property",
+            "value": "sys_properties",
+        },
+        "sys_scope": {"display_value": "Global", "link": SCOPE_LINK, "value": "global"},
+    }
+    assert fake._row(bare, {**fields, "sysparm_display_value": "false"}) == {
+        "type": "",
+        "sys_class_name": "",
+        "sys_scope": "",
+    }
+    assert fake._row(bare, {**fields, "sysparm_display_value": "true"})["type"] is None
+    assert fake._row(bare, {**fields, "sysparm_display_value": "all"}) == {
+        "type": {"display_value": None, "value": ""},
+        "sys_class_name": {"display_value": "", "value": ""},
+        "sys_scope": {"display_value": "", "value": ""},
+    }
 
 
 async def test_warning_repeats_no_instance_text(sn: Harness) -> None:
@@ -577,7 +687,7 @@ async def test_dot_walk_to_a_property_value(sn: Harness, display_value: str) -> 
     data = await sn.call(
         "list_records",
         {
-            "table_name": "sys_property_category_m2m",
+            "table_name": "sys_properties_category_m2m",
             "fields": fields,
             "display_value": display_value,
         },
@@ -613,9 +723,51 @@ async def test_dot_walk_with_hidden_helpers(
     sn.serve(M2M[:1], hidden=hidden)
     data = await sn.call(
         "list_records",
-        {"table_name": "sys_property_category_m2m", "fields": "property.value"},
+        {"table_name": "sys_properties_category_m2m", "fields": "property.value"},
     )
     assert (data["records"][0]["property.value"] == REDACTED) is withheld
+    if withheld:
+        sn.assert_clean()
+
+
+@pytest.mark.parametrize(
+    ("kind", "class_name", "withheld"),
+    [
+        ("", "", True),  # a property with neither set: nothing says otherwise
+        ("", "sys_properties", True),
+        ("true_false", "sys_properties", True),
+        ("string", "", False),  # a plain type is enough
+        ("string", "sys_properties", False),
+        ("", "u_setting", False),  # the class names another table
+        ("onchange", "u_setting", False),
+        ("password2", "u_setting", True),  # the type alone says credential
+    ],
+)
+@pytest.mark.parametrize("display_value", ["false", "true", "all"])
+async def test_dot_walk_decides_from_type_and_class(
+    sn: Harness, kind: str, class_name: str, withheld: bool, display_value: str
+) -> None:
+    row = {
+        "property.value": CANARY,
+        "property.type": kind,
+        "property.sys_class_name": class_name,
+    }
+    sn.serve([row])
+    data = await sn.call(
+        "list_records",
+        {
+            "table_name": "sys_properties_category_m2m",
+            "fields": "property.value",
+            "display_value": display_value,
+        },
+    )
+    got = data["records"][0]
+    assert list(got) == ["property.value"]
+    value = got["property.value"]
+    if display_value == "all":
+        assert value["display_value"] == value["value"]
+        value = value["value"]
+    assert value == (REDACTED if withheld else CANARY)
     if withheld:
         sn.assert_clean()
 
@@ -656,8 +808,8 @@ async def test_get_current_user_refuses_a_walk_to_value(sn: Harness) -> None:
         ("sys_properties", "avg_fields", "value"),
         ("sys_properties", "sum_fields", "value"),
         ("SYS_PROPERTIES", "group_by", "value"),
-        ("sys_property_category_m2m", "group_by", "property.value"),
-        ("sys_property_category_m2m", "max_fields", "property.value"),
+        ("sys_properties_category_m2m", "group_by", "property.value"),
+        ("sys_properties_category_m2m", "max_fields", "property.value"),
         ("sys_audit", "group_by", "newvalue"),
         ("sys_audit", "min_fields", "oldvalue"),
         ("sys_history_line", "group_by", "new_value"),

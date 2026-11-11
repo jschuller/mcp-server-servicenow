@@ -7,11 +7,14 @@ every ``sysparm_display_value``. Every tool that returns rows builds a
 ``Guard`` for its request and applies it to the rows before they leave:
 
 - a ``sys_properties`` row: ``value`` is replaced with ``REDACTED`` when the
-  type is credential-type, and also when the type is missing, empty or not a
-  string (an ACL can hide it), so an unreadable type fails closed;
+  type is credential-type, and also when the type is missing (an ACL can hide
+  it), empty or not one of the known plain types, so an unreadable type fails
+  closed;
 - a dot-walk to a property from another table (``property.value``): the same,
   with the type read from ``<reference>.type`` and the table from
-  ``<reference>.sys_class_name``;
+  ``<reference>.sys_class_name``. Some properties have neither set, so a
+  walked value is returned only when the record's type is a known plain one,
+  its class names another table, or it has neither field at all;
 - the instance's own copies of a property value: the old and new values of an
   audit or history row for ``sys_properties.value`` (the row carries no type,
   so all of them), and any field that holds a property's record XML, such as
@@ -42,6 +45,23 @@ from servicenow_mcp.middleware.policy import PolicyError
 
 PROPERTY_TABLE = "sys_properties"
 REDACTED = "[redacted: system property value withheld as credential-type]"
+# The property types whose value is an ordinary one. Any other type is
+# withheld: password and password2, and whatever this list doesn't know.
+_PLAIN_TYPES = frozenset(
+    {
+        "boolean",
+        "choicelist",
+        "color",
+        "date_format",
+        "image",
+        "integer",
+        "short_string",
+        "string",
+        "time_format",
+        "timezone",
+        "uploaded_image",
+    }
+)
 
 # Tables whose rows copy a field's old and new values: the field that names
 # the changed table, the one that names the changed field, and the copies.
@@ -110,11 +130,12 @@ def _is_credential_type(stored: Optional[str]) -> Optional[bool]:
     """Whether a stored property type is credential-type; None if unknown.
 
     ``password`` and ``password2``, and any later type named the same way.
-    A missing or empty type is unknown, not "string".
+    A missing or empty type is unknown, not "string", and so is a type that
+    is not one of the known plain ones.
     """
-    if not stored:
-        return None
-    return stored.startswith("password")
+    if stored and stored.startswith("password"):
+        return True
+    return False if stored in _PLAIN_TYPES else None
 
 
 def _credential(row: Dict[str, Any], keys: Sequence[str]) -> Optional[bool]:
@@ -242,16 +263,16 @@ class _Withheld:
                 "Withheld the value of "
                 + _count(len(self.unknown), "system property", "system properties")
                 + _labelled(self.unknown)
-                + " whose type is empty or did not come back (an ACL can hide "
-                "it): without a readable type the value is treated as "
-                "credential-type."
+                + " whose type is empty, not a known plain type, or did not come "
+                "back (an ACL can hide it): without a type known to be plain the "
+                "value is treated as credential-type."
             )
         for field, rows in self.walked.items():
             parts.append(
                 f"Withheld {field} in {_count(rows, 'row', 'rows')}: the dot-walk "
                 "reaches a record whose type is password or password2 (a "
-                "credential-type system property), or a system property whose "
-                "type did not come back."
+                "credential-type system property), or one that may be a system "
+                "property and has no type known to be plain."
             )
         if self.copies:
             parts.append(
@@ -351,7 +372,16 @@ class Guard:
             classes = [
                 _stored(row[key]) for key in keys.get(reference + "sys_class_name", [])
             ]
-            if credential or (PROPERTY_TABLE in classes and credential is None):
+            if credential is None and PROPERTY_TABLE not in classes:
+                # No plain type: returned only if the class names another
+                # table, or the record has neither field (no property).
+                elsewhere = bool(classes) and all(classes)
+                unmarked = not (
+                    keys.get(reference + "type")
+                    or keys.get(reference + "sys_class_name")
+                )
+                credential = False if elsewhere or unmarked else None
+            if credential is not False:
                 hits = [_withhold(row, key) for key in keys[name]]
                 if any(hits):
                     withheld.walked[name] = withheld.walked.get(name, 0) + 1

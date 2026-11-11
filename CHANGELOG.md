@@ -13,9 +13,11 @@
   `warning`. There is no switch. If an earlier version ran with an identity that can read
   `sys_properties`, those values, as stored, may have reached the client and the model:
   rotate what matters.
-  - A type that is missing from the row (an ACL can hide it), empty or not a string counts as
-    credential-type: the value is withheld and the `warning` says the type did not come back.
-    An empty value is returned empty, so "is it set" stays answerable.
+  - The value is returned only for the known plain types (`string`, `integer`, `boolean`,
+    `choicelist` and seven more, listed in docs/tools.md). A type that is missing from the row
+    (an ACL can hide it), empty or anything else counts as credential-type: the value is
+    withheld and the `warning` says so. A base instance has a handful of such properties. An
+    empty value is returned empty, so "is it set" stays answerable.
   - The same rule covers the other ways to the same value: `list_ci` and `get_ci` with
     `class_name="sys_properties"`, a dot-walk from another table (`fields="property.value"`),
     the record that `create_record`, `update_record`, `create_ci` and `update_ci` echo back,
