@@ -54,7 +54,7 @@ def my_tool(
 7. Add a schema test in `tests/test_tools.py`
 8. Update the counts in prose (`grep -rnE "[0-9]+ (read-only |write )?tools" README.md docs RELEASING.md .github src/servicenow_mcp/__init__.py scripts`), the tables in `README.md` and `docs/tools.md`, and the roles table in `docs/tools.md`
 9. Refresh the eval mocks: `mcp-server-servicenow --eval-mocks .` and each `examples/*` plugin (CI fails on a stale `_tools.json`)
-10. Regenerate the contract: `uv run --frozen --extra dev python scripts/contract.py --write` rewrites `docs/contract.json` and the generated block at the end of `docs/tools.md` (`tests/test_contract.py` fails until you do). Read that diff before you commit: it is exactly what clients will receive, the description the model reads included
+10. Regenerate the contract: `uv run --frozen --extra dev python scripts/contract.py --write` rewrites `docs/contract.json` and the generated block at the end of `docs/tools.md` (`tests/test_contract.py` fails until you do). Read that diff before you commit: it is exactly what clients will receive, the description the model reads included. The snapshot also records what the server negotiates (`negotiation`: the protocol version, the capabilities and extensions and the server name, for `server/discover` and for the `initialize` handshake), so a change there shows in the same diff
 
 ## Running Integration Tests
 

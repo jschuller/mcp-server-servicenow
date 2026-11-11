@@ -12,6 +12,14 @@
   hand-written tables above it stay as they are.
 - `tests/test_contract.py` fails when either drifts from the code; `scripts/contract.py --write`
   regenerates both.
+- **`docs/contract.json` records what the server negotiates** (`negotiation`): the protocol
+  version, the capabilities with their flags and extensions, and the server name, once for
+  `server/discover` (2026-07-28, what a current client gets) and once for the `initialize`
+  handshake (2025-11-25). A dependency bump that adds or drops a capability or an extension,
+  or moves a default protocol version, now fails the contract check. The generated block in
+  `docs/tools.md` names both.
+- A test that an `initialize` request asking for protocol version 2025-03-26 is answered with
+  2025-03-26, and that the tools, the resources and a tool call work on that session.
 
 ### Changed
 - **A ServiceNow API failure is a proper MCP tool error.** `ServiceNowAPIError` is now a FastMCP

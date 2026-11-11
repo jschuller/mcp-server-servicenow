@@ -1,7 +1,8 @@
 """docs/contract.json and the generated block in docs/tools.md match what the server serves.
 
 On failure, regenerate both with `uv run --frozen --extra dev python scripts/contract.py --write` and review the
-diff: it is the change a client will see (a description, a parameter, a schema, an annotation, a resource).
+diff: it is the change a client will see (a description, a parameter, a schema, an annotation, a resource, a
+capability or an extension the server advertises, the protocol version it negotiates).
 
 The snapshot is exact for the locked dependencies (uv.lock). CI's test matrix installs unlocked, newer versions,
 where FastMCP or pydantic may render a schema differently; there the comparison is skipped, and CI's `package` job
@@ -11,14 +12,18 @@ runs the same check against the lock instead.
 import importlib.metadata
 import importlib.util
 import json
+import re
 import socket
 import tomllib
 from pathlib import Path
 from types import ModuleType
 from typing import Any, Dict, List
 
+import mcp_types
 import pytest
+from fastmcp import Client
 
+from tests.conftest import init_test_services, sn_response
 from tests.inventory import ALL_TOOLS
 
 REPO = Path(__file__).resolve().parent.parent
@@ -80,6 +85,83 @@ def test_contract_lists_every_tool_and_names_no_instance() -> None:
         "contract.invalid" not in text
     )  # the placeholder instance never leaks into what clients see
     assert "service-now.com" not in text
+
+
+def test_contract_records_what_the_server_negotiates() -> None:
+    """Both ways a client connects are in the snapshot, so a dependency bump that
+    adds or drops a capability or an extension, or moves a default protocol
+    version, shows up as a diff of docs/contract.json."""
+    contract = _contract_module()
+    negotiation = json.loads(contract.CONTRACT.read_text(encoding="utf-8"))[
+        "negotiation"
+    ]
+    assert set(negotiation) == {"discover", "initialize"}
+    discover, initialize = negotiation["discover"], negotiation["initialize"]
+    assert set(discover) == {
+        "protocolVersion",
+        "supportedVersions",
+        "serverInfo",
+        "capabilities",
+    }
+    assert set(initialize) == {"protocolVersion", "serverInfo", "capabilities"}
+    assert discover["protocolVersion"] in discover["supportedVersions"]
+    for result in (discover, initialize):
+        assert re.fullmatch(r"\d{4}-\d{2}-\d{2}", result["protocolVersion"])
+    for result in (discover, initialize):
+        # The name only: the version changes with every release.
+        assert result["serverInfo"] == {"name": "servicenow-mcp"}
+        assert {"tools", "resources"} <= set(result["capabilities"])
+
+
+async def test_initialize_asking_for_2025_03_26_negotiates_it(
+    no_network: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """ServiceNow's MCP client is documented at protocol version 2025-03-26.
+
+    FastMCP's client always offers the newest handshake version, so this sends
+    the initialize request itself, over the same in-process transport, and
+    then uses the session at the version the server answered.
+    """
+    from servicenow_mcp.server import mcp
+    from servicenow_mcp.tools import table_tools
+
+    asked = "2025-03-26"
+    init_test_services()
+    monkeypatch.setattr(
+        table_tools,
+        "make_sn_request",
+        lambda *args, **kwargs: sn_response({"result": [{"number": "INC0010001"}]}),
+    )
+    async with Client(mcp, mode="legacy", auto_initialize=False) as client:
+        session = client.session
+        assert session.protocol_version is None  # nothing negotiated yet
+        result = await session.send_request(
+            mcp_types.InitializeRequest(
+                params=mcp_types.InitializeRequestParams(
+                    protocol_version=asked,
+                    capabilities=mcp_types.ClientCapabilities(),
+                    client_info=mcp_types.Implementation(
+                        name="contract-test", version="0"
+                    ),
+                )
+            ),
+            mcp_types.InitializeResult,
+        )
+        assert result.protocol_version == asked
+        assert result.server_info.name == "servicenow-mcp"
+        assert result.capabilities.tools is not None
+        assert result.capabilities.resources is not None
+
+        session.adopt(result)
+        await session.send_notification(mcp_types.InitializedNotification())
+        assert client.protocol_version == asked
+        assert {tool.name for tool in await client.list_tools()} == ALL_TOOLS
+        assert await client.list_resources()
+        called = await client.call_tool(
+            "list_records", {"table_name": "incident", "limit": 1}
+        )
+        assert called.is_error is False
+        assert called.structured_content["records"] == [{"number": "INC0010001"}]
 
 
 def test_contract_tools_match_the_eval_mocks() -> None:
