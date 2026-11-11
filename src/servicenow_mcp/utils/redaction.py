@@ -23,7 +23,10 @@ every ``sysparm_display_value``. Every tool that returns rows builds a
   because no reading of the markup short of a parser can be trusted.
 
 Field names reach this module already checked (``middleware/policy.py``):
-letters, digits and underscores, joined by single dots.
+letters, digits and underscores, joined by single dots. A name is judged by
+every segment, not by its last: ``value.zz`` is ``value``, and
+``property.value.zz`` is a dot-walk to ``property.value``, whatever the
+instance makes of the rest.
 
 The type must be the stored one. ``fields=`` gets the helper fields it lacks
 (dropped again from the rows), and ``display_value="true"`` is asked of the
@@ -85,10 +88,11 @@ _COPY_OF: Dict[str, _Copy] = {
 }
 # A property's record XML (an update set or version payload, a deleted
 # record) has a <sys_properties ...> element, in any case, with or without
-# attributes or a namespace prefix, the "<" plain or escaped once for XML or
-# JSON. Not <sys_properties_category>.
+# attributes or a namespace prefix. The "<" may be plain, an XML entity
+# (&lt;, &#60;, &#x3c;) or a JSON escape (\u003c): one level of escaping and
+# no other. Not <sys_properties_category>.
 _XML_RECORD_RE = re.compile(
-    r"(?:<|&lt;|\\u003c)(?:[\w.\-]+:)?sys_properties(?!\w)", re.I
+    r"(?:<|&lt;|&#0*60;|&#x0*3c;|\\u003c)(?:[\w.\-]+:)?sys_properties(?!\w)", re.I
 )
 # A key of a write to sys_properties: a plain column name and nothing else.
 _COLUMN_RE = re.compile(r"[a-z][a-z0-9_]*\Z")
@@ -114,6 +118,23 @@ def _sent(fields: Optional[str]) -> List[str]:
     """The field names of ``fields=`` exactly as the instance reads them."""
     parts = [part.strip(_TRIM) for part in (fields or "").split(",")]
     return [part for part in parts if part]
+
+
+def _watched(name: str) -> List[Tuple[str, str]]:
+    """Each place where a field name passes through a watched field, as
+    (the dot-walk that leads there, with its dot, or "" for a field of the
+    table itself; the watched field).
+
+    ``property.value`` and ``property.value.zz`` both give
+    ``("property.", "value")``; ``value.value`` gives ``("", "value")`` and
+    ``("value.", "value")``.
+    """
+    segments = name.split(".")
+    return [
+        (".".join(segments[:index]) + "." if index else "", segment)
+        for index, segment in enumerate(segments)
+        if segment == "value" or segment in _COPY_OF
+    ]
 
 
 def _by_name(row: Dict[str, Any]) -> Dict[str, List[str]]:
@@ -328,12 +349,14 @@ class Guard:
         if self.table in _COPIES:
             helpers.extend(_COPIES[self.table][:2])
         for name in _names(fields):
-            reference, dot, last = name.rpartition(".")
-            if last == "value" and dot:
-                helpers += [f"{reference}.sys_class_name", f"{reference}.type"]
-            elif last in _COPY_OF and dot:
-                table_field, field_field, _ = _COPY_OF[last]
-                helpers += [f"{reference}.{table_field}", f"{reference}.{field_field}"]
+            for reference, field in _watched(name):
+                if not reference:
+                    continue
+                if field == "value":
+                    helpers += [reference + "sys_class_name", reference + "type"]
+                else:
+                    table_field, field_field, _ = _COPY_OF[field]
+                    helpers += [reference + table_field, reference + field_field]
         # A helper is left out only if this exact name is already asked for:
         # another spelling of it (TYPE) may be a field the instance drops.
         self.added = [
@@ -366,43 +389,69 @@ class Guard:
 
     def _check(self, row: Dict[str, Any], withheld: _Withheld) -> None:
         keys = _by_name(row)
-        if self.table == PROPERTY_TABLE and "value" in keys:
-            credential = _credential(row, keys.get("type", []))
-            hits = [
-                credential is not False and _withhold(row, key) for key in keys["value"]
-            ]
-            if any(hits):
-                group = withheld.unknown if credential is None else withheld.credential
-                group.append(_label(row, keys))
-        copied = False
-        if self.table in _COPIES:
-            copied = self._copies(row, keys, "", _COPIES[self.table], direct=True)
-        for name in list(keys):
-            reference, dot, last = name.rpartition(".")
-            if not dot:
-                continue
-            if last == "value":
-                self._walk(row, keys, name, reference, withheld)
-            elif last in _COPY_OF:
-                copy = _COPY_OF[last]
-                copied |= self._copies(row, keys, f"{reference}.", copy, direct=False)
-        withheld.copies += copied
+        found: Dict[str, Optional[str]] = {}
+        for name, spellings in keys.items():
+            for reference, field in _watched(name):
+                reason = self._reason(row, keys, reference, field)
+                if reason and any([_withhold(row, key) for key in spellings]):
+                    # One entry per row and reason: two fields of one
+                    # property are one withheld property.
+                    found[reason] = reference + field
+        if "credential" in found or "unknown" in found:
+            group = withheld.unknown if "unknown" in found else withheld.credential
+            group.append(_label(row, keys))
+        if "walk" in found:
+            walked = str(found["walk"])
+            withheld.walked[walked] = withheld.walked.get(walked, 0) + 1
+        withheld.copies += "copy" in found
         for key in row:
-            row[key], found = scrub(row[key])
-            withheld.xml += bool(found)
+            row[key], scrubbed = scrub(row[key])
+            withheld.xml += bool(scrubbed)
 
-    @staticmethod
-    def _walk(
+    def _reason(
+        self,
         row: Dict[str, Any],
         keys: Dict[str, List[str]],
-        name: str,
         reference: str,
-        withheld: _Withheld,
-    ) -> None:
-        """A dot-walk to a ``value`` field: withheld unless the record it
-        reaches is shown to be no credential-type property."""
-        type_keys = keys.get(f"{reference}.type", [])
-        class_keys = keys.get(f"{reference}.sys_class_name", [])
+        field: str,
+    ) -> Optional[str]:
+        """Why a field that is, or passes through, ``reference + field`` is
+        withheld in this row, or None if it is not."""
+        if field == "value" and not reference:
+            if self.table != PROPERTY_TABLE:
+                return None
+            credential = _credential(row, keys.get("type", []))
+            if credential is False:
+                return None
+            return "unknown" if credential is None else "credential"
+        if field == "value":
+            return "walk" if self._reaches_credential(row, keys, reference) else None
+        if not reference:
+            copy = _COPIES.get(self.table)
+            if copy is None or field not in copy[2]:
+                return None
+        else:
+            copy = _COPY_OF[field]
+        table_keys = keys.get(reference + copy[0], [])
+        field_keys = keys.get(reference + copy[1], [])
+        # A walked record with neither of these fields is no audit row. A
+        # row of the table itself that doesn't say what it records fails
+        # closed.
+        if reference and not (table_keys or field_keys):
+            return None
+        recorded = _is(row, table_keys, PROPERTY_TABLE) and _is(
+            row, field_keys, "value"
+        )
+        return "copy" if recorded else None
+
+    @staticmethod
+    def _reaches_credential(
+        row: Dict[str, Any], keys: Dict[str, List[str]], reference: str
+    ) -> bool:
+        """Whether a dot-walk to a ``value`` field reaches a record that is
+        not shown to be something other than a credential-type property."""
+        type_keys = keys.get(reference + "type", [])
+        class_keys = keys.get(reference + "sys_class_name", [])
         credential = _credential(row, type_keys)
         classes = [_stored(row[key]) for key in class_keys]
         if credential is None and PROPERTY_TABLE not in classes:
@@ -410,59 +459,47 @@ class Guard:
             # or the record has neither field (no property, or both hidden).
             elsewhere = bool(classes) and all(classes)
             unmarked = not (type_keys or class_keys)
-            credential = False if elsewhere or unmarked else None
-        if credential is not False:
-            hits = [_withhold(row, key) for key in keys[name]]
-            if any(hits):
-                withheld.walked[name] = withheld.walked.get(name, 0) + 1
+            return not (elsewhere or unmarked)
+        return credential is not False
 
-    @staticmethod
-    def _copies(
-        row: Dict[str, Any],
-        keys: Dict[str, List[str]],
-        reference: str,
-        copy: _Copy,
-        *,
-        direct: bool,
-    ) -> bool:
-        """The old and new values of an audit or history row, read from its
-        table (``reference`` empty) or through a dot-walk. A row that doesn't
-        say which table and field it records fails closed; a walked record
-        with neither of those fields is no audit row."""
-        table_field, field_field, copies = copy
-        table_keys = keys.get(reference + table_field, [])
-        field_keys = keys.get(reference + field_field, [])
-        if not direct and not (table_keys or field_keys):
-            return False
-        if not (_is(row, table_keys, PROPERTY_TABLE) and _is(row, field_keys, "value")):
-            return False
-        hits = [
-            _withhold(row, key)
-            for name in copies
-            for key in keys.get(reference + name, [])
-        ]
-        return any(hits)
+
+# Columns of sys_properties that its parent table does not have: a write that
+# names one through the parent could only be meant for a property.
+_PARENT_TABLE = "sys_metadata"
+_PROPERTY_ONLY = ("type", "value")
 
 
 def check_property_write(table_name: str, data: Any, *, update: bool) -> None:
-    """Refuse a write to ``sys_properties`` that could make a credential-type
-    property readable.
+    """Refuse a write that could make a credential-type property readable.
 
-    Every key must be a plain column name, so no spelling of one reaches the
-    instance unchecked. An update that sets ``type`` to anything but a
-    credential type is refused: it would turn the stored value into an
-    ordinary one for the echo and every later read.
+    On ``sys_properties`` every key must be a plain column name, so no
+    spelling of one reaches the instance unchecked, and an update that sets
+    ``type`` to anything but a credential type is refused: it would turn the
+    stored value into an ordinary one for the echo and every later read.
+    ``sys_metadata``, the table it extends, has neither a ``type`` nor a
+    ``value`` column, so a write there that names one is refused outright:
+    whether the instance would pass it on to the property was not tested.
     """
-    if _name(table_name) != PROPERTY_TABLE or not isinstance(data, dict):
+    table = _name(table_name)
+    if table not in (PROPERTY_TABLE, _PARENT_TABLE) or not isinstance(data, dict):
         return
     odd = [key for key in data if not (isinstance(key, str) and _COLUMN_RE.match(key))]
     if odd:
         raise PolicyError(
-            "On sys_properties, the keys of data= must be plain field names "
+            f"On {table}, the keys of data= must be plain field names "
             "(lowercase letters, digits and underscores): "
             + _count(len(odd), "key is", "keys are")
             + " not."
         )
+    if table == _PARENT_TABLE:
+        if any(key in data for key in _PROPERTY_ONLY):
+            raise PolicyError(
+                "sys_metadata has no type or value field of its own: a write "
+                "that sets one could only reach a record of a table that "
+                "extends it, such as a system property, and this server "
+                "doesn't change those through the parent table."
+            )
+        return
     if update and "type" in data and not _is_credential_type(_stored(data["type"])):
         raise PolicyError(
             "This server doesn't change a system property's type to a "
@@ -479,50 +516,52 @@ def check_aggregate(table_name: str, **field_lists: Optional[str]) -> None:
     no row to read a type from, so these are refused: ``value`` on
     ``sys_properties``, the old and new values of the audit and history
     tables, and a dot-walk to any field of those names (it may reach a
-    property, or a row that records one).
+    property, or a row that records one). A name counts wherever one of
+    these is a segment of it.
     """
     table = _name(table_name)
+    copies = _COPIES[table][2] if table in _COPIES else ()
     for argument, fields in field_lists.items():
         for name in _names(fields):
-            reference, dot, last = name.rpartition(".")
-            if dot and last == "value":
-                raise PolicyError(
-                    f"{argument}= can't name {name[:60]}: a dot-walk to a value "
-                    "field may reach a credential-type system property, and the "
-                    "Stats API returns values without the type that would say so. "
-                    "Read the rows with list_records and fields= instead: it "
-                    "checks each row."
-                )
-            if dot and last in _COPY_OF:
-                raise PolicyError(
-                    f"{argument}= can't name {name[:60]}: a dot-walk to an old "
-                    "or new value may reach a row that records a system "
-                    "property's value. Read the rows with list_records and "
-                    "fields= instead: it checks each row."
-                )
-            if table == PROPERTY_TABLE and name == "value":
-                raise PolicyError(
-                    f"{argument}= can't name value on sys_properties: it would "
-                    "return property values, credential-type ones included. "
-                    "Group by name or type, or read the rows with "
-                    "get_system_properties or list_records, which withhold "
-                    "credential-type values."
-                )
-            if table in _COPIES and name in _COPIES[table][2]:
-                raise PolicyError(
-                    f"{argument}= can't name {name} on {table}: the rows that "
-                    "record a change to a system property hold its value, "
-                    "credential-type ones included. Read the rows with "
-                    "list_records and fields= instead: it withholds those."
-                )
+            for reference, field in _watched(name):
+                if reference and field == "value":
+                    raise PolicyError(
+                        f"{argument}= can't name {name[:60]}: a dot-walk to a "
+                        "value field may reach a credential-type system "
+                        "property, and the Stats API returns values without the "
+                        "type that would say so. Read the rows with list_records "
+                        "and fields= instead: it checks each row."
+                    )
+                if reference:
+                    raise PolicyError(
+                        f"{argument}= can't name {name[:60]}: a dot-walk to an "
+                        "old or new value may reach a row that records a system "
+                        "property's value. Read the rows with list_records and "
+                        "fields= instead: it checks each row."
+                    )
+                if table == PROPERTY_TABLE and field == "value":
+                    raise PolicyError(
+                        f"{argument}= can't name {name[:60]} on sys_properties: "
+                        "it would return property values, credential-type ones "
+                        "included. Group by name or type, or read the rows with "
+                        "get_system_properties or list_records, which withhold "
+                        "credential-type values."
+                    )
+                if field in copies:
+                    raise PolicyError(
+                        f"{argument}= can't name {name[:60]} on {table}: the "
+                        "rows that record a change to a system property hold its "
+                        "value, credential-type ones included. Read the rows "
+                        "with list_records and fields= instead: it withholds "
+                        "those."
+                    )
 
 
 def refuse_value_walk(argument: str, fields: Optional[str]) -> None:
     """Refuse a dot-walk to a ``value`` field, or to an old or new value,
     where no row guard runs."""
     for name in _names(fields):
-        reference, dot, last = name.rpartition(".")
-        if dot and (last == "value" or last in _COPY_OF):
+        if any(reference for reference, _ in _watched(name)):
             raise PolicyError(
                 f"{argument}= can't name {name[:60]}: such a dot-walk may reach "
                 "a credential-type system property's value. Read it with "

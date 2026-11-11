@@ -47,12 +47,17 @@ STATE_RE = re.compile(r"^[A-Za-z_ ]+\Z")
 # GOTO. Column names are lowercase and operators are not; "^^" is an escaped
 # caret inside the compared text. The audit log masks such a term, and the
 # tools say when one matched a property whose value they withhold.
+_TERM_START = r"(?:^|\^)[\x00-\x20]*(?:(?:OR|NQ)[\x00-\x20]*)?(?:GOTO)?"
 VALUE_TERM_RE = re.compile(
-    r"((?:^|\^)[\x00-\x20]*(?:(?:OR|NQ)[\x00-\x20]*)?(?:GOTO)?[Vv][Aa][Ll][Uu][Ee])"
-    r"(?![a-z0-9_])((?:[^^]|\^\^)*)"
+    rf"({_TERM_START}[Vv][Aa][Ll][Uu][Ee])(?![a-z0-9_])((?:[^^]|\^\^)*)"
 )
-# Text-search terms name no field, so they may search value as well.
-TEXT_SEARCH_TERMS = ("123TEXTQUERY321", "IR_")
+# Terms that can compare value without naming it as a field of the table:
+# text search (IR_..., 123TEXTQUERY321) names no field, and a related-list
+# query, a sub-query or a join filters through another table. Each stands
+# where a field would, at the start of a term, so nameLIKEAIR_FORCE is none.
+OPAQUE_TERM_RE = re.compile(
+    rf"{_TERM_START}(?:IR_|123TEXTQUERY321|RLQUERY|SUBQUERY|JOIN)"
+)
 
 JS_PREFIX_RE = re.compile(r"javascript:", re.IGNORECASE)
 # The only server-side script allowed in an encoded query: GlideSystem date
@@ -121,12 +126,11 @@ def resolve_table(tool_name: str, arguments: Dict[str, Any]) -> Optional[str]:
 
 
 def searches_value(query: Optional[str]) -> bool:
-    """Whether an encoded query compares a ``value`` field or searches text."""
+    """Whether an encoded query compares a ``value`` field, or has a term
+    that could (text search, a related-list or sub-query, a join)."""
     if not query:
         return False
-    return bool(VALUE_TERM_RE.search(query)) or any(
-        term in query for term in TEXT_SEARCH_TERMS
-    )
+    return bool(VALUE_TERM_RE.search(query) or OPAQUE_TERM_RE.search(query))
 
 
 def check_identifier(name: str, value: Any) -> None:

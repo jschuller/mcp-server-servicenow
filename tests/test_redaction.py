@@ -78,6 +78,9 @@ class FakeInstance:
         self.rows = rows
         self.hidden = set(hidden)
         self.loose = loose
+        # A walk past a field that is no reference stops there and returns
+        # that field under the caller's key ("value.zz" answers with value).
+        self.suffix = False
         self.stats: Any = {"stats": {"count": str(len(rows))}}
         self.calls: List[Dict[str, Any]] = []
         self.served = ""
@@ -114,6 +117,10 @@ class FakeInstance:
         for name in names:
             # Loose: any case finds the field, and the caller's spelling is the key.
             source = name.lower() if self.loose else name
+            if self.suffix and source not in row:
+                parts = source.split(".")
+                prefixes = [".".join(parts[:end]) for end in range(len(parts), 0, -1)]
+                source = next((known for known in prefixes if known in row), source)
             if source not in row or source in self.hidden:
                 continue
             shaped[name] = self._field(source, row[source], mode, links)
@@ -545,6 +552,150 @@ def test_the_field_list_check_is_linear() -> None:
     assert time.perf_counter() - started < 5
 
 
+# --- a name is judged by every segment, not by its last ------------------------
+
+SUFFIXED = [
+    ("sys_properties", PROPERTIES[1:2], "value.zz", "value.zz,type"),
+    (
+        "sys_properties",
+        PROPERTIES[1:2],
+        "value.value",
+        "value.value,type,value.sys_class_name,value.type",
+    ),
+    ("sys_properties", PROPERTIES[1:2], "name,value.type", "name,value.type,type"),
+    ("sys_properties", PROPERTIES[1:2], "VALUE.zz", "VALUE.zz,type"),
+    (
+        "sys_properties_category_m2m",
+        "M2M",
+        "property.value.zz",
+        "property.value.zz,property.sys_class_name,property.type",
+    ),
+    (
+        "x_demo_wrap",
+        "WRAP",
+        "m2m.property.value.zz",
+        "m2m.property.value.zz,m2m.property.sys_class_name,m2m.property.type",
+    ),
+    ("sys_audit", "AUDIT", "newvalue.zz", "newvalue.zz,tablename,fieldname"),
+    ("sys_audit", "AUDIT", "oldvalue.x,newvalue.value", None),
+    ("sys_history_line", "HISTORY", "new.zz", "new.zz,set.table,field"),
+    (
+        "x_demo_ref",
+        "AUDIT_REF",
+        "audit.newvalue.zz",
+        "audit.newvalue.zz,audit.tablename,audit.fieldname",
+    ),
+    ("x_demo_ref", "AUDIT_REF", "line.old.zz", "line.old.zz,line.set.table,line.field"),
+]
+WRAP = [
+    {
+        "m2m.property.value": CANARY,
+        "m2m.property.type": "password2",
+        "m2m.property.sys_class_name": "sys_properties",
+    }
+]
+HISTORY = [
+    {"set.table": "sys_properties", "field": "value", "old": CANARY, "new": CANARY}
+]
+
+
+@pytest.mark.parametrize("loose", [False, True])
+@pytest.mark.parametrize("display_value", ["false", "true", "all"])
+@pytest.mark.parametrize(("table", "rows", "fields", "sent"), SUFFIXED)
+@pytest.mark.parametrize("tool", ["list_records", "list_ci", "get_record"])
+async def test_a_watched_field_anywhere_in_a_name_is_judged(
+    sn: Harness,
+    tool: str,
+    table: str,
+    rows: Any,
+    fields: str,
+    sent: Optional[str],
+    display_value: str,
+    loose: bool,
+) -> None:
+    """Whatever the instance makes of the segments after a watched field
+    (here it stops at the field and answers under the caller's key), the
+    name is treated as the field it passes through."""
+    served = globals()[rows] if isinstance(rows, str) else rows
+    fake = sn.serve(served[:1], loose=loose)
+    fake.suffix = True
+    arguments = {"fields": fields, "display_value": display_value}
+    arguments["class_name" if tool == "list_ci" else "table_name"] = table
+    if tool == "get_record":
+        arguments["sys_id"] = SYS_ID
+    data = await sn.call(tool, arguments)
+    if sent:
+        assert fake.params["sysparm_fields"] == sent
+    record = data if tool == "get_record" else data["records"][0]
+    if fields != fields.lower() and not loose:
+        assert record == {}  # an exact instance has no field of that spelling
+        return
+    assert list(record) == fields.split(",")
+    marker: Any = REDACTED
+    if display_value == "all":
+        marker = {"display_value": REDACTED, "value": REDACTED}
+    watched = [key for key in record if key != "name"]
+    assert watched and all(record[key] == marker for key in watched)
+    sn.assert_clean()
+
+
+@pytest.mark.parametrize(
+    ("table", "field"),
+    [
+        ("sys_properties", "value.zz"),
+        ("sys_properties", "VALUE.name"),
+        ("sys_properties", "value.value"),
+        ("incident", "value.value"),
+        ("sys_properties_category_m2m", "property.value.zz"),
+        ("x_demo_wrap", "m2m.property.value.zz"),
+        ("sys_audit", "newvalue.zz"),
+        ("sys_history_line", "new.zz"),
+        ("x_demo_ref", "audit.newvalue.zz"),
+        ("x_demo_ref", "a.old_value.b.c"),
+    ],
+)
+@pytest.mark.parametrize("argument", ["group_by", "min_fields", "max_fields"])
+async def test_aggregates_judge_every_segment_too(
+    sn: Harness, table: str, field: str, argument: str
+) -> None:
+    fake = sn.serve(PROPERTIES)
+    message = await sn.refused(
+        "aggregate_records", {"table_name": table, argument: field}
+    )
+    assert f"{argument}= can't name" in message
+    assert fake.calls == []
+
+
+async def test_segments_after_another_tables_value_are_left_alone(sn: Harness) -> None:
+    """value is a watched field of sys_properties only: elsewhere a name
+    that starts with it is an ordinary one."""
+    fake = sn.serve([{"value.zz": "kept", "state": "1"}])
+    data = await sn.call(
+        "list_records", {"table_name": "sys_user_preference", "fields": "value.zz"}
+    )
+    assert data["records"] == [{"value.zz": "kept"}]
+    assert fake.params["sysparm_fields"] == "value.zz"
+    data = await sn.call(
+        "aggregate_records",
+        {"table_name": "sys_user_preference", "group_by": "value.zz"},
+    )
+    assert "stats" in data
+    message = await sn.refused("get_current_user", {"fields": "x.value.zz"})
+    assert "fields= can't name x.value.zz" in message
+
+
+def test_watched_names_by_segment() -> None:
+    watched = redaction._watched
+    assert watched("value") == watched("value.zz") == [("", "value")]
+    assert watched("property.value.zz") == [("property.", "value")]
+    assert watched("value.value") == [("", "value"), ("value.", "value")]
+    assert watched("a.newvalue.b.old") == [("a.", "newvalue"), ("a.newvalue.b.", "old")]
+    assert watched("valued.values.name") == []
+    assert Guard("task", "a.value.zz,b.c").fields == (
+        "a.value.zz,b.c,a.sys_class_name,a.type"
+    )
+
+
 # --- fail closed --------------------------------------------------------------
 
 
@@ -766,6 +917,13 @@ async def test_value_filter_that_matches_a_withheld_row_is_named(
         f"123TEXTQUERY321={CANARY}",
         f"name=x^IR_AND_OR_QUERY={CANARY}",
         f"IR_OR_QUERY={CANARY}",
+        f"name=x^OR IR_AND_QUERY={CANARY}",
+        f"name=x^RLQUERYsys_properties_category_m2m.property,>=1"
+        f"^property.valueLIKE{CANARY}^ENDRLQUERY",
+        f"name=x^JOINsys_properties.sys_id=sys_properties_category_m2m.property"
+        f"!valueLIKE{CANARY}",
+        f"SUBQUERYsys_id,property,sys_properties_category_m2m"
+        f"^property.value={CANARY}^ENDSUBQUERY",
     ],
 )
 async def test_every_spelling_of_a_value_search_is_masked_and_named(
@@ -782,7 +940,19 @@ async def test_every_spelling_of_a_value_search_is_masked_and_named(
 
 @pytest.mark.parametrize(
     "query",
-    ["", "nameLIKEvalue", "ORDERBYvalue", "value_type=1", "valued=1", "x.value=1"],
+    [
+        "",
+        "nameLIKEvalue",
+        "ORDERBYvalue",
+        "value_type=1",
+        "valued=1",
+        "x.value=1",
+        # A keyword counts only where a field could stand.
+        "nameLIKEAIR_FORCE",
+        "nameNOT LIKEIR_zz",
+        "nameLIKE123TEXTQUERY321",
+        "descriptionLIKEJOIN^nameENDSWITHRLQUERY",
+    ],
 )
 def test_other_queries_are_no_value_search(query: str) -> None:
     assert not redaction.searches_value(query)
@@ -813,6 +983,42 @@ def test_audit_masking_is_linear_and_bounded() -> None:
     policy.VALUE_TERM_RE.sub("", "^value=" + "a^^" * 100_000)
     policy.VALUE_TERM_RE.sub("", "^ORvalue" * 50_000 + ("^" + " " * 50) * 5_000)
     assert time.perf_counter() - started < 5
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        f"123TEXTQUERY321={CANARY}",
+        f"name=x^IR_AND_OR_QUERY={CANARY}",
+        f"name=x^RLQUERYa.b,>=1^b.valueLIKE{CANARY}^ENDRLQUERY",
+        f"JOINa.b=c.d!valueLIKE{CANARY}",
+        # More space, or a longer name, than the secret mask looks at.
+        f"u_password         ={CANARY}",
+        f"u_token\t\t\t\t\t\t\t\t\t={CANARY}",
+        "u_password_" + "x" * 81 + f"={CANARY}",
+        "a=" + "b" * 4_000,
+    ],
+)
+def test_a_query_the_masks_cant_be_trusted_on_is_logged_by_length(query: str) -> None:
+    assert audit.redact_query(query, "sys_properties") == (
+        f"<query of {len(query)} characters, not logged>"
+    )
+
+
+def test_secret_mask_within_its_bounds() -> None:
+    masked = audit.redact_query
+    assert masked(f"u_password        ={CANARY}") == "u_password        =[REDACTED]"
+    assert masked("u_password_" + "x" * 69 + f"={CANARY}").endswith("=[REDACTED]")
+    assert masked(f"u_secret>{CANARY}^u_tokenBETWEEN{CANARY}@z") == (
+        "u_secret>[REDACTED]^u_tokenBETWEEN[REDACTED]"
+    )
+    assert masked(f"u_api_keyNOT LIKE{CANARY}") == "u_api_keyNOT LIKE[REDACTED]"
+    # On another table a text-search or related-list term is kept as before.
+    assert masked("123TEXTQUERY321=printer", "incident") == "123TEXTQUERY321=printer"
+    assert masked(f"valueSTARTSWITH{CANARY}^nameNOT LIKEIR_zz", "sys_properties") == (
+        "value[REDACTED]^nameNOT LIKEIR_zz"
+    )
+    assert masked("nameLIKEAIR_FORCE", "sys_properties") == "nameLIKEAIR_FORCE"
 
 
 def test_audit_masks_value_terms_on_sys_properties_only() -> None:
@@ -1213,6 +1419,52 @@ async def test_a_property_write_takes_plain_field_names_only(
     sn.assert_clean(served=False)
 
 
+@pytest.mark.parametrize(
+    "data",
+    [
+        {"type": "string"},
+        {"value": "x"},
+        {"type": "password2"},
+        {"sys_name": "x", "value": ""},
+        {"TYPE": "string"},
+        {"value\x00": "x"},
+        {" type": "string"},
+    ],
+)
+@pytest.mark.parametrize(
+    "tool", ["update_record", "update_ci", "create_record", "create_ci"]
+)
+async def test_no_write_reaches_a_property_through_its_parent_table(
+    sn: Harness, tool: str, data: Dict[str, Any]
+) -> None:
+    """sys_metadata has no type or value of its own. Whether the instance
+    would hand such a write on to the property is not known: it is refused."""
+    fake = sn.serve([PROPERTIES[1]])
+    arguments: Dict[str, Any] = {"data": data}
+    arguments["class_name" if tool.endswith("_ci") else "table_name"] = "SYS_Metadata"
+    if tool.startswith("update"):
+        arguments["sys_id"] = SYS_ID
+    message = await sn.refused(tool, arguments)
+    assert "sys_metadata" in message
+    assert fake.calls == []
+    assert json.loads(sn.audit_lines[-1])["outcome"] == "denied"
+
+
+async def test_other_writes_to_the_parent_table_pass(sn: Harness) -> None:
+    fake = sn.serve([{"sys_id": SYS_ID, "sys_name": "old"}])
+    async with Client(mcp) as client:
+        result = await client.call_tool(
+            "update_record",
+            {
+                "table_name": "sys_metadata",
+                "sys_id": SYS_ID,
+                "data": {"sys_name": "new"},
+            },
+        )
+    assert result.data["record"]["sys_name"] == "new"
+    assert fake.calls[-1]["method"] == "PATCH"
+
+
 async def test_other_property_updates_and_creates_still_work(sn: Harness) -> None:
     fake = sn.serve([prop(1, "glide.plain", "string", "visible")])
     async with Client(mcp) as client:
@@ -1424,6 +1676,11 @@ async def test_record_xml_of_a_property_is_withheld_whole(
         f"&LT;sys_properties action=&quot;x&quot;&gt;{CANARY}",
         f"\\u003csys_properties\\u003e\\u003cvalue\\u003e{CANARY}",
         f"\\U003Csys_properties>{CANARY}",
+        f"&#60;sys_properties&#62;&#60;value&#62;{CANARY}",
+        f"&#060;sys_properties action='x'&#062;{CANARY}",
+        f"&#x3c;sys_properties&#x3e;{CANARY}",
+        f"&#X3C;sys_properties&#X3E;{CANARY}",
+        f"&#x003c;x:sys_properties&#x003e;{CANARY}",
     ],
 )
 def test_any_sys_properties_element_counts(text: str) -> None:
@@ -1446,9 +1703,32 @@ def test_other_text_is_not_taken_for_a_property_record(text: str) -> None:
     assert redaction.scrub(text) == (text, 0)
 
 
+@pytest.mark.parametrize(
+    "text",
+    [
+        "\\x3csys_properties\\x3e",  # a JavaScript escape
+        "%3Csys_properties%3E",  # URL-encoded
+        "&amp;lt;sys_properties&amp;gt;",  # escaped twice
+        "PHN5c19wcm9wZXJ0aWVzPg==",  # base64
+        "< sys_properties>",
+    ],
+)
+def test_encodings_the_record_xml_check_does_not_read(text: str) -> None:
+    """The documented limit, kept here so the docs row and the code agree:
+    the "<" plain, as an XML entity or as \\u003c, and nothing else."""
+    assert redaction.scrub(text) == (text, 0)
+
+
 def test_the_record_xml_check_is_linear() -> None:
     started = time.perf_counter()
-    for text in ("<sys_properties_" * 200_000, "<a:" * 300_000, "<" * 1_000_000):
+    for text in (
+        "<sys_properties_" * 200_000,
+        "<a:" * 300_000,
+        "<" * 1_000_000,
+        "&#" + "0" * 1_000_000,
+        "&#0" * 300_000,
+        "&#x00" * 200_000,
+    ):
         assert redaction.scrub(text)[1] == 0
     assert redaction.scrub("x" * 1_000_000 + "<sys_properties>")[1] == 1
     assert time.perf_counter() - started < 5

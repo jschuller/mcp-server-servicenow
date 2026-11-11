@@ -24,37 +24,48 @@
     the old and new values of `sys_audit` and `sys_history_line` rows that record a change to
     `sys_properties.value` (every property: these rows carry no type), read from the table or
     through a dot-walk to it, and a field that holds a property's record XML, such as an
-    update set payload. Such a field is withheld whole when its text has a `<sys_properties>`
-    element, whatever type the record states, so the payloads of ordinary properties are
-    withheld too; `list_update_set_changes` still lists what changed.
+    update set payload. Such a field is withheld whole when its text has a `<sys_properties`
+    element, whatever type the record states. So the payloads of ordinary properties are
+    withheld too, and so is any other text that holds such an element, a script or an article
+    that quotes one included; `list_update_set_changes` still lists what changed.
   - `aggregate_records` refuses `group_by` and aggregates on a field whose values a row read
     would withhold (`value` on `sys_properties`, a dot-walk to a `value` field, the old and new
     values of `sys_audit` and `sys_history_line`, a dot-walk to an old or new value), since
     the Stats API returns bare values. `get_current_user` refuses such dot-walks in `fields=`.
+    A name counts wherever one of these fields is a segment of it: `value.zz` is judged as
+    `value`, and `property.value.zz` as a dot-walk to `property.value`.
   - **A field name with an empty segment is refused** in `fields`, `order_by`, `group_by` and
     the aggregate field lists, on every table: a leading, trailing or doubled dot. The
     instance reads `value.` as `value` and returns it under that spelling, which no check
-    recognised. Around a name only spaces and tabs are accepted now (other whitespace was).
+    recognised. Around a name only spaces and tabs are accepted now: a field list with a
+    newline, a carriage return or a no-break space around a name was accepted and is refused.
   - `update_record` and `update_ci` refuse to set the `type` of a `sys_properties` record to
     anything but a credential type: retyped, the stored value would be an ordinary one. A
     write to `sys_properties` takes plain field names as the keys of `data`, nothing else.
-  - A 200 answer whose `result` is not what the tool expects (a string or a list where one
-    record belongs) is an error that names the type. Before, FastMCP's own error quoted it.
+    A write to `sys_metadata`, the table it extends, that sets `type` or `value` is refused:
+    that table has neither field, and whether the instance would pass the write on to a
+    property was not tested.
+  - A 200 answer whose `result` is not what the tool expects is an error that names the type:
+    a string or a list where one record belongs, and also `result: null` or no `result` at
+    all, for which `get_record`, `get_ci` and `get_update_set` used to return `{}`. Before,
+    FastMCP's own error quoted a string or a list.
   - `servicenow://instance` reads its four properties with their type and reports one that is
     typed as a credential under `unavailable`.
-  - The audit line masks whatever a query on `sys_properties` compares `value` with, and
-    leaves out a query on it that has a text-search term.
-- **The audit line's query masking takes linear time.** The pattern that masks password-,
-  secret- and token-like values needed quadratic time on a long run of such words (11 seconds
-  for 64 KB), on the event loop. It is bounded now, and a query over 4,000 characters is
-  logged as `<query of N characters, not logged>`.
+  - The audit line masks whatever a query on `sys_properties` compares `value` with. A query
+    on it with a text-search term, a related-list or sub-query or a join, which can compare
+    `value` without naming it, is logged by its length only and gets the same `warning`.
   - Limits, stated in [docs/tools.md](docs/tools.md#credential-type-system-properties): withheld
     is not the same as impossible to infer (a filter on `value` still shows which properties
     match, so an identity that can read the table can work a value out with enough queries;
     the `warning` says so when a filter matches a withheld row); only the type decides, so a
     secret kept in a `string` property is returned; credential fields of other tables are
-    returned as the instance returns them; an identity that can write as `admin` has other
-    ways to a value.
+    returned as the instance returns them; an identity that can write to the instance as
+    `admin` has other ways to a value, which `--read-only` or a read-only identity closes.
+- **The audit line's query masking takes linear time.** The pattern that masks password-,
+  secret- and token-like values needed quadratic time on a long run of such words (11 seconds
+  for 64 KB), on the event loop. It is bounded now, and what the bounds can't cover is logged
+  as `<query of N characters, not logged>`: a query over 4,000 characters, or one with a run
+  of nine or more spaces or tabs, or a name of more than 80 characters.
 - **This server's error text, its log lines and its audit line quote no response body, on any
   transport.** An error used to carry up to 500 characters of a non-OK response body and the
   first 200 characters of a 200 response that was not valid JSON, in the tool result and in the

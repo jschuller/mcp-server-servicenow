@@ -26,7 +26,7 @@ from mcp.types import TextContent
 
 from servicenow_mcp.middleware.policy import (
     SCHEMA_URI_RE,
-    TEXT_SEARCH_TERMS,
+    OPAQUE_TERM_RE,
     VALUE_TERM_RE,
     PolicyError,
     resolve_table,
@@ -53,8 +53,11 @@ _transport = "stdio"
 # with no operator costs quadratic time.
 _REDACT_RE = re.compile(
     r"(?i)((?:password|secret|token|api_key|apikey)[A-Za-z0-9_]{0,80}\s{0,8}"
-    r"(?:!=|=|LIKE|STARTSWITH|ENDSWITH|IN))([^^]*)"
+    r"(?:!=|=|<|>|LIKE|STARTSWITH|ENDSWITH|IN|BETWEEN))([^^]*)"
 )
+# What those bounds would miss: more space before the operator, or a longer
+# name. A query with either is not masked but left out.
+_UNBOUNDED_RE = re.compile(r"\s{9,}|[A-Za-z0-9_]{81,}")
 
 
 def configure_audit_log(setting: str, *, transport: str = "stdio") -> bool:
@@ -92,15 +95,19 @@ def redact_query(query: str, table: Optional[str] = None) -> str:
 
     On ``sys_properties`` a filter on ``value`` can hold a credential the
     caller knows or is guessing: every term on ``value`` is masked after the
-    field name, and a query with a text-search term, which names no field, is
-    not logged. Linear in the query's length, and bounded.
+    field name. A query the masks can't be trusted on is logged by its length
+    only: one over ``QUERY_MAX_INPUT`` characters, one with a run of space or
+    a name longer than the secret mask looks at, and on ``sys_properties`` one
+    with a text-search term, a related-list or sub-query or a join, which can
+    compare ``value`` without naming it. Linear in the query's length.
     """
-    if len(query) > QUERY_MAX_INPUT:
-        return f"<query of {len(query)} characters, not logged>"
+    not_logged = f"<query of {len(query)} characters, not logged>"
+    if len(query) > QUERY_MAX_INPUT or _UNBOUNDED_RE.search(query):
+        return not_logged
     masked = _REDACT_RE.sub(r"\1[REDACTED]", query)
     if isinstance(table, str) and table.strip().lower() == "sys_properties":
-        if any(term in query for term in TEXT_SEARCH_TERMS):
-            return "<query with a text-search term on sys_properties, not logged>"
+        if OPAQUE_TERM_RE.search(query):
+            return not_logged
         masked = VALUE_TERM_RE.sub(r"\1[REDACTED]", masked)
     if len(masked) > QUERY_MAX_CHARS:
         return masked[:QUERY_MAX_CHARS] + "…"
