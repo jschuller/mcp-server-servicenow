@@ -153,6 +153,32 @@ class TestServiceNowTokenVerifier:
         assert "canary" not in caplog.text and "refused-sn-token" not in caplog.text
 
     @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "failure",
+        [
+            httpx2.RemoteProtocolError("illegal chunk header: b'canary-in-body'"),
+            httpx2.LocalProtocolError("Illegal header value b'Bearer canary-token\\r'"),
+            ValueError("canary in some other error"),
+        ],
+        ids=["RemoteProtocolError", "LocalProtocolError", "ValueError"],
+    )
+    async def test_a_failed_lookup_logs_the_error_class_not_its_text(
+        self,
+        verifier: ServiceNowTokenVerifier,
+        caplog: pytest.LogCaptureFixture,
+        failure: Exception,
+    ) -> None:
+        """An httpx2 error can quote the answer, or the Authorization header."""
+        mock_cls = _make_mock_client(side_effect=failure)
+        with (
+            caplog.at_level(logging.DEBUG, logger="servicenow_mcp"),
+            patch("servicenow_mcp.auth.sn_token_verifier.httpx2.AsyncClient", mock_cls),
+        ):
+            assert await verifier.verify_token("canary-token") is None
+        assert type(failure).__name__ in caplog.text
+        assert "canary" not in caplog.text
+
+    @pytest.mark.asyncio
     async def test_connection_error_returns_none(
         self, verifier: ServiceNowTokenVerifier
     ) -> None:

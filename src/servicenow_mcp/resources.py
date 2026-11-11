@@ -32,7 +32,12 @@ from fastmcp import FastMCP
 from fastmcp.server.providers.skills import SkillsDirectoryProvider
 
 from servicenow_mcp.server import get_config, get_config_or_none, make_sn_request, mcp
-from servicenow_mcp.utils.http import build_url, parse_json_response, result_rows
+from servicenow_mcp.utils.http import (
+    build_url,
+    error_text,
+    parse_json_response,
+    result_rows,
+)
 from servicenow_mcp.utils.redaction import PROPERTY_TABLE, REDACTED, Guard
 from servicenow_mcp.utils.schema import _reference_value, fetch_table_schema
 from servicenow_mcp.utils.user import fetch_current_user
@@ -87,7 +92,7 @@ _NO_PROPERTIES = "sys_properties returned no such property: reading it needs adm
 
 def _reason(exc: Exception) -> str:
     """The first sentence of an error, short enough for a JSON value."""
-    return str(exc).split(". ")[0][:120]
+    return error_text(exc).split(". ")[0][:120]
 
 
 @mcp.resource(
