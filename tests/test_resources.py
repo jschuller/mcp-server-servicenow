@@ -282,10 +282,13 @@ class TestInstanceResource:
         from unittest.mock import Mock
 
         from servicenow_mcp import resources
+        from servicenow_mcp.utils.http import ServiceNowAPIError
 
         payload = _instance(monkeypatch, [])
         monkeypatch.setattr(
-            resources, "fetch_current_user", Mock(side_effect=RuntimeError("boom. x"))
+            resources,
+            "fetch_current_user",
+            Mock(side_effect=ServiceNowAPIError("boom. x")),
         )
         import asyncio
         import json
@@ -298,6 +301,16 @@ class TestInstanceResource:
         payload = asyncio.run(read())
         assert "user" not in payload
         assert payload["unavailable"]["user"] == "sys_user could not be read: boom"
+        # Not this server's own error: its class, never its text.
+        monkeypatch.setattr(
+            resources,
+            "fetch_current_user",
+            Mock(side_effect=RuntimeError("library text. with a value")),
+        )
+        payload = asyncio.run(read())
+        assert payload["unavailable"]["user"] == (
+            "sys_user could not be read: RuntimeError"
+        )
         monkeypatch.setattr(resources, "fetch_current_user", Mock(return_value={}))
         payload = asyncio.run(read())
         assert payload["unavailable"]["user"] == (

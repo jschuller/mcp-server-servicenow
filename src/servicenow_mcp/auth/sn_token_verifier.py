@@ -20,6 +20,7 @@ import httpx2
 
 from fastmcp.server.auth import AccessToken, TokenVerifier
 
+from servicenow_mcp.utils.causes import cause_chain
 from servicenow_mcp.utils.http import response_summary
 from servicenow_mcp.utils.user import (
     DIRECT_ROLES_QUERY,
@@ -158,10 +159,10 @@ class ServiceNowTokenVerifier(TokenVerifier):
                 )
 
         except httpx2.RequestError as e:
-            logger.debug("Failed to verify SN token: %s", e)
+            logger.debug("Failed to verify SN token: %s", cause_chain(e))
             return None
         except Exception as e:
-            logger.debug("SN token verification error: %s", e)
+            logger.debug("SN token verification error: %s", cause_chain(e))
             return None
 
     async def _direct_roles(
@@ -185,7 +186,7 @@ class ServiceNowTokenVerifier(TokenVerifier):
                 return None
             rows = response.json().get("result", [])
         except Exception as e:
-            logger.debug("SN role lookup failed: %s", e)
+            logger.debug("SN role lookup failed: %s", cause_chain(e))
             return None
         names = {row.get("role.name") for row in rows if isinstance(row, dict)}
         return sorted(name for name in names if isinstance(name, str) and name)
@@ -211,7 +212,7 @@ class ServiceNowTokenVerifier(TokenVerifier):
                 return None
             rows = response.json().get("result")
         except Exception as e:
-            logger.debug("SN role check failed: %s", e)
+            logger.debug("SN role check failed: %s", cause_chain(e))
             return None
         return bool(rows) if isinstance(rows, list) else None
 

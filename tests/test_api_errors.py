@@ -3,9 +3,12 @@
 Over stdio the message keeps the instance URL and ServiceNow's diagnostic headers.
 On every other transport it keeps the status, ServiceNow's own message, the API
 path and the hints, and nothing that names the instance. No form carries a query
-string or quotes a response body: only the message and detail of ServiceNow's JSON
-error are shown. FastMCP logs no traceback for these failures; one WARNING line
-carries the facts.
+string, quotes a response body or repeats what a requests, urllib3 or http.client
+exception said: only the message and detail of ServiceNow's JSON error are shown,
+and a low-level failure is named by its exception classes. FastMCP logs no
+traceback for these failures; one WARNING line carries the facts. The claims are
+about this server's error text, the log lines it writes and its audit line; the
+HTTP libraries' own loggers are kept quiet at the default level by the CLI.
 """
 
 from __future__ import annotations
@@ -14,7 +17,9 @@ import json
 import logging
 import socket
 import sys
+import threading
 from contextlib import contextmanager
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any, Callable, Iterator, List, Optional
 from unittest.mock import patch
 
@@ -26,7 +31,7 @@ from fastmcp.exceptions import ToolError
 from fastmcp.server.context import reset_transport, set_transport
 from mcp import MCPError
 
-from servicenow_mcp.auth.auth_manager import AuthManager
+from servicenow_mcp.auth.auth_manager import AuthError, AuthManager
 from servicenow_mcp.middleware import audit
 from servicenow_mcp.middleware.api_errors import LOG_PREFIX
 from servicenow_mcp.server import mcp
@@ -268,10 +273,7 @@ def test_401_oauth_after_a_refresh() -> None:
 
 def test_401_oauth_refresh_failed_keeps_the_marker_callers_match() -> None:
     """find_references stops on "token refresh also failed": a refused secret."""
-    refusal = ValueError(
-        f"Failed to get OAuth token: 401 <html>{BASE}/oauth_token.do "
-        f"?sysparm_query={FILTER}</html>"
-    )
+    refusal = AuthError("Failed to get OAuth token: 401 invalid_client: access_denied")
 
     def errors() -> ServiceNowAPIError:
         with patch.object(AuthManager, "refresh_token", side_effect=refusal):
@@ -280,17 +282,38 @@ def test_401_oauth_refresh_failed_keeps_the_marker_callers_match() -> None:
     with local_error_detail():
         local = errors()
     remote = errors()
-    assert str(local).startswith(
+    assert str(local) == (
         "Authentication failed (401) and token refresh also failed. "
-        f"URL: {URL}. Refresh error: Failed to get OAuth token: 401"
+        f"URL: {URL}. Refresh error: {refusal}"
     )
     assert assert_trimmed(remote) == (
         f"Authentication failed (401) and token refresh also failed. URL: {PATH}."
     )
     for error in (local, remote):
         assert error.status == 401 and error.details["kind"] == "token_refresh"
-        assert "Failed to get OAuth token" in error.diagnostics["cause"]
+        assert error.diagnostics["cause"] == str(refusal)  # this server's own text
         assert_no_query_anywhere(error)
+
+
+def test_401_oauth_refresh_that_a_library_error_stops() -> None:
+    """Not this server's text: the token endpoint's answer can be in it."""
+    broken = network_error(requests.ConnectionError, "reset")
+
+    def errors() -> ServiceNowAPIError:
+        with patch.object(AuthManager, "refresh_token", side_effect=broken):
+            return call(response(401, NOT_AUTHENTICATED), "oauth")
+
+    with local_error_detail():
+        local = errors()
+    remote = errors()
+    assert str(local) == (
+        "Authentication failed (401) and token refresh also failed. "
+        f"URL: {URL}. Refresh error: ConnectionError"
+    )
+    for error in (local, remote):
+        assert error.diagnostics["cause"] == "ConnectionError"
+        assert_no_query_anywhere(error)
+        assert error.__cause__ is None and error.__suppress_context__
 
 
 def test_404_text_local_and_remote() -> None:
@@ -383,16 +406,17 @@ def test_timeout() -> None:
 
 
 def test_dns() -> None:
+    chain = "ConnectionError <- OSError <- gaierror [errno 8]"
     local, remote = call_both(dns_error)
     assert str(local).startswith(f"Cannot resolve the host in {URL}. Check the")
-    assert f"Detail: Failed to resolve '{HOST}'" in str(local)
+    assert str(local).endswith(f"#instance-not-found. Detail: {chain}")
     text = assert_trimmed(remote)
     assert text.startswith(
         f"Cannot resolve the host in the instance URL (request to {PATH}). Check the"
     )
     assert text.endswith("TROUBLESHOOTING.md#instance-not-found.")
     assert remote.status is None and remote.details["kind"] == "dns"
-    assert HOST in remote.diagnostics["cause"]  # the operator's log names it
+    assert local.diagnostics["cause"] == remote.diagnostics["cause"] == chain
 
 
 def test_tls() -> None:
@@ -406,89 +430,102 @@ def test_tls() -> None:
         assert "REQUESTS_CA_BUNDLE" in str(error)
         assert "TROUBLESHOOTING.md#certificate-verify-failed." in str(error)
         assert error.status is None and error.details["kind"] == "tls"
+        assert error.diagnostics["cause"] == "SSLError"
+        assert "HTTPSConnectionPool" not in str(error)
         assert_no_query_anywhere(error)
     assert str(local).startswith(f"TLS certificate check failed for {URL}. ")
-    assert "Detail: HTTPSConnectionPool" in str(local)
-    assert "certificate verify failed" in str(local)
+    assert str(local).endswith("#certificate-verify-failed. Detail: SSLError")
     text = assert_trimmed(remote)
     assert text.startswith(f"TLS certificate check failed for {PATH}. ")
     assert "Detail:" not in text
 
 
 def test_connection_refused() -> None:
-    local, remote = call_both(
-        lambda: network_error(
-            requests.ConnectionError, "ConnectionRefusedError(61, 'refused')"
-        )
+    def refused() -> Exception:
+        try:
+            try:
+                raise ConnectionRefusedError(61, "Connection refused")
+            except OSError as reason:
+                raise OSError("Failed to establish a new connection") from reason
+        except OSError as wrapped:
+            return requests.ConnectionError(wrapped)
+
+    chain = "ConnectionError <- OSError <- ConnectionRefusedError [errno 61]"
+    local, remote = call_both(refused)
+    tail = "Check that the instance URL is correct and the instance is awake."
+    assert str(local) == (
+        f"Cannot connect to ServiceNow at {URL}. {tail} Detail: {chain}"
     )
-    assert str(local).startswith(f"Cannot connect to ServiceNow at {URL}. ")
-    assert "Detail: HTTPSConnectionPool" in str(local)
-    assert assert_trimmed(remote) == (
-        f"Cannot connect to ServiceNow at {PATH}. Check that the instance URL is "
-        "correct and the instance is awake."
-    )
+    assert assert_trimmed(remote) == f"Cannot connect to ServiceNow at {PATH}. {tail}"
     for error in (local, remote):
         assert error.details["kind"] == "connection"
+        assert error.diagnostics["cause"] == chain
         assert_no_query_anywhere(error)
 
 
 def test_any_other_requests_failure_is_an_api_error_too() -> None:
     """Too many redirects and the like used to escape as a raw requests error."""
     local, remote = call_both(
-        lambda: requests.TooManyRedirects(f"Exceeded 30 redirects for {URL}")
+        lambda: requests.TooManyRedirects(f"Exceeded 30 redirects for {URL}?a=b")
     )
-    assert str(local) == (
-        f"Request to {URL} failed (TooManyRedirects). "
-        f"Detail: Exceeded 30 redirects for {URL}"
-    )
+    assert str(local) == f"Request to {URL} failed (TooManyRedirects)."
     assert assert_trimmed(remote) == f"Request to {PATH} failed (TooManyRedirects)."
+    assert remote.details["kind"] == "request"
+
+
+def test_whatever_the_http_stack_raises_is_named_by_class() -> None:
+    """Not only requests' own errors: http.client raises ValueError for a header."""
+    local, remote = call_both(
+        lambda: ValueError(f"Invalid header value b'{FILTER}\\n'")
+    )
+    assert str(local) == f"Request to {URL} failed (ValueError)."
+    assert assert_trimmed(remote) == f"Request to {PATH} failed (ValueError)."
+    assert FILTER not in _everything(local) + _everything(remote)
 
 
 def test_retry_after_a_refresh_that_gets_no_answer() -> None:
-    def errors() -> ServiceNowAPIError:
+    def errors(second: Exception) -> ServiceNowAPIError:
         with patch.object(AuthManager, "refresh_token"):
-            return call(
-                [
-                    response(401, NOT_AUTHENTICATED),
-                    network_error(requests.ConnectionError, "reset"),
-                ],
-                "oauth",
-            )
+            return call([response(401, NOT_AUTHENTICATED), second], "oauth")
 
-    with local_error_detail():
-        local = errors()
-    remote = errors()
-    assert str(local).startswith(
-        "Retry after token refresh failed: HTTPSConnectionPool"
-    )
-    assert assert_trimmed(remote) == (
-        "Retry after token refresh failed: the instance did not answer "
-        "(ConnectionError)."
-    )
-    assert_no_query_anywhere(local)
+    for second, classes in (
+        (network_error(requests.ConnectionError, "reset"), "ConnectionError"),
+        (chunked_error(), CHUNKED_CHAIN),
+    ):
+        with local_error_detail():
+            local = errors(second)
+        remote = errors(second)
+        said = f"Retry after token refresh failed: the instance did not answer ({classes})."
+        assert str(local) == assert_trimmed(remote) == said
+        for error in (local, remote):
+            assert_no_query_anywhere(error)
+            assert LIBRARY_CANARY not in _everything(error)
 
 
 @pytest.mark.parametrize(
-    ("failure", "kind", "local_start", "remote_text"),
+    ("failure", "kind", "local_text", "remote_text", "cause"),
     [
         (
             requests.ConnectionError(f"HTTPSConnectionPool(host='{HOST}'): refused"),
             "connection",
-            "Cannot connect to ServiceNow to get an OAuth token.",
+            "Cannot connect to ServiceNow to get an OAuth token. Check that the "
+            "instance URL is correct and the instance is awake. Detail: ConnectionError",
             "Cannot connect to ServiceNow to get an OAuth token. Check that the "
             "instance URL is correct and the instance is awake.",
+            "ConnectionError",
         ),
         (
-            ValueError(f"Failed to get OAuth token: 401 <html>{HOST}</html>"),
+            AuthError("Failed to get OAuth token: 401 invalid_client: access_denied"),
             "token_request",
-            "Failed to get OAuth token: 401",
+            "Failed to get OAuth token: 401 invalid_client: access_denied",
             "Could not get an OAuth token for the ServiceNow identity this server "
             "uses; the server's log has the token endpoint's answer.",
+            "Failed to get OAuth token: 401 invalid_client: access_denied",
         ),
     ],
 )
 def test_first_oauth_token_failure(
-    failure: Exception, kind: str, local_start: str, remote_text: str
+    failure: Exception, kind: str, local_text: str, remote_text: str, cause: str
 ) -> None:
     """The first token is requested inside api_request: no raw error escapes it."""
 
@@ -501,9 +538,191 @@ def test_first_oauth_token_failure(
     with local_error_detail():
         local = error()
     remote = error()
-    assert str(local).startswith(local_start) and HOST in str(local)
+    assert str(local) == local_text
     assert assert_trimmed(remote) == remote_text
-    assert remote.details["kind"] == kind and HOST in remote.diagnostics["cause"]
+    for raised in (local, remote):
+        assert raised.details["kind"] == kind
+        assert raised.diagnostics["cause"] == cause
+        assert HOST not in _everything(raised)
+
+
+# --- a library's own error text is never used: it can quote a body or a key ----
+
+# Stands for bytes of a response, or a credential, inside a library's message.
+LIBRARY_CANARY = "canary-4Zt9-inside-a-library-error"
+CHUNKED_CHAIN = "ChunkedEncodingError <- ProtocolError <- InvalidChunkLength"
+
+
+def chunked_error() -> Exception:
+    """A ``Transfer-Encoding: chunked`` answer whose body is not chunked.
+
+    Built as urllib3 and requests build it: the first bytes of the body, read
+    as a chunk length, are quoted in the message.
+    """
+    from types import SimpleNamespace
+
+    from urllib3.exceptions import InvalidChunkLength, ProtocolError
+
+    body = f'{{"result": [{{"name": "p", "value": "{LIBRARY_CANARY}"}}]}}'.encode()
+    reply = SimpleNamespace(tell=lambda: 0, length_remaining=None)
+    inner = InvalidChunkLength(reply, body)  # type: ignore[arg-type]
+    return requests.exceptions.ChunkedEncodingError(
+        ProtocolError(f"Connection broken: {inner!r}", inner)
+    )
+
+
+def no_status_line_error() -> Exception:
+    """An answer with no HTTP status line: http.client quotes its first line."""
+    from http.client import BadStatusLine
+
+    from urllib3.exceptions import ProtocolError
+
+    line = f'{{"result": [{{"value": "{LIBRARY_CANARY}"}}]}}'
+    return requests.ConnectionError(
+        ProtocolError("Connection aborted.", BadStatusLine(line))
+    )
+
+
+def invalid_header_error() -> Exception:
+    """What requests says about a header value it refuses: the value itself."""
+    return requests.exceptions.InvalidHeader(
+        "Invalid leading whitespace, reserved character(s), or return "
+        f"character(s) in header value: '{LIBRARY_CANARY}\\r'"
+    )
+
+
+LIBRARY_ERRORS = {
+    "chunked header, plain body": (
+        chunked_error,
+        "request",
+        "Request to {where} failed (" + CHUNKED_CHAIN + ").",
+        CHUNKED_CHAIN,
+    ),
+    "no status line": (
+        no_status_line_error,
+        "connection",
+        "Cannot connect to ServiceNow at {where}. Check that the instance URL is "
+        "correct and the instance is awake.",
+        "ConnectionError <- ProtocolError <- BadStatusLine",
+    ),
+    "a header requests refuses": (
+        invalid_header_error,
+        "request",
+        "Request to {where} failed (InvalidHeader).",
+        "InvalidHeader",
+    ),
+}
+
+
+@pytest.mark.parametrize("case", LIBRARY_ERRORS.values(), ids=LIBRARY_ERRORS.keys())
+def test_a_library_error_is_named_by_its_classes_only(case: tuple) -> None:
+    make, kind, said, chain = case
+    assert LIBRARY_CANARY in str(make()) + repr(make())  # the library does quote it
+    local, remote = call_both(make)
+    assert str(local).startswith(said.format(where=URL))
+    assert assert_trimmed(remote) == said.format(where=PATH)
+    if kind == "connection":
+        assert str(local).endswith(f" Detail: {chain}")
+    for error in (local, remote):
+        assert error.details["kind"] == kind
+        assert error.diagnostics["cause"] == chain
+        assert LIBRARY_CANARY not in _everything(error)
+        # A traceback prints the chain: the library's error is not on it.
+        assert error.__cause__ is None and error.__suppress_context__
+
+
+def test_cause_chain_has_classes_and_errnos_and_stops() -> None:
+    from servicenow_mcp.utils.causes import MAX_CLASSES, cause_chain
+
+    assert cause_chain(chunked_error()) == CHUNKED_CHAIN
+    assert (
+        cause_chain(dns_error()) == "ConnectionError <- OSError <- gaierror [errno 8]"
+    )
+    assert cause_chain(OSError("not a number", "x")) == "OSError"  # errno is a str
+    assert cause_chain(KeyError(LIBRARY_CANARY)) == "KeyError"
+    loop = ValueError("a")
+    loop.__cause__ = loop
+    assert cause_chain(loop) == "ValueError"
+    deep: BaseException = type("E0", (Exception,), {})()
+    for depth in range(1, 20):
+        outer = type(f"E{depth}", (Exception,), {})()
+        outer.__cause__ = deep
+        deep = outer
+    assert len(cause_chain(deep).split(" <- ")) == MAX_CLASSES
+
+
+@pytest.mark.parametrize(
+    "bad",
+    [
+        "key-canary\r",
+        "key-canary\n",
+        " key-canary",
+        "key\x00canary",
+        "key-canary-\u2603",
+    ],
+    ids=["CR", "LF", "leading space", "NUL", "not Latin-1"],
+)
+def test_a_credential_that_cannot_be_a_header_is_refused_before_the_request(
+    bad: str,
+) -> None:
+    """requests refuses it too, with an error that quotes the value (the key)."""
+    key = AuthManager(
+        AuthConfig(type=AuthType.API_KEY, api_key=ApiKeyConfig(api_key=bad)), BASE
+    )
+    senders: list[dict[str, Any]] = [{"auth_manager": key}]
+    if not bad.startswith(" "):  # after "Bearer " a space is not a leading one
+        senders.append({"bearer_token": bad})
+    for kwargs in senders:
+        with patch(REQUEST) as sent, pytest.raises(ServiceNowAPIError) as raised:
+            api_request("GET", URL, **kwargs)
+        assert sent.call_count == 0
+        header = "x-sn-apikey" if "auth_manager" in kwargs else "Authorization"
+        assert str(raised.value).startswith(
+            f"Request to {PATH} not sent: the {header} header this server would send "
+            "holds "
+        )
+        assert raised.value.details["kind"] == "credentials"
+        assert "canary" not in _everything(raised.value)
+
+
+def test_a_bad_header_name_is_refused_without_repeating_it() -> None:
+    config = AuthConfig(
+        type=AuthType.API_KEY,
+        api_key=ApiKeyConfig(api_key="k", header_name="x-key: canary-name"),
+    )
+    with patch(REQUEST) as sent, pytest.raises(ServiceNowAPIError) as raised:
+        api_request("GET", URL, AuthManager(config, BASE))
+    assert sent.call_count == 0 and "canary" not in _everything(raised.value)
+    assert "a name HTTP does not allow" in str(raised.value)
+
+
+@pytest.mark.parametrize(
+    "written",
+    [
+        HOST.upper(),
+        "Instance.Example",
+        f"{HOST}.",
+        f"{HOST}:443",
+        f"{HOST.upper()}.:8443",
+    ],
+)
+def test_the_host_is_masked_however_servicenow_writes_it(written: str) -> None:
+    body = sn_error(f"see https://{written}/x", f"and {written} again")
+    local, remote = call_both(lambda: response(403, body))
+    assert written in str(local)
+    text = assert_trimmed(remote)
+    assert text.endswith(
+        "ServiceNow error: see https://<instance>/x: and <instance> again"
+    )
+    assert HOST not in text.lower()
+    assert remote.details["sn_message"] == "see https://<instance>/x"
+    assert remote.details["sn_detail"] == "and <instance> again"
+
+
+def test_a_longer_host_that_starts_the_same_is_left_alone() -> None:
+    body = sn_error(f"see {HOST}-other.test and {HOST}", "")
+    _, remote = call_both(lambda: response(403, body))
+    assert str(remote).endswith(f"see {HOST}-other.test and <instance>")
 
 
 # --- a 200 that is not JSON ----------------------------------------------------
@@ -604,7 +823,10 @@ def _everything(error: BaseException) -> str:
         texts += [str(current), repr(current.args)]
         texts.append(json.dumps(getattr(current, "details", {}), default=str))
         texts.append(json.dumps(getattr(current, "diagnostics", {}), default=str))
-        current = current.__cause__ or current.__context__
+        # What a traceback would print next: ``raise ... from None`` ends it.
+        current = current.__cause__ or (
+            None if current.__suppress_context__ else current.__context__
+        )
     return "\n".join(texts)
 
 
@@ -890,11 +1112,179 @@ async def test_a_body_reaches_no_result_log_record_or_audit_line(
         assert CANARY not in where
 
 
+# --- answers that are not HTTP, over a real socket -----------------------------
+
+SOCKET_ROWS = json.dumps(
+    {"result": [{"name": "glide.example.password", "value": CANARY}]}
+).encode()
+FILTER_VALUE = "filter-value-9f3"  # the part of FILTER the audit line would mask
+
+
+class _Malformed(BaseHTTPRequestHandler):
+    """A fake instance whose answers break HTTP in the ways the libraries quote."""
+
+    def log_message(self, *args: Any) -> None:
+        pass
+
+    def do_GET(self) -> None:
+        path = self.path.split("?")[0]
+        self.close_connection = True
+        if path.endswith("/x_chunked"):
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Transfer-Encoding", "chunked")  # the body is not
+            self.end_headers()
+            self.wfile.write(SOCKET_ROWS)
+        elif path.endswith("/x_nostatus"):
+            self.wfile.write(SOCKET_ROWS + b"\r\n\r\n")  # no status line
+        elif path.endswith("/x_badheader"):
+            body = b'{"result": []}'
+            self.wfile.write(
+                b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n"
+                b"this line is not a header\r\n"
+                b"Content-Length: " + str(len(body)).encode() + b"\r\n\r\n" + body
+            )
+        else:
+            body = b'{"result": []}'
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+        self.wfile.flush()
+
+
+@pytest.fixture
+def fake_instance(monkeypatch) -> Iterator[str]:
+    try:
+        server = ThreadingHTTPServer(("127.0.0.1", 0), _Malformed)
+    except PermissionError:
+        pytest.skip("binding a local port is not allowed here")
+    for name in ("NO_PROXY", "no_proxy"):
+        monkeypatch.setenv(name, "127.0.0.1")
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    yield f"http://127.0.0.1:{server.server_address[1]}"
+    server.shutdown()
+    server.server_close()
+
+
+@pytest.fixture
+def library_logs() -> Iterator[_Records]:
+    """What the HTTP libraries log, at the levels the CLI gives them by default."""
+    from servicenow_mcp import cli
+
+    handler = _Records()
+    loggers = [logging.getLogger(name) for name in cli.LIBRARY_LOG_LEVELS]
+    levels = [logger.level for logger in loggers]
+    for logger in loggers:
+        logger.addHandler(handler)
+    cli.configure_library_logging(debug=False)
+    yield handler
+    for logger, level in zip(loggers, levels):
+        logger.removeHandler(handler)
+        logger.setLevel(level)
+
+
+CLASSES_ONLY = (
+    r"[A-Za-z_]\w*(?: \[errno \d+\])?(?: <- [A-Za-z_]\w*(?: \[errno \d+\])?)*"
+)
+
+
+@pytest.mark.parametrize("transport", ["stdio", "streamable-http"])
+async def test_a_malformed_answer_reaches_no_text_log_or_audit_line(
+    fake_instance: str,
+    logged: _Records,
+    library_logs: _Records,
+    capfd,
+    tmp_path,
+    transport: str,
+) -> None:
+    """The libraries quote such an answer in their errors; this server names the classes."""
+    import re
+
+    init_test_services(instance_url=fake_instance)
+    log = tmp_path / "audit.jsonl"
+    audit.configure_audit_log(str(log), transport=transport)
+    where = fake_instance if transport == "stdio" else ""
+    with over(transport):
+        async with Client(mcp) as client:
+            chunked, no_status, bad_header = [
+                await client.call_tool(
+                    "list_records",
+                    {"table_name": table, "query": FILTER},
+                    raise_on_error=False,
+                )
+                for table in ("x_chunked", "x_nostatus", "x_badheader")
+            ]
+
+    assert chunked.is_error is True and no_status.is_error is True
+    said = chunked.content[0].text
+    assert re.fullmatch(
+        re.escape(f"Request to {where}/api/now/table/x_chunked failed (")
+        + f"ChunkedEncodingError <- {CLASSES_ONLY}"
+        + re.escape(")."),
+        said,
+    ), said
+    said = no_status.content[0].text
+    assert said.startswith(
+        f"Cannot connect to ServiceNow at {where}/api/now/table/x_nostatus. "
+    )
+    if transport == "stdio":
+        assert re.search(rf" Detail: ConnectionError <- {CLASSES_ONLY}\Z", said), said
+    else:
+        assert said.endswith("the instance is awake.")
+    assert bad_header.is_error is False
+    assert bad_header.structured_content == {"count": 0, "records": []}
+
+    causes = [warning["cause"] for warning in _warnings(logged)]
+    assert len(causes) == 2 and all(re.fullmatch(CLASSES_ONLY, c) for c in causes)
+    assert library_logs.records == []  # urllib3 warns about the bad header: not here
+    formatter = logging.Formatter()
+    captured = capfd.readouterr()
+    everywhere = [
+        *(
+            block.text
+            for result in (chunked, no_status, bad_header)
+            for block in result.content
+        ),
+        *(formatter.format(record) for record in logged.records),
+        log.read_text(),
+        captured.err,
+        captured.out,
+    ]
+    assert log.read_text().count('"outcome":"error"') == 2
+    for text in everywhere:
+        assert CANARY not in text and "glide.example.password" not in text
+        assert FILTER_VALUE not in text and "sysparm_query" not in text
+
+
+async def test_debug_logging_does_print_the_query_string(
+    fake_instance: str, library_logs: _Records
+) -> None:
+    """The limit of the claim, pinned: --debug hands the libraries' loggers back."""
+    from servicenow_mcp import cli
+
+    init_test_services(instance_url=fake_instance)
+    cli.configure_library_logging(debug=True)
+    logging.getLogger("urllib3").setLevel(logging.DEBUG)  # what a DEBUG root gives it
+    async with Client(mcp) as client:
+        await client.call_tool(
+            "list_records", {"table_name": "x_badheader", "query": FILTER}
+        )
+    lines = [record.getMessage() for record in library_logs.records]
+    assert any("Failed to parse headers" in line for line in lines)
+    assert any("sysparm_query=" in line and FILTER_VALUE in line for line in lines)
+
+
 async def test_an_unexpected_exception_still_logs_its_traceback(
     served: None, logged: _Records
 ) -> None:
     """The control for the test above: a bug in a tool is still an ERROR with a traceback."""
-    with patch(REQUEST, side_effect=RuntimeError("a bug")):
+    from servicenow_mcp.tools import table_tools
+
+    with patch.object(
+        table_tools, "make_sn_request", side_effect=RuntimeError("a bug")
+    ):
         async with Client(mcp) as client:
             result = await client.call_tool(*LIST_INCIDENTS, raise_on_error=False)
     assert result.content[0].text == "Error calling tool 'list_records': a bug"

@@ -174,7 +174,7 @@ All settings can be passed as CLI args or environment variables. See `.env.examp
 | `SERVICENOW_API_KEY_HEADER` | `--api-key-header` | API key header name (default: `x-sn-apikey`, ServiceNow's default auth parameter) |
 | `SERVICENOW_TOKEN_URL` | `--token-url` | OAuth token URL (default: `<instance>/oauth_token.do`) |
 | `SERVICENOW_TIMEOUT` | `--timeout` | HTTP timeout in seconds (default: 30) |
-| `SERVICENOW_DEBUG` | `--debug` | Debug logging (`true`/`false`) |
+| `SERVICENOW_DEBUG` | `--debug` | Debug logging (`true`/`false`). The HTTP libraries then log every request line with its full query string (filter values included) and parts of a malformed answer: not for data you would not put in a log |
 | `MCP_TRANSPORT` | `--transport` | `stdio` (default) or `streamable-http` |
 | `MCP_HOST` | `--host` | HTTP bind address (default: `127.0.0.1`; set `0.0.0.0` to listen on all interfaces) |
 | `PORT` | `--port` | HTTP port (default: 8080) |

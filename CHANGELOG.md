@@ -55,19 +55,42 @@
     secret kept in a `string` property is returned; credential fields of other tables are
     returned as the instance returns them; an identity that can write as `admin` has other
     ways to a value.
-- **No error quotes a response body, on any transport.** An error used to carry up to 500
-  characters of a non-OK response body and the first 200 characters of a 200 response that was
-  not valid JSON, in the tool result and in the audit line's `error`. A cut-off or unexpected
-  body from a read of `sys_properties` (or any table) could put a field's value there. Now
-  only the `message` and `detail` of ServiceNow's JSON error (`{"error": {…}}`) are shown, as
-  `ServiceNow error: <message>: <detail>`; any other body is described by its content type,
-  its length and whether it parsed, for example
-  `Response: text/html, 5321 characters, not JSON, not shown`. The same holds for the log line,
-  and for a refused OAuth token request: its error shows the token endpoint's `error` and
-  `error_description`, not its whole answer. The OAuth proxy's token check no longer writes
-  the first 200 characters of a refused `sys_user` lookup to the debug log either.
-- No error text or log line carries the request's query string, which can hold filter values.
-  Before, a connection, DNS or TLS failure quoted it in `Detail:`, on every transport.
+- **This server's error text, its log lines and its audit line quote no response body, on any
+  transport.** An error used to carry up to 500 characters of a non-OK response body and the
+  first 200 characters of a 200 response that was not valid JSON, in the tool result and in the
+  audit line's `error`. A cut-off or unexpected body from a read of `sys_properties` (or any
+  table) could put a field's value there. Now only the `message` and `detail` of ServiceNow's
+  JSON error (`{"error": {…}}`) are shown, as `ServiceNow error: <message>: <detail>`; any
+  other body is described by its content type, its length and whether it parsed, for example
+  `Response: text/html, 5321 characters, not JSON, not shown`. The same holds for a refused
+  OAuth token request: its error shows the token endpoint's `error` and `error_description`,
+  not its whole answer.
+- **A low-level failure is named by its exception classes, never by what a library said.** The
+  text of a requests, urllib3 or http.client exception can quote the answer itself (a
+  `Transfer-Encoding: chunked` answer whose body is not chunked, an answer with no status
+  line), a header value the server sent, or the request's query string. It used to follow
+  `Detail:` in the stdio error text, and it was in the log line's `cause` and the audit line's
+  `error` on every transport. Now these carry the classes and an errno only, for example
+  `Detail: ConnectionError <- ProtocolError <- BadStatusLine`, and so do the OAuth refresh
+  warning, the OAuth proxy's token-check debug lines and `--check`.
+- **An API key that cannot be an HTTP header is refused at startup.** A `--api-key` with a
+  control character, or white space at its start or end (a pasted line ending), stops the
+  server and `--check` with a configuration error that names the setting, not the value; the
+  same check runs before every request for the token or key about to be sent. Before, requests
+  refused the header with an error that repeated the key, which reached the tool error, the log
+  and the audit line.
+- **The request's query string is in none of this server's error text, log lines at the default
+  level, or the audit line's `error`.** It can hold filter values. Before, a connection, DNS or
+  TLS failure quoted it in `Detail:`, on every transport. The HTTP libraries log on their own,
+  so the server now holds `urllib3` at ERROR and `httpx2` at WARNING unless `--debug` is on:
+  urllib3 warned `Failed to parse headers (url=…?sysparm_query=…)` with the unparsed bytes of a
+  malformed answer, and in OAuth-proxy mode httpx2 logged the URL of every token check.
+  **Debug logging is outside this guarantee:** with `--debug` (`SERVICENOW_DEBUG`) urllib3 logs
+  every request line with its full query string, and with `FASTMCP_LOG_LEVEL=DEBUG` FastMCP
+  logs each tool call's arguments, `query` and written `data` included. Use neither with data
+  you would not put in a log.
+- Over HTTP the instance host is removed from ServiceNow's own error text however it is
+  written there: in any case, with a trailing dot or with an explicit port.
 
 ### Added
 - **`docs/contract.json`**: the server's MCP contract as a client receives it (every tool's
@@ -133,10 +156,11 @@
   (`fastmcp.skills.provider`). Nothing changes for an install on 4.1.x.
 
 ### Fixed
-- A first OAuth token request that fails, and `requests` failures other than a timeout or a
-  connection error (too many redirects, a broken transfer encoding), reached the client as
-  the raw exception text (the instance host, or the token endpoint's whole answer), with a
-  traceback in the log. They are API errors like the rest now.
+- A first OAuth token request that fails, and any failure of the HTTP stack other than a
+  timeout or a connection error (too many redirects, a broken transfer encoding, the retry
+  after a token refresh), reached the client as the raw exception text (the instance host, the
+  token endpoint's whole answer, bytes of a response), with a traceback in the log. They are
+  API errors like the rest now, named by class.
 
 ## [0.9.3] - 2026-10-28
 
