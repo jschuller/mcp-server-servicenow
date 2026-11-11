@@ -2,6 +2,107 @@
 
 ## [Unreleased]
 
+### Security
+- **The value of a credential-type system property is no longer returned.** `sys_properties.value`
+  is a string column, and whether it holds a credential depends on the row's `type`. For an
+  identity that can read the table (`admin` on a base instance), `get_system_properties`,
+  `list_records` and `get_record` passed on the stored value of `password` and `password2`
+  properties as the instance returned it. The server now replaces such a value with the fixed
+  marker `[redacted: system property value withheld as credential-type]`, for every
+  `display_value` and whatever `fields=` asks for, and the list tools name the properties in
+  `warning`. There is no switch. If an earlier version ran with an identity that can read
+  `sys_properties`, those values, as stored, may have reached the client and the model:
+  rotate what matters.
+  - The value is returned only for the known plain types (`string`, `integer`, `boolean`,
+    `choicelist` and seven more, listed in docs/tools.md). A type that is missing from the row
+    (an ACL can hide it), empty or anything else counts as credential-type: the value is
+    withheld and the `warning` says so. A base instance has a handful of such properties. An
+    empty value is returned empty, so "is it set" stays answerable.
+  - The same rule covers the other ways to the same value: `list_ci` and `get_ci` with
+    `class_name="sys_properties"`, a dot-walk from another table (`fields="property.value"`),
+    the record that `create_record`, `update_record`, `create_ci` and `update_ci` echo back,
+    the old and new values of `sys_audit` and `sys_history_line` rows that record a change to
+    `sys_properties.value` (every property: these rows carry no type), read from the table or
+    through a dot-walk to it, and a field that holds a property's record XML, such as an
+    update set payload. Such a field is withheld whole when its text has a `<sys_properties`
+    element, whatever type the record states. So the payloads of ordinary properties are
+    withheld too, and so is any other text that holds such an element, a script or an article
+    that quotes one included; `list_update_set_changes` still lists what changed.
+  - `aggregate_records` refuses `group_by` and aggregates on a field whose values a row read
+    would withhold (`value` on `sys_properties`, a dot-walk to a `value` field, the old and new
+    values of `sys_audit` and `sys_history_line`, a dot-walk to an old or new value), since
+    the Stats API returns bare values. `get_current_user` refuses such dot-walks in `fields=`.
+    A name counts wherever one of these fields is a segment of it: `value.zz` is judged as
+    `value`, and `property.value.zz` as a dot-walk to `property.value`.
+  - **A field name with an empty segment is refused** in `fields`, `order_by`, `group_by` and
+    the aggregate field lists, on every table: a leading, trailing or doubled dot. The
+    instance reads `value.` as `value` and returns it under that spelling, which no check
+    recognised. Around a name only spaces and tabs are accepted now: a field list with a
+    newline, a carriage return or a no-break space around a name was accepted and is refused.
+  - `update_record` and `update_ci` refuse to set the `type` of a `sys_properties` record to
+    anything but a credential type: retyped, the stored value would be an ordinary one. A
+    write to `sys_properties` takes plain field names as the keys of `data`, nothing else.
+    A write to `sys_metadata`, the table it extends, that sets `type` or `value` is refused:
+    that table has neither field, and whether the instance would pass the write on to a
+    property was not tested.
+  - A 200 answer whose `result` is not what the tool expects is an error that names the type:
+    a string or a list where one record belongs, and also `result: null` or no `result` at
+    all, for which `get_record`, `get_ci` and `get_update_set` used to return `{}`. Before,
+    FastMCP's own error quoted a string or a list.
+  - `servicenow://instance` reads its four properties with their type and reports one that is
+    typed as a credential under `unavailable`.
+  - The audit line masks whatever a query on `sys_properties` compares `value` with. A query
+    on it with a text-search term, a related-list or sub-query or a join, which can compare
+    `value` without naming it, is logged by its length only and gets the same `warning`.
+  - Limits, stated in [docs/tools.md](docs/tools.md#credential-type-system-properties): withheld
+    is not the same as impossible to infer (a filter on `value` still shows which properties
+    match, so an identity that can read the table can work a value out with enough queries;
+    the `warning` says so when a filter matches a withheld row); only the type decides, so a
+    secret kept in a `string` property is returned; credential fields of other tables are
+    returned as the instance returns them; an identity that can write to the instance as
+    `admin` has other ways to a value, which `--read-only` or a read-only identity closes.
+- **The audit line's query masking takes linear time.** The pattern that masks password-,
+  secret- and token-like values needed quadratic time on a long run of such words (11 seconds
+  for 64 KB), on the event loop. It is bounded now, and what the bounds can't cover is logged
+  as `<query of N characters, not logged>`: a query over 4,000 characters, or one with a run
+  of nine or more spaces or tabs, or a name of more than 80 characters.
+- **This server's error text, its log lines and its audit line quote no response body, on any
+  transport.** An error used to carry up to 500 characters of a non-OK response body and the
+  first 200 characters of a 200 response that was not valid JSON, in the tool result and in the
+  audit line's `error`. A cut-off or unexpected body from a read of `sys_properties` (or any
+  table) could put a field's value there. Now only the `message` and `detail` of ServiceNow's
+  JSON error (`{"error": {…}}`) are shown, as `ServiceNow error: <message>: <detail>`; any
+  other body is described by its content type, its length and whether it parsed, for example
+  `Response: text/html, 5321 characters, not JSON, not shown`. The same holds for a refused
+  OAuth token request: its error shows the token endpoint's `error` and `error_description`,
+  not its whole answer.
+- **A low-level failure is named by its exception classes, never by what a library said.** The
+  text of a requests, urllib3 or http.client exception can quote the answer itself (a
+  `Transfer-Encoding: chunked` answer whose body is not chunked, an answer with no status
+  line), a header value the server sent, or the request's query string. It used to follow
+  `Detail:` in the stdio error text, and it was in the log line's `cause` and the audit line's
+  `error` on every transport. Now these carry the classes and an errno only, for example
+  `Detail: ConnectionError <- ProtocolError <- BadStatusLine`, and so do the OAuth refresh
+  warning, the OAuth proxy's token-check debug lines and `--check`.
+- **An API key that cannot be an HTTP header is refused at startup.** A `--api-key` with a
+  control character, or white space at its start or end (a pasted line ending), stops the
+  server and `--check` with a configuration error that names the setting, not the value; the
+  same check runs before every request for the token or key about to be sent. Before, requests
+  refused the header with an error that repeated the key, which reached the tool error, the log
+  and the audit line.
+- **The request's query string is in none of this server's error text, log lines at the default
+  level, or the audit line's `error`.** It can hold filter values. Before, a connection, DNS or
+  TLS failure quoted it in `Detail:`, on every transport. The HTTP libraries log on their own,
+  so the server now holds `urllib3` at ERROR and `httpx2` at WARNING unless `--debug` is on:
+  urllib3 warned `Failed to parse headers (url=…?sysparm_query=…)` with the unparsed bytes of a
+  malformed answer, and in OAuth-proxy mode httpx2 logged the URL of every token check.
+  **Debug logging is outside this guarantee:** with `--debug` (`SERVICENOW_DEBUG`) urllib3 logs
+  every request line with its full query string, and with `FASTMCP_LOG_LEVEL=DEBUG` FastMCP
+  logs each tool call's arguments, `query` and written `data` included. Use neither with data
+  you would not put in a log.
+- Over HTTP the instance host is removed from ServiceNow's own error text however it is
+  written there: in any case, with a trailing dot or with an explicit port.
+
 ### Added
 - **`docs/contract.json`**: the server's MCP contract as a client receives it (every tool's
   description, input and output schema, annotations and tags; the resources, resource templates
@@ -12,6 +113,65 @@
   hand-written tables above it stay as they are.
 - `tests/test_contract.py` fails when either drifts from the code; `scripts/contract.py --write`
   regenerates both.
+- **`docs/contract.json` records what the server negotiates** (`negotiation`): the protocol
+  version, the capabilities with their flags and extensions, and the server name, once for
+  `server/discover` (2026-07-28, what a current client gets) and once for the `initialize`
+  handshake (2025-11-25). A dependency bump that adds or drops a capability or an extension,
+  or moves a default protocol version, now fails the contract check. The generated block in
+  `docs/tools.md` names both.
+- A test that an `initialize` request asking for protocol version 2025-03-26 is answered with
+  2025-03-26, and that the tools, the resources and a tool call work on that session.
+
+### Changed
+- **A ServiceNow API failure is a proper MCP tool error.** `ServiceNowAPIError` is now a FastMCP
+  `ToolError`: the tool result has `isError: true` and the message as it is, without the
+  `Error calling tool '<name>':` prefix, and a failed resource read returns the same message
+  without `Error reading resource '<uri>':`. The server no longer prints a Python traceback for
+  a ServiceNow 401, 403, 404 or 5xx, a timeout or a DNS or TLS failure. It logs one WARNING line,
+  `ServiceNow API error: {…}`: JSON with the tool or resource, `kind`, `status`, `method`,
+  `path`, ServiceNow's message and detail and its diagnostic headers. An unexpected exception
+  still logs its traceback. The audit line's `error` now starts with `ServiceNowAPIError:`.
+- **Over HTTP the error text no longer names the instance.** On `streamable-http` (and for an
+  in-process client or a parent server's HTTP transport) the message keeps the status,
+  ServiceNow's own error message and detail, the API path and the role and troubleshooting
+  hints. It leaves out the instance host and the `X-Is-Logged-In` and `X-Transaction-ID`
+  headers, which go to the log line instead. Over stdio and in `--check` the URL and the
+  headers stay in the text. These errors also pass FastMCP's error masking
+  (`FASTMCP_MASK_ERROR_DETAILS=true`), which until now would have hidden them.
+- **`--eval-mocks` default refusals use the new wording.** `aggregate_records.md` and
+  `get_table_schema.md` end with `… | ServiceNow error: <message>: <detail> | Headers: {…}`
+  instead of `… | Response: {"error":{…}}`, as the server now says over stdio; a test keeps
+  them equal to the server's text. This repository's mocks, the three examples' and the
+  template's are updated. `--eval-mocks` keeps existing mock files, so delete those two in
+  your own plugin to get the new text.
+- `get_system_properties` returns each property's `type` beside `name`, `value` and
+  `description`, and its result can carry a `warning` (new in its `outputSchema`; its
+  description says that credential-type values are never returned). `docs/contract.json`, the
+  generated block of `docs/tools.md` and the eval mocks' `_tools.json` carry that one change.
+- **`aggregate_records` refuses some fields on every table.** `group_by` and the aggregate
+  field lists can no longer name a dot-walk to a field called `value` (such as
+  `sc_item_option.value`), `oldvalue`, `newvalue`, `old`, `old_value`, `new` or `new_value`,
+  nor the old and new values of `sys_audit` and `sys_history_line` themselves, whatever the
+  rows are about: the Stats API returns bare values, and the server can't tell a system
+  property's from any other. Read the rows with `list_records` and `fields=` instead, and
+  count them there.
+- On `sys_properties`, `sys_audit` and `sys_history_line`, and for a `fields=` with a dot-walk
+  to a `value` field or to an old or new value, the server asks the instance for the fields that say what a row is and
+  removes them from the rows again, and reads `display_value="true"` as `"all"` and returns the
+  display form: a display label is not the stored type. The rows have the shape they had.
+- **FastMCP is capped below 4.3** (`fastmcp>=4.1.3,<4.3`, was `<5`). The server imports
+  FastMCP's 4.1 skills provider on every start, with the skills on or off, and FastMCP
+  4.2.0a3's release notes say the 4.1 skills providers warn "ahead of removal in 4.3". Without
+  the cap, the first 4.3 release would stop every fresh `uvx mcp-server-servicenow` from
+  starting. The cap is lifted once 4.2 is final and the import has moved to the new path
+  (`fastmcp.skills.provider`). Nothing changes for an install on 4.1.x.
+
+### Fixed
+- A first OAuth token request that fails, and any failure of the HTTP stack other than a
+  timeout or a connection error (too many redirects, a broken transfer encoding, the retry
+  after a token refresh), reached the client as the raw exception text (the instance host, the
+  token endpoint's whole answer, bytes of a response), with a traceback in the log. They are
+  API errors like the rest now, named by class.
 
 ## [0.9.3] - 2026-10-28
 

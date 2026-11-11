@@ -18,11 +18,14 @@ from servicenow_mcp.tools.table_tools import (
     display_value_params,
     drop_added_fields,
     fields_with_query_fields,
+    guarded_record,
     list_warning,
     query_field_names,
     response_format_params,
+    written_record,
 )
 from servicenow_mcp.utils.http import build_url, parse_json_response, result_rows
+from servicenow_mcp.utils.redaction import Guard, check_property_write
 
 logger = logging.getLogger(__name__)
 
@@ -59,17 +62,23 @@ def list_ci(
     }
     query_names, unknown = query_field_names(query)
     sysparm_fields, added = fields_with_query_fields(fields, query_names)
+    # class_name can be any table, so the same guard as list_records.
+    guard = Guard(class_name, sysparm_fields, display_value)
     if query:
         query_params["sysparm_query"] = query
-    if sysparm_fields:
-        query_params["sysparm_fields"] = sysparm_fields
+    if guard.fields:
+        query_params["sysparm_fields"] = guard.fields
     query_params.update(response_format_params(response_format))
-    query_params.update(display_value_params(display_value))
+    query_params.update(display_value_params(guard.display_value))
 
     response = make_sn_request("GET", url, config.timeout, params=query_params)
     data = parse_json_response(response, url)
     result = result_rows(data)
-    warning = list_warning(class_name, fields, query_names, unknown, result)
+    warnings = [
+        guard.apply(result, query),
+        list_warning(class_name, fields, query_names, unknown, result),
+    ]
+    warning = " ".join(text for text in warnings if text)
     drop_added_fields(result, added)
     payload: CIList = {"count": len(result), "class": class_name, "records": result}
     if warning:
@@ -90,10 +99,11 @@ def get_ci(
     config = get_config()
 
     url = build_url(config.api_url, "table", class_name, sys_id)
-    params = display_value_params(display_value)
+    guard = Guard(class_name, None, display_value)
+    params = display_value_params(guard.display_value)
     response = make_sn_request("GET", url, config.timeout, params=params or None)
     data = parse_json_response(response, url)
-    return data.get("result", {})
+    return guarded_record(guard, data)
 
 
 @mcp.tool(tags={"write", "cmdb"}, annotations=annotations.CREATE)
@@ -105,13 +115,12 @@ def create_ci(
     class_name: Annotated[str, Field(description="CMDB class name")] = "cmdb_ci",
 ) -> Dict[str, Any]:
     """Create a new CMDB configuration item"""
+    check_property_write(class_name, data, update=False)
     config = get_config()
 
     url = build_url(config.api_url, "table", class_name)
     response = make_sn_request("POST", url, config.timeout, json_data=data)
-    resp_data = parse_json_response(response, url)
-    result = resp_data.get("result", {})
-    return {"sys_id": result.get("sys_id"), "record": result}
+    return written_record(class_name, parse_json_response(response, url))
 
 
 @mcp.tool(tags={"write", "cmdb"}, annotations=annotations.UPDATE)
@@ -121,13 +130,12 @@ def update_ci(
     class_name: Annotated[str, Field(description="CMDB class name")] = "cmdb_ci",
 ) -> Dict[str, Any]:
     """Update a CMDB configuration item"""
+    check_property_write(class_name, data, update=True)
     config = get_config()
 
     url = build_url(config.api_url, "table", class_name, sys_id)
     response = make_sn_request("PATCH", url, config.timeout, json_data=data)
-    resp_data = parse_json_response(response, url)
-    result = resp_data.get("result", {})
-    return {"sys_id": result.get("sys_id"), "record": result}
+    return written_record(class_name, parse_json_response(response, url))
 
 
 @mcp.tool(tags={"read", "cmdb"}, annotations=annotations.READ)

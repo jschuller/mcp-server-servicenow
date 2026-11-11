@@ -6,9 +6,40 @@ from typing import Dict, Optional, Tuple
 
 import requests
 
+from servicenow_mcp.utils.causes import cause_chain
 from servicenow_mcp.utils.config import AuthConfig, AuthType
 
 logger = logging.getLogger(__name__)
+
+
+class AuthError(ValueError):
+    """Credentials could not be prepared, or a token request was refused.
+
+    Raised only by this module, with text it wrote itself, so the text may be
+    shown and logged. A requests exception raised here is not one of these:
+    its text can quote the token endpoint's answer.
+    """
+
+
+def _token_error(response: requests.Response) -> str:
+    """What a token endpoint refused with: the OAuth ``error`` and
+    ``error_description`` of its JSON answer. Any other body (an HTML page from
+    a hibernating instance, say) is described, never quoted: this text goes
+    into tool errors and logs.
+    """
+    try:
+        body = response.json()
+    except ValueError:
+        body = None
+    if isinstance(body, dict):
+        said = [
+            body[key][:200]
+            for key in ("error", "error_description")
+            if isinstance(body.get(key), str) and body[key]
+        ]
+        if said:
+            return ": ".join(said)
+    return f"(a body of {len(response.text or '')} characters, not an OAuth error, not shown)"
 
 
 class AuthManager:
@@ -36,7 +67,7 @@ class AuthManager:
 
         if self.config.type == AuthType.BASIC:
             if not self.config.basic:
-                raise ValueError("Basic auth configuration is required")
+                raise AuthError("Basic auth configuration is required")
             auth_str = f"{self.config.basic.username}:{self.config.basic.password}"
             encoded = base64.b64encode(auth_str.encode()).decode()
             headers["Authorization"] = f"Basic {encoded}"
@@ -48,7 +79,7 @@ class AuthManager:
 
         elif self.config.type == AuthType.API_KEY:
             if not self.config.api_key:
-                raise ValueError("API key configuration is required")
+                raise AuthError("API key configuration is required")
             headers[self.config.api_key.header_name] = self.config.api_key.api_key
 
         return headers
@@ -61,13 +92,13 @@ class AuthManager:
         password and refresh grants keep HTTP Basic client authentication.
         """
         if not self.config.oauth:
-            raise ValueError("OAuth configuration is required")
+            raise AuthError("OAuth configuration is required")
         oauth_config = self.config.oauth
 
         token_url = oauth_config.token_url
         if not token_url:
             if not self.instance_url:
-                raise ValueError("Instance URL is required for OAuth authentication")
+                raise AuthError("Instance URL is required for OAuth authentication")
             token_url = f"{self.instance_url}/oauth_token.do"
 
         headers = {"Content-Type": "application/x-www-form-urlencoded"}
@@ -97,7 +128,7 @@ class AuthManager:
         except ValueError:
             token_data = None
         if not isinstance(token_data, dict) or not token_data.get("access_token"):
-            raise ValueError(
+            raise AuthError(
                 "OAuth token endpoint answered 200 without an access_token; "
                 "check the client id/secret and that the instance is awake"
             )
@@ -109,7 +140,7 @@ class AuthManager:
         """Get an OAuth token: the password grant with user credentials, else
         the client credentials grant."""
         if not self.config.oauth:
-            raise ValueError("OAuth configuration is required")
+            raise AuthError("OAuth configuration is required")
         oauth_config = self.config.oauth
         token_url, headers, client_fields = self._token_endpoint()
 
@@ -132,8 +163,9 @@ class AuthManager:
                 "glide.oauth.inbound.client.credential.grant_type.enabled=true and an "
                 "OAuth Application User on the client record)"
             )
-        raise ValueError(
-            f"Failed to get OAuth token: {response.status_code} {response.text}{hint}"
+        raise AuthError(
+            f"Failed to get OAuth token: {response.status_code} "
+            f"{_token_error(response)}{hint}"
         )
 
     def refresh_token(self) -> None:
@@ -168,9 +200,10 @@ class AuthManager:
                     grant,
                 )
             except (requests.RequestException, ValueError) as e:
+                # A library's own text can quote the token endpoint's answer.
                 logger.warning(
                     "OAuth refresh grant errored (%s); requesting a new %s grant",
-                    e,
+                    e if isinstance(e, AuthError) else cause_chain(e),
                     grant,
                 )
             # The held refresh token is dead; a new grant may store a new one.

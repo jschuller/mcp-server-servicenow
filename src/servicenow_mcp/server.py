@@ -9,6 +9,7 @@ from fastmcp import FastMCP
 
 from servicenow_mcp import __version__
 from servicenow_mcp.auth.auth_manager import AuthManager
+from servicenow_mcp.middleware.api_errors import ApiErrorMiddleware
 from servicenow_mcp.middleware.audit import TRUNCATION_SUFFIX, AuditMiddleware
 from servicenow_mcp.middleware.policy import PolicyMiddleware
 from servicenow_mcp.middleware.read_only_identity import ReadOnlyIdentityMiddleware
@@ -97,11 +98,13 @@ SERVER_INSTRUCTIONS = render_instructions()
 
 mcp = FastMCP("servicenow-mcp", version=__version__, instructions=SERVER_INSTRUCTIONS)
 # The first middleware added is the outermost. Audit wraps everything so policy
-# denials and truncated responses are recorded; policy runs before the tool,
+# denials and truncated responses are recorded; the API-error logger sits inside
+# it, so the audit line still sees the error; policy runs before the tool,
 # then the snc_read_only check hides or refuses write tools; the response
 # limiter stays innermost. Ours read the config lazily per call and no-op until
 # init_services() has run.
 mcp.add_middleware(AuditMiddleware())
+mcp.add_middleware(ApiErrorMiddleware())
 mcp.add_middleware(PolicyMiddleware())
 mcp.add_middleware(ReadOnlyIdentityMiddleware())
 mcp.add_middleware(
@@ -160,11 +163,17 @@ def make_sn_request(
     In read-only mode (``--read-only``) any non-GET request is refused here as
     well, so a future tool that forgets its ``write`` tag cannot mutate data.
     """
-    from servicenow_mcp.utils.http import ServiceNowAPIError, api_request
+    from servicenow_mcp.utils.http import (
+        ServiceNowAPIError,
+        api_request,
+        error_target,
+    )
 
     if _config is not None and _config.read_only and method.upper() != "GET":
         raise ServiceNowAPIError(
-            f"Server is in read-only mode (--read-only); refusing {method.upper()} {url}"
+            "Server is in read-only mode (--read-only); "
+            f"refusing {method.upper()} {error_target(url)}",
+            details={"kind": "read_only", "method": method.upper()},
         )
 
     bearer = get_sn_bearer_token()

@@ -64,8 +64,9 @@ AGGREGATE_REFUSED_MOCK = (
     "Authentication failed (401). "
     f"{api_key_401_hint('GET', f'{INSTANCE}/api/now/stats/')} "
     f"URL: {INSTANCE}/api/now/stats/{{{{input.table_name}}}} | "
-    'Response: {"error":{"message":"User is not authenticated",'
-    '"detail":"Required to provide Auth information"},"status":"failure"}\n'
+    "ServiceNow error: User is not authenticated: "
+    "Required to provide Auth information | "
+    "Headers: {'X-Is-Logged-In': 'false', 'X-Transaction-ID': '0a1b2c3d4e5f'}\n"
 )
 
 SCHEMA_REFUSED_MOCK = (
@@ -73,9 +74,9 @@ SCHEMA_REFUSED_MOCK = (
     "Access denied (403). The user may lack permissions for this API; roles per tool: "
     "https://github.com/jschuller/mcp-server-servicenow/blob/main/docs/tools.md#roles. "
     f"URL: {INSTANCE}/api/now/table/sys_dictionary | "
-    'Response: {"error":{"message":"Insufficient rights to query records",'
-    '"detail":"Field(s) present in the query do not have permission to be read"},'
-    '"status":"failure"}\n'
+    "ServiceNow error: Insufficient rights to query records: "
+    "Field(s) present in the query do not have permission to be read | "
+    "Headers: {'X-Is-Logged-In': 'true', 'X-Transaction-ID': '6f7e8d9c0b1a'}\n"
 )
 
 CURRENT_USER_MOCK = (

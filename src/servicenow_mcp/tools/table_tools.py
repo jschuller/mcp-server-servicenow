@@ -14,6 +14,13 @@ from servicenow_mcp.server import get_config, make_sn_request, mcp
 from servicenow_mcp.tools import annotations
 from servicenow_mcp.tools.results import RecordList
 from servicenow_mcp.utils.http import build_url, parse_json_response, result_rows
+from servicenow_mcp.utils.records import record_result, stats_result
+from servicenow_mcp.utils.redaction import (
+    Guard,
+    check_aggregate,
+    check_property_write,
+    scrub,
+)
 from servicenow_mcp.utils.user import has_role
 
 logger = logging.getLogger(__name__)
@@ -414,6 +421,28 @@ def history_warning(
     )
 
 
+def guarded_record(guard: Guard, data: Any) -> Dict[str, Any]:
+    """A single-record answer with credential-type property values withheld.
+
+    The record is the whole result, so there is no ``warning`` beside it: the
+    marker in the field says what happened.
+    """
+    record = record_result(data)
+    guard.apply([record])
+    return record
+
+
+def written_record(table_name: str, data: Any) -> Dict[str, Any]:
+    """The result of a create or update: the record as the instance echoes it,
+    with credential-type property values withheld and a ``warning`` if so."""
+    record = record_result(data)
+    warning = Guard(table_name).apply([record])
+    payload = {"sys_id": record.get("sys_id"), "record": record}
+    if warning:
+        payload["warning"] = warning
+    return payload
+
+
 @mcp.tool(tags={"read", "table"}, annotations=annotations.READ)
 def list_records(
     table_name: Annotated[
@@ -450,21 +479,23 @@ def list_records(
     }
     query_names, unknown = query_field_names(query)
     sysparm_fields, added = fields_with_query_fields(fields, query_names)
+    guard = Guard(table_name, sysparm_fields, display_value)
     if query:
         query_params["sysparm_query"] = query
-    if sysparm_fields:
-        query_params["sysparm_fields"] = sysparm_fields
+    if guard.fields:
+        query_params["sysparm_fields"] = guard.fields
     if order_by:
         query_params["sysparm_query"] = _add_order_clause(
             query_params.get("sysparm_query", ""), order_by
         )
     query_params.update(response_format_params(response_format))
-    query_params.update(display_value_params(display_value))
+    query_params.update(display_value_params(guard.display_value))
 
     response = make_sn_request("GET", url, config.timeout, params=query_params)
     data = parse_json_response(response, url)
     result = result_rows(data)
     warnings = [
+        guard.apply(result, query),
         list_warning(table_name, fields, query_names, unknown, result),
         history_warning(table_name, result, offset, config),
     ]
@@ -496,14 +527,15 @@ def get_record(
     config = get_config()
 
     url = build_url(config.api_url, "table", table_name, sys_id)
+    guard = Guard(table_name, fields, display_value)
     query_params: Dict[str, str] = {}
-    if fields:
-        query_params["sysparm_fields"] = fields
-    query_params.update(display_value_params(display_value))
+    if guard.fields:
+        query_params["sysparm_fields"] = guard.fields
+    query_params.update(display_value_params(guard.display_value))
 
     response = make_sn_request("GET", url, config.timeout, params=query_params)
     data = parse_json_response(response, url)
-    return data.get("result", {})
+    return guarded_record(guard, data)
 
 
 @mcp.tool(tags={"write", "table"}, annotations=annotations.CREATE)
@@ -514,13 +546,12 @@ def create_record(
     ],
 ) -> Dict[str, Any]:
     """Create a new record in any ServiceNow table"""
+    check_property_write(table_name, data, update=False)
     config = get_config()
 
     url = build_url(config.api_url, "table", table_name)
     response = make_sn_request("POST", url, config.timeout, json_data=data)
-    resp_data = parse_json_response(response, url)
-    result = resp_data.get("result", {})
-    return {"sys_id": result.get("sys_id"), "record": result}
+    return written_record(table_name, parse_json_response(response, url))
 
 
 @mcp.tool(tags={"write", "table"}, annotations=annotations.UPDATE)
@@ -532,13 +563,12 @@ def update_record(
     ],
 ) -> Dict[str, Any]:
     """Update an existing record in a ServiceNow table"""
+    check_property_write(table_name, data, update=True)
     config = get_config()
 
     url = build_url(config.api_url, "table", table_name, sys_id)
     response = make_sn_request("PATCH", url, config.timeout, json_data=data)
-    resp_data = parse_json_response(response, url)
-    result = resp_data.get("result", {})
-    return {"sys_id": result.get("sys_id"), "record": result}
+    return written_record(table_name, parse_json_response(response, url))
 
 
 @mcp.tool(tags={"write", "table"}, annotations=annotations.DELETE)
@@ -607,6 +637,14 @@ def aggregate_records(
     list_records instead: the same query, fields="sys_id", limit=1000, paging
     with offset.
     """
+    check_aggregate(
+        table_name,
+        group_by=group_by,
+        min_fields=min_fields,
+        max_fields=max_fields,
+        avg_fields=avg_fields,
+        sum_fields=sum_fields,
+    )
     config = get_config()
 
     url = build_url(config.api_url, "stats", table_name)
@@ -632,7 +670,8 @@ def aggregate_records(
 
     response = make_sn_request("GET", url, config.timeout, params=query_params)
     data = parse_json_response(response, url)
-    result = data.get("result", {})
+    # A group key or a minimum can be a whole field, such as a payload.
+    result = scrub(stats_result(data))[0]
     # Stats API returns a list when group_by is used, but a dict otherwise.
     # FastMCP requires tool return values to be dicts.
     if isinstance(result, list):

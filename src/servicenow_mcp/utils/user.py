@@ -17,7 +17,7 @@ from __future__ import annotations
 import re
 from typing import Any, Dict, List, Optional
 
-from servicenow_mcp.utils.http import build_url, parse_json_response
+from servicenow_mcp.utils.http import build_url, parse_json_response, result_rows
 
 # Wire name -> sys_user column, for the keys every caller gets.
 STANDARD_KEYS = {
@@ -60,7 +60,7 @@ def fetch_current_user(
         "sysparm_fields": ",".join(columns),
     }
     response = make_sn_request("GET", url, timeout, params=params)
-    rows = parse_json_response(response, url).get("result", [])
+    rows = result_rows(parse_json_response(response, url))
     if not rows:
         return {}
     row = rows[0]
@@ -90,7 +90,7 @@ def fetch_direct_roles(api_url: str, timeout: int) -> Optional[List[str]]:
     }
     try:
         response = make_sn_request("GET", url, timeout, params=params)
-        rows = parse_json_response(response, url).get("result", [])
+        rows = result_rows(parse_json_response(response, url))
     except Exception:
         return None
     names = {row.get("role.name") for row in rows if isinstance(row, dict)}

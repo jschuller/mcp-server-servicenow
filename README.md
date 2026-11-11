@@ -204,6 +204,7 @@ Per-tool detail: [roles per tool](https://github.com/jschuller/mcp-server-servic
 - **Read-only mode** — `--read-only` hides the 7 write tools and refuses any non-GET request.
 - **Read-only identities see read-only tools** — when the user holds `snc_read_only` the write tools are hidden without a flag. A convenience, not a control: ServiceNow refuses those writes anyway.
 - **Table scope lives in ServiceNow** — ACLs and REST API access policies on the integration user decide which tables and fields it can read, dot-walks included.
+- **Credential-type property values are withheld** — the value of a `password` or `password2` system property is replaced with a marker in every tool result, and an unreadable type counts as one. Withheld is not the same as impossible to infer: [what is covered, and the limits](https://github.com/jschuller/mcp-server-servicenow/blob/main/docs/tools.md#credential-type-system-properties).
 - **Audit log** — one JSON line per tool call or resource read: who, which table, outcome; written fields by name only, never their values, and secret-like values in queries masked.
 - **Your client approves writes** — every tool is annotated read-only or destructive, so Claude Code, Copilot and Codex ask before a write. Clients that don't ask (opencode by default, pi) need a read-only identity, or `--read-only` when the identity can write.
 

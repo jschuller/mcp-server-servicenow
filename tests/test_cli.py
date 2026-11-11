@@ -513,6 +513,104 @@ _OAUTH_ARGV = [
 ]
 
 
+class TestCredentialHeaderValues:
+    """A key that cannot be an HTTP header is refused at start, never repeated."""
+
+    _ARGV = ["x", "--instance-url", "dev1", "--auth-type", "api_key", "--api-key"]
+
+    @pytest.mark.parametrize(
+        "bad",
+        ["key-canary\r", "key-canary\n", " key-canary", "key-canary ", "key\x7fcanary"],
+    )
+    def test_api_key_with_a_line_ending_or_control_character(self, monkeypatch, bad):
+        monkeypatch.setattr("sys.argv", [*self._ARGV, bad])
+        with pytest.raises(ValueError) as refused:
+            cli.create_config(cli.parse_args())
+        assert str(refused.value).startswith("SERVICENOW_API_KEY (--api-key) holds ")
+        assert "canary" not in str(refused.value)
+
+    def test_api_key_from_the_environment_is_trimmed(self, monkeypatch):
+        """An environment value loses its surrounding white space when it is read."""
+        monkeypatch.setenv("SERVICENOW_API_KEY", "key-from-env\r\n")
+        monkeypatch.setattr("sys.argv", self._ARGV[:-1])
+        config = cli.create_config(cli.parse_args())
+        assert config.auth.api_key.api_key == "key-from-env"
+
+    def test_header_name(self, monkeypatch):
+        monkeypatch.setattr(
+            "sys.argv", [*self._ARGV, "k", "--api-key-header", "x-key: canary"]
+        )
+        with pytest.raises(ValueError) as refused:
+            cli.create_config(cli.parse_args())
+        assert str(refused.value) == (
+            "SERVICENOW_API_KEY_HEADER (--api-key-header) is not a valid HTTP "
+            "header name"
+        )
+
+    def test_a_good_key_and_header_pass(self, monkeypatch):
+        monkeypatch.setattr(
+            "sys.argv", [*self._ARGV, "now_Ab12-_.~", "--api-key-header", "X-Key_1"]
+        )
+        config = cli.create_config(cli.parse_args())
+        assert config.auth.api_key.header_name == "X-Key_1"
+
+    def test_main_reports_it_as_a_configuration_error(self, monkeypatch, caplog):
+        monkeypatch.setattr("sys.argv", [*self._ARGV, "key-canary\r"])
+        with caplog.at_level("ERROR"), pytest.raises(SystemExit) as stopped:
+            cli.main()
+        assert stopped.value.code == 1
+        assert "Configuration error: SERVICENOW_API_KEY (--api-key)" in caplog.text
+        assert "canary" not in caplog.text
+
+
+class TestLibraryLogging:
+    """urllib3 and httpx2 log request lines with their query strings on their own."""
+
+    @pytest.fixture(autouse=True)
+    def _restore(self):
+        import logging
+
+        loggers = [logging.getLogger(name) for name in cli.LIBRARY_LOG_LEVELS]
+        levels = [logger.level for logger in loggers]
+        yield
+        for logger, level in zip(loggers, levels):
+            logger.setLevel(level)
+
+    def test_quiet_by_default_and_back_under_debug(self):
+        import logging
+
+        cli.configure_library_logging(debug=False)
+        # urllib3's "Failed to parse headers (url=...)" is a WARNING; httpx2's
+        # "HTTP Request: GET <url>" is INFO.
+        assert not logging.getLogger("urllib3.connection").isEnabledFor(logging.WARNING)
+        assert not logging.getLogger("urllib3.connectionpool").isEnabledFor(
+            logging.WARNING
+        )
+        assert not logging.getLogger("httpx2").isEnabledFor(logging.INFO)
+        cli.configure_library_logging(debug=True)
+        assert logging.getLogger("urllib3").level == logging.NOTSET
+        assert logging.getLogger("httpx2").level == logging.NOTSET
+
+    @pytest.mark.parametrize(("flag", "debug"), [([], False), (["--debug"], True)])
+    def test_main_applies_it_before_anything_runs(self, monkeypatch, flag, debug):
+        monkeypatch.setattr("sys.argv", ["x", *flag, "--check"])
+        monkeypatch.setattr(cli, "run_check", lambda args: 0)
+        with (
+            patch.object(cli, "configure_library_logging") as configured,
+            pytest.raises(SystemExit),
+        ):
+            cli.main()
+        configured.assert_called_once_with(debug)
+
+    def test_debug_help_says_what_it_prints(self, monkeypatch, capsys):
+        monkeypatch.setattr("sys.argv", ["x", "--help"])
+        with pytest.raises(SystemExit):
+            cli.parse_args()
+        text = " ".join(capsys.readouterr().out.split())
+        assert "full query string (filter values included)" in text
+        assert "do not use it with data you would not put in a log" in text
+
+
 class TestOAuthGrantSelection:
     def test_no_user_credentials_selects_client_credentials(self, monkeypatch):
         monkeypatch.setattr("sys.argv", list(_OAUTH_ARGV))

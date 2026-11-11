@@ -10,6 +10,7 @@ from servicenow_mcp.auth.auth_manager import AuthManager
 from servicenow_mcp.utils.http import (
     ServiceNowAPIError,
     api_request,
+    local_error_detail,
     parse_json_response,
 )
 
@@ -191,10 +192,10 @@ class TestApiRequest:
     def test_403_includes_response_body(
         self, mock_request: MagicMock, basic_auth_manager: AuthManager
     ) -> None:
-        """403 error should include the response body for diagnosis (e.g. WebServicePolicyValidator)."""
+        """A 403 includes ServiceNow's own error message (e.g. WebServicePolicyValidator)."""
         mock_request.return_value = _mock_response(
             403,
-            text='{"error":{"message":"Access denied by WebServicePolicyValidator"}}',
+            {"error": {"message": "Access denied by WebServicePolicyValidator"}},
         )
         with pytest.raises(ServiceNowAPIError, match="WebServicePolicyValidator"):
             api_request("GET", URL, basic_auth_manager)
@@ -203,7 +204,7 @@ class TestApiRequest:
     def test_403_includes_diagnostic_headers(
         self, mock_request: MagicMock, basic_auth_manager: AuthManager
     ) -> None:
-        """403 error should include diagnostic ServiceNow headers when present."""
+        """A local reader's 403 includes ServiceNow's diagnostic headers when present."""
         mock_request.return_value = _mock_response(
             403,
             text="Forbidden",
@@ -213,7 +214,8 @@ class TestApiRequest:
             },
         )
         with pytest.raises(ServiceNowAPIError, match="X-Transaction-ID.*abc123def"):
-            api_request("GET", URL, basic_auth_manager)
+            with local_error_detail():
+                api_request("GET", URL, basic_auth_manager)
 
     @patch("servicenow_mcp.utils.http.requests.request")
     def test_404_raises(
@@ -229,10 +231,10 @@ class TestApiRequest:
     def test_404_includes_response_body(
         self, mock_request: MagicMock, basic_auth_manager: AuthManager
     ) -> None:
-        """404 error should include the response body for diagnosis."""
+        """A 404 includes ServiceNow's own error message for diagnosis."""
         mock_request.return_value = _mock_response(
             404,
-            text='{"error":{"message":"Table \'nonexistent\' not found"}}',
+            {"error": {"message": "Table 'nonexistent' not found"}},
         )
         with pytest.raises(ServiceNowAPIError, match="Table.*nonexistent.*not found"):
             api_request("GET", URL, basic_auth_manager)

@@ -14,6 +14,8 @@ from dotenv import load_dotenv
 
 from servicenow_mcp.utils.config import (
     DEFAULT_API_KEY_HEADER,
+    HEADER_NAME,
+    header_value_problem,
     AuthConfig,
     AuthType,
     BasicAuthConfig,
@@ -89,6 +91,12 @@ def parse_args() -> argparse.Namespace:
         "--debug",
         action="store_true",
         default=_env_bool("SERVICENOW_DEBUG", False),
+        help=(
+            "Debug logging for troubleshooting. The HTTP libraries then log every "
+            "request line with its full query string (filter values included) and "
+            "parts of a malformed answer: do not use it with data you would not "
+            "put in a log"
+        ),
     )
     parser.add_argument(
         "--timeout",
@@ -332,6 +340,21 @@ def normalize_instance_url(raw: str) -> str:
     return f"{parts.scheme.lower()}://{host}{port}"
 
 
+# Loggers of the HTTP libraries, and the level each gets unless --debug is on.
+# At their own defaults they print request lines: urllib3 warns "Failed to
+# parse headers (url=...?sysparm_query=...)" with the unparsed bytes of a
+# malformed answer, and httpx2 logs "HTTP Request: GET <url with its query>"
+# at INFO for every token check in OAuth-proxy mode. Neither says anything at
+# the level set here that names a URL.
+LIBRARY_LOG_LEVELS = {"urllib3": logging.ERROR, "httpx2": logging.WARNING}
+
+
+def configure_library_logging(debug: bool) -> None:
+    """Keep the HTTP libraries from logging request lines, unless ``--debug``."""
+    for name, level in LIBRARY_LOG_LEVELS.items():
+        logging.getLogger(name).setLevel(logging.NOTSET if debug else level)
+
+
 def create_config(
     args: argparse.Namespace, *, require_sn_creds: bool = True
 ) -> ServerConfig:
@@ -402,6 +425,18 @@ def create_config(
     elif auth_type == AuthType.API_KEY:
         if not args.api_key:
             raise ValueError("API key required for api_key auth")
+        # requests refuses such a header too, with an error that quotes it.
+        problem = header_value_problem(args.api_key)
+        if problem:
+            raise ValueError(
+                f"SERVICENOW_API_KEY (--api-key) holds {problem}; set it again "
+                "without it (the value is not shown)"
+            )
+        if not HEADER_NAME.match(args.api_key_header or ""):
+            raise ValueError(
+                "SERVICENOW_API_KEY_HEADER (--api-key-header) is not a valid HTTP "
+                "header name"
+            )
         auth_config = AuthConfig(
             type=auth_type,
             api_key=ApiKeyConfig(api_key=args.api_key, header_name=args.api_key_header),
@@ -615,6 +650,7 @@ def main() -> None:
 
         if args.debug:
             logging.getLogger().setLevel(logging.DEBUG)
+        configure_library_logging(args.debug)
 
         if getattr(args, "eval_mocks", None):
             sys.exit(run_eval_mocks(args.eval_mocks))

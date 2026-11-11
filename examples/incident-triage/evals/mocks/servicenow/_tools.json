@@ -662,7 +662,7 @@
     {
       "name": "get_system_properties",
       "title": "Get System Properties",
-      "description": "Query ServiceNow system properties",
+      "description": "Query ServiceNow system properties: name, value, description and type.\n\nThe value of a credential-type property (type password or password2) is\nnever returned: a marker takes its place, and warning names the property.",
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
@@ -699,6 +699,9 @@
               "additionalProperties": true,
               "type": "object"
             }
+          },
+          "warning": {
+            "type": "string"
           },
           "truncated": {
             "type": "boolean"
