@@ -13,7 +13,52 @@
 - `tests/test_contract.py` fails when either drifts from the code; `scripts/contract.py --write`
   regenerates both.
 
+### Security
+- **The value of a credential-type system property is no longer returned.** `sys_properties.value`
+  is a string column, and whether it holds a credential depends on the row's `type`. For an
+  identity that can read the table (`admin` on a base instance), `get_system_properties`,
+  `list_records` and `get_record` passed on the stored value of `password` and `password2`
+  properties as the instance returned it. The server now replaces such a value with the fixed
+  marker `[redacted: system property value withheld as credential-type]`, for every
+  `display_value` and whatever `fields=` asks for, and the list tools name the properties in
+  `warning`. There is no switch. If an earlier version ran with an identity that can read
+  `sys_properties`, those values, as stored, may have reached the client and the model:
+  rotate what matters.
+  - A type that is missing from the row (an ACL can hide it), empty or not a string counts as
+    credential-type: the value is withheld and the `warning` says the type did not come back.
+    An empty value is returned empty, so "is it set" stays answerable.
+  - The same rule covers the other ways to the same value: `list_ci` and `get_ci` with
+    `class_name="sys_properties"`, a dot-walk from another table (`fields="property.value"`),
+    the record that `create_record`, `update_record`, `create_ci` and `update_ci` echo back,
+    the old and new values of `sys_audit` and `sys_history_line` rows that record a change to
+    `sys_properties.value` (every property: these rows carry no type), and a field that holds
+    a property's record XML, such as an update set payload.
+  - `aggregate_records` refuses `group_by` and aggregates on a field whose values a row read
+    would withhold (`value` on `sys_properties`, a dot-walk to a `value` field, the old and new
+    values of `sys_audit` and `sys_history_line`), since the Stats API returns bare values.
+    `get_current_user` refuses a dot-walk to a `value` field in `fields=`.
+  - `update_record` and `update_ci` refuse to set the `type` of a `sys_properties` record to
+    anything but a credential type: retyped, the stored value would be an ordinary one.
+  - `servicenow://instance` reads its four properties with their type and reports one that is
+    typed as a credential under `unavailable`.
+  - The audit line masks whatever a query on `sys_properties` compares `value` with.
+  - Limits, stated in [docs/tools.md](docs/tools.md#credential-type-system-properties): withheld
+    is not the same as impossible to infer (a filter on `value` still shows which properties
+    match, so an identity that can read the table can work a value out with enough queries;
+    the `warning` says so when a filter matches a withheld row); only the type decides, so a
+    secret kept in a `string` property is returned; credential fields of other tables are
+    returned as the instance returns them; an identity that can write as `admin` has other
+    ways to a value.
+
 ### Changed
+- `get_system_properties` returns each property's `type` beside `name`, `value` and
+  `description`, and its result can carry a `warning` (new in its `outputSchema`; its
+  description says that credential-type values are never returned). `docs/contract.json`, the
+  generated block of `docs/tools.md` and the eval mocks' `_tools.json` carry that one change.
+- On `sys_properties`, `sys_audit` and `sys_history_line`, and for a `fields=` with a dot-walk
+  to a `value` field, the server asks the instance for the fields that say what a row is and
+  removes them from the rows again, and reads `display_value="true"` as `"all"` and returns the
+  display form: a display label is not the stored type. The rows have the shape they had.
 - **FastMCP is capped below 4.3** (`fastmcp>=4.1.3,<4.3`, was `<5`). The server imports
   FastMCP's 4.1 skills provider on every start, with the skills on or off, and FastMCP
   4.2.0a3's release notes say the 4.1 skills providers warn "ahead of removal in 4.3". Without

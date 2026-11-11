@@ -176,7 +176,9 @@ def _instance(monkeypatch, props, user=None, props_error=None) -> dict:
     if props_error:
         mock = Mock(side_effect=ServiceNowAPIError(props_error))
     else:
-        mock = Mock(return_value=sn_response({"result": props}))
+        # The resource asks for each property's type too: none is a credential.
+        typed = [{"type": "string", **prop} for prop in props]
+        mock = Mock(return_value=sn_response({"result": typed}))
     monkeypatch.setattr(resources, "make_sn_request", mock)
     caller = {
         "user_name": "svc.reader",

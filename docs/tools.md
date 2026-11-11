@@ -9,12 +9,12 @@ The list tools (`list_records`, `list_ci`, `get_ci_relationships`, `get_system_p
 ### Table API (6)
 | Tool | Description |
 |------|-------------|
-| `list_records` | List records from any table with filtering, field selection and pagination. Adds a `warning` when a requested field is missing from every row (it doesn't exist or an ACL hides it), and when `query=` filters on such a field or on a term that starts with an uppercase letter (a label like `Name`; columns are lowercase): the instance ignores those conditions, so the rows may be unfiltered (a dot-walk can also be missing because only the referenced records are unreadable). The fields in `query=` are checked without adding them to the returned rows; a dot-walk in `query=` is checked whole only when `fields=` is given, and at most 50 query fields are checked. Such terms are counted, never quoted, and a term the server can't parse, or a misspelled operator (`name Like x`), is not detected; field names are echoed in field-name characters only. `response_format="concise"` returns reference fields as bare sys_ids, without their instance links. `display_value="true"` returns labels in place of sys_ids and choice values, `"all"` returns `{display_value, value}` per field, and a `display_note` says that display dates are in this identity's time zone while stored values are UTC. 0 rows from `sys_journal_field` or `sys_audit` add a `warning` unless the identity visibly holds `admin` or `audit_viewer`: the instance can hide those rows instead of refusing |
-| `get_record` | Get a single record by sys_id. Takes `display_value` like `list_records` |
-| `create_record` | Create a record in any table |
-| `update_record` | Update a record |
+| `list_records` | List records from any table with filtering, field selection and pagination. Adds a `warning` when a requested field is missing from every row (it doesn't exist or an ACL hides it), and when `query=` filters on such a field or on a term that starts with an uppercase letter (a label like `Name`; columns are lowercase): the instance ignores those conditions, so the rows may be unfiltered (a dot-walk can also be missing because only the referenced records are unreadable). The fields in `query=` are checked without adding them to the returned rows; a dot-walk in `query=` is checked whole only when `fields=` is given, and at most 50 query fields are checked. Such terms are counted, never quoted, and a term the server can't parse, or a misspelled operator (`name Like x`), is not detected; field names are echoed in field-name characters only. `response_format="concise"` returns reference fields as bare sys_ids, without their instance links. `display_value="true"` returns labels in place of sys_ids and choice values, `"all"` returns `{display_value, value}` per field, and a `display_note` says that display dates are in this identity's time zone while stored values are UTC. 0 rows from `sys_journal_field` or `sys_audit` add a `warning` unless the identity visibly holds `admin` or `audit_viewer`: the instance can hide those rows instead of refusing. The value of a credential-type system property is withheld and named in the `warning`: [Credential-type system properties](#credential-type-system-properties) |
+| `get_record` | Get a single record by sys_id. Takes `display_value` like `list_records`, and withholds the same values (a marker in the field; a single record has no `warning`) |
+| `create_record` | Create a record in any table. The record echoed back withholds the same values, with a `warning` |
+| `update_record` | Update a record. The echo is treated like `create_record`'s |
 | `delete_record` | Delete a record by sys_id |
-| `aggregate_records` | COUNT, AVG, MIN, MAX, SUM with GROUP BY and HAVING via the Stats API. `display_value="true"` returns group-by labels in place of sys_ids and choice values, `"all"` returns both. `having` takes `aggregate^field^operator^value`, such as `count^name^>^1` |
+| `aggregate_records` | COUNT, AVG, MIN, MAX, SUM with GROUP BY and HAVING via the Stats API. `display_value="true"` returns group-by labels in place of sys_ids and choice values, `"all"` returns both. `having` takes `aggregate^field^operator^value`, such as `count^name^>^1`. Refuses `group_by` and aggregates on a field whose values a row read would withhold (`value` on `sys_properties`, a dot-walk to a `value` field, the old and new values of `sys_audit` and `sys_history_line`): [Credential-type system properties](#credential-type-system-properties) |
 
 ### CMDB (5)
 | Tool | Description |
@@ -28,7 +28,7 @@ The list tools (`list_records`, `list_ci`, `get_ci_relationships`, `get_system_p
 ### System (4)
 | Tool | Description |
 |------|-------------|
-| `get_system_properties` | Query system properties |
+| `get_system_properties` | Query system properties: `name`, `value`, `description`, `type`. The value of a `password` or `password2` property is never returned: a marker takes its place and `warning` names the property ([Credential-type system properties](#credential-type-system-properties)) |
 | `get_current_user` | The authenticated user: name, email, sys_id, roles |
 | `get_table_schema` | Table data dictionary incl. inherited fields (`hierarchy`, per-field `defined_in`) |
 | `find_references` | Where-used for a table or one field: business rules, client scripts, UI policies (or their field actions), ACLs, script includes (text match) and reference fields. Names, sys_ids and flags only, never script or ACL bodies; a source this identity can't read is listed in `not_assessable` |
@@ -104,18 +104,48 @@ Each skill also exposes `skill://<name>/_manifest` (a JSON file list with SHA-25
 
 ## Safety rails
 
-All off by default except the audit log; flags and environment variables are in [configuration.md](configuration.md#safety-rails).
+All off by default except the audit log and the credential-type property rule, which has no switch; flags and environment variables are in [configuration.md](configuration.md#safety-rails).
 
-- `--read-only` hides the write tools from `tools/list` **and** refuses any non-GET request at the HTTP layer. It is the only guarantee the server itself gives.
+- `--read-only` hides the write tools from `tools/list` **and** refuses any non-GET request at the HTTP layer. It is the only guarantee the server itself gives about writes.
+- The value of a credential-type system property (`password`, `password2`) is withheld from every tool result: [Credential-type system properties](#credential-type-system-properties), with its limits.
 - When the identity holds `snc_read_only`, the write tools are hidden without any flag: ServiceNow would refuse them anyway, admin included. The server checks the caller's own `sys_user_has_role` rows once (5-second limit) for the configured account, or per token behind the OAuth proxy. This is a convenience, not a security control: if the check fails or times out, the write tools stay listed and ServiceNow refuses the write. One edge: `set_current_update_set` writes a `sys_user_preference` row, which `snc_read_only` may allow, but it is hidden with the other write tools.
 - Table names, sys_ids, field lists and `order_by` are always validated; `javascript:` in caller queries is limited to `gs.*` date helpers unless `--allow-js-queries`.
-- One JSON audit line per tool call or resource read. Written field values are never logged, only their names (`data_keys`); the encoded query is logged with password-, secret- and token-like values masked, so it can hold filter values such as names or emails:
+- One JSON audit line per tool call or resource read. Written field values are never logged, only their names (`data_keys`); the encoded query is logged with password-, secret- and token-like values masked (and, on `sys_properties`, whatever a term compares `value` with), so it can hold other filter values such as names or emails:
 
 ```json
 {"ts":"2026-08-22T19:04:11.512+00:00","run_id":"…","event":"tool_call","name":"update_record","user":"admin","auth_mode":"service-account","transport":"stdio","table":"incident","sys_id":"9d385017c611228701d22104cc95c371","data_keys":["state"],"tags":["table","write"],"outcome":"ok","duration_ms":212.4}
 ```
 
 **Who approves writes:** the MCP client. Claude Code and VS Code ask before a write tool unless you allowed it; Codex auto-runs only read-only tools; Antigravity asks before every MCP tool; opencode runs MCP tools without asking unless its `permission` config says `ask`, and pi has no approval prompts, so give those two `--read-only` or a read-only identity. ServiceNow's ACLs and `snc_read_only` remain the security boundary.
+
+### Credential-type system properties
+
+`sys_properties.value` is a string column: whether a row's value is a credential depends on the row's `type`. ServiceNow returns the stored value of a `password` or `password2` property to any identity that can read the table (`admin` on a base instance), with every `display_value`. The server does not pass those values on, and there is no switch for it. The value is replaced with one fixed marker, `[redacted: system property value withheld as credential-type]` (in both parts of a `{display_value, value}` object), whatever `fields=` and `display_value` the call used.
+
+| Where | What the server does |
+|---|---|
+| `get_system_properties`, and `list_records`, `get_record`, `list_ci`, `get_ci` on `sys_properties` | Withholds `value` when the type is `password` or `password2` (any type that starts with `password`). The list tools name the properties in `warning`; a single record carries only the marker |
+| A dot-walk from another table, such as `fields="property.value"` | Withholds it when the referenced record is a credential-type property |
+| `create_record`, `update_record`, `create_ci`, `update_ci` | Treats the record the instance echoes back the same way, and says so in `warning`. An update of a `sys_properties` record that sets `type` to anything but a credential type is refused: from then on the stored value would be an ordinary one |
+| `servicenow://instance` | Reads four fixed properties (the build and the default time zone). One that is typed as a credential is reported under `unavailable` |
+| `aggregate_records` | The Stats API returns group keys, minima and maxima as bare values, without the row that says what they are. So `group_by` and the aggregate field lists are refused when they name `value` on `sys_properties`, a dot-walk to any `value` field, or the old and new values of `sys_audit` and `sys_history_line`. Read the rows with `list_records` instead |
+| `sys_audit` (`oldvalue`, `newvalue`) and `sys_history_line` (`old`, `old_value`, `new`, `new_value`) | Withholds them on rows that record a change to `sys_properties.value`. These rows don't carry the property's type, so this applies to every property, not only credential-type ones; who changed it and when stay visible. A `sys_history_line` row names its table only through `set.table`, which a read without `fields=` doesn't return: there the old and new values of any table's `value` field are withheld, so pass `fields=` |
+| A field that holds a property's record XML, such as `sys_update_xml.payload` or `sys_update_version.payload` | Withholds the whole field when a property record in it has a `<type>` that is `password`, `password2`, empty or missing. Any text that contains `<sys_properties ...>` markup is read this way, a script or an article that quotes it included |
+
+- **The stored type decides.** When `fields=` leaves out the fields that say what a row is (`type`; `<reference>.type` and `<reference>.sys_class_name` for a dot-walk; `tablename` and `fieldname` on `sys_audit`; `set.table` and `field` on `sys_history_line`), or names them in another spelling, the server asks the instance for them as well and removes them from the rows again. A display label is not the stored type (`boolean` is labelled `true | false`), so on these tables `display_value="true"` is read from the instance as `"all"` and reduced to the display form before it is returned.
+- **An unreadable type fails closed.** If `type` is missing from a row (an ACL can hide it), empty, or not a string, the value is withheld and the `warning` says the type did not come back. The same holds for an audit row that doesn't say which table and field it records.
+- **Set or empty stays visible.** An empty value is returned empty, so a health check can still tell whether a credential is configured. The marker has one length, whatever it replaces.
+- **No result is logged.** The audit line never holds results. It does hold the caller's query: there, on `sys_properties`, whatever a term compares `value` with is masked; other filter text, and the first 200 characters of an error, are kept as before.
+
+**Limits.** "Not returned" is not "impossible to infer", and the rule covers system properties only:
+
+- A query that filters on `value` still shows which properties match, and `aggregate_records` still counts them. An identity that can read `sys_properties` can therefore work a value out with enough such queries, each of them in the audit log: this rule keeps values out of results, it does not make them secret from that identity. When a value filter matches a withheld row, the `warning` says that the match itself tells something about the value. The server does not refuse these filters: finding the properties that mention a host name is ordinary admin work, ordering by `value` and filters on a dot-walked or audited copy give the same kind of hint, and a refusal that covers only some of them would promise more than it keeps.
+- The rule covers what the server reads, not what an identity can do. One that can write to the instance as `admin` can change records that run script, and so reach a value in ways no read rule sees. Use a read-only identity where that matters.
+- Only the type decides. A secret kept in a `string` property is returned like any other string.
+- Credential fields of other tables (`oauth_entity`, `sys_auth_profile_basic`, `discovery_credentials` and the like) come back as the instance returns them. Keep the integration identity away from those tables with ACLs and REST API access policies.
+- A table that extends `sys_properties`, or a database view over it, is not recognised as holding properties.
+- A dot-walk is recognised by the referenced record's `sys_class_name` and `type`. If the instance returns the walked `value` but neither of those, the server can't tell the record from any other and returns it.
+- Copies of a value that the instance keeps in free text (a log line, an email, an attachment, XML inside another field's markup) are not recognised.
 
 ## What the model sees (generated)
 
@@ -135,7 +165,7 @@ Read from the server itself with the default settings (skills on, write tools se
 | `get_ci_relationships` | read | **sys_id**: string · relation_type: string · limit: integer = 100 · offset: integer = 0 | yes | Get relationships for a CMDB configuration item (parent and child) |
 | `get_current_user` | read | fields: string | no | Get the authenticated user's identity and directly assigned, active roles |
 | `get_record` | read | **table_name**: string · **sys_id**: string · fields: string · display_value: "false" \| "true" \| "all" = "false" | no | Get a single record from a ServiceNow table by sys_id. If this is refused (401) while list_records works, call list_records with query="sys_id=<sys_id>" and limit=1 instead. |
-| `get_system_properties` | read | query: string · limit: integer = 20 | yes | Query ServiceNow system properties |
+| `get_system_properties` | read | query: string · limit: integer = 20 | yes | Query ServiceNow system properties: name, value, description and type. The value of a credential-type property (type password or password2) is never returned: a marker takes its place, and warning names the property. |
 | `get_table_schema` | read | **table_name**: string · limit: integer = 200 · include_inherited: boolean = true | yes | Get the data dictionary (field definitions) for a ServiceNow table, including inherited fields |
 | `get_update_set` | read | **sys_id**: string | no | Get details of a specific update set by sys_id |
 | `list_ci` | read | class_name: string = "cmdb_ci" · query: string · fields: string · limit: integer = 20 · offset: integer = 0 · response_format: "concise" \| "detailed" = "detailed" · display_value: "false" \| "true" \| "all" = "false" | yes | List CMDB configuration items with optional class and query filtering |

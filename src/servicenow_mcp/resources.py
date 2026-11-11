@@ -33,6 +33,7 @@ from fastmcp.server.providers.skills import SkillsDirectoryProvider
 
 from servicenow_mcp.server import get_config, get_config_or_none, make_sn_request, mcp
 from servicenow_mcp.utils.http import build_url, parse_json_response, result_rows
+from servicenow_mcp.utils.redaction import PROPERTY_TABLE, REDACTED, Guard
 from servicenow_mcp.utils.schema import _reference_value, fetch_table_schema
 from servicenow_mcp.utils.user import fetch_current_user
 from servicenow_mcp.tools.update_set_tools import CURRENT_UPDATE_SET_PREF_QUERY
@@ -107,16 +108,20 @@ def instance_info() -> str:
 
     props: Dict[str, str] = {}
     props_error = ""
-    props_url = build_url(config.api_url, "table", "sys_properties")
+    props_url = build_url(config.api_url, "table", PROPERTY_TABLE)
+    # None of the four is a credential, but the type decides, here as anywhere.
+    guard = Guard(PROPERTY_TABLE, "name,value")
     props_params = {
         "sysparm_query": "nameIN" + ",".join(INSTANCE_PROPERTIES),
-        "sysparm_fields": "name,value",
+        "sysparm_fields": guard.fields,
         "sysparm_limit": 10,
     }
     try:
         resp = make_sn_request("GET", props_url, config.timeout, params=props_params)
-        for prop in result_rows(parse_json_response(resp, props_url)):
-            if isinstance(prop, dict) and isinstance(prop.get("name"), str):
+        rows = result_rows(parse_json_response(resp, props_url))
+        guard.apply(rows)
+        for prop in rows:
+            if isinstance(prop.get("name"), str) and prop.get("value") != REDACTED:
                 props[prop["name"]] = str(prop.get("value") or "")
     except Exception as exc:
         logger.debug("Failed to fetch system properties for instance resource")

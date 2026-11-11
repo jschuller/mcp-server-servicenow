@@ -11,11 +11,11 @@ mcp-server-servicenow is an open-source program that runs on your machine (or on
 ## What it keeps
 
 - **Nothing between runs** on your machine. An OAuth token is held in memory while the process runs. A shared HTTP deployment with OAuth keeps its users' tokens in FastMCP's encrypted token storage on that server ([deployment](deployment.md)).
-- **An audit log**, unless you turn it off: one JSON line per tool call or resource read, with the tool, the table, the record's sys_id, the encoded query (password-, secret- and token-like values masked, length capped), the names of the fields written but not their values, the outcome, the duration, and on failure the first 200 characters of the error (which can quote ServiceNow's response). Credentials never appear in it. It goes to stderr by default (your MCP client decides whether to keep it), to a file you name, or nowhere (`SERVICENOW_AUDIT_LOG=off`). See [configuration](configuration.md).
+- **An audit log**, unless you turn it off: one JSON line per tool call or resource read, with the tool, the table, the record's sys_id, the encoded query (password-, secret- and token-like values masked, on `sys_properties` whatever a filter compares `value` with, length capped), the names of the fields written but not their values, the outcome, the duration, and on failure the first 200 characters of the error (which can quote ServiceNow's response). Credentials never appear in it. It goes to stderr by default (your MCP client decides whether to keep it), to a file you name, or nowhere (`SERVICENOW_AUDIT_LOG=off`). See [configuration](configuration.md).
 
 ## What your AI client does with the results
 
-Records the server reads are returned to your MCP client (Claude Code, Claude Desktop, VS Code and others), which passes them to the model you use. That client's and model provider's own privacy terms cover what happens next. Use a read-only identity and the least roles your work needs ([configuration](configuration.md)), and point the server at instances whose data you are allowed to share with that provider.
+Records the server reads are returned to your MCP client (Claude Code, Claude Desktop, VS Code and others), which passes them to the model you use. That client's and model provider's own privacy terms cover what happens next. One kind of value never gets that far: the server withholds the value of a credential-type system property (`password`, `password2`) and returns a marker in its place ([what is covered, and the limits](tools.md#credential-type-system-properties)). Use a read-only identity and the least roles your work needs ([configuration](configuration.md)), and point the server at instances whose data you are allowed to share with that provider.
 
 ## Installing it
 

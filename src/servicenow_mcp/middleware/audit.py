@@ -4,7 +4,8 @@ Lines go to ``stderr`` by default (``--audit-log stderr``), to a file
 (``--audit-log /path/audit.jsonl``) or nowhere (``--audit-log off``). Never
 stdout: on stdio transport that is the protocol channel. Written values are
 never logged, only the ``data`` keys; the encoded query is logged redacted
-(secret-like values masked) and truncated, so it can hold filter values.
+(secret-like values masked, and on ``sys_properties`` whatever a term compares
+``value`` with) and truncated, so it can hold other filter values.
 """
 
 from __future__ import annotations
@@ -40,6 +41,13 @@ _REDACT_RE = re.compile(
     r"(?i)((?:password|secret|token|api_key|apikey)[A-Za-z0-9_]*\s*"
     r"(?:!=|=|LIKE|STARTSWITH|ENDSWITH|IN))([^^]*)"
 )
+# A filter on sys_properties.value can hold a credential the caller knows or
+# is guessing. Column names are lowercase and operators are not, so this
+# stops at the operator; "^^" is an escaped caret inside the compared text.
+_PROPERTY_VALUE_RE = re.compile(
+    r"((?:^|\^)[\x00-\x20]*(?:(?:OR|NQ)[\x00-\x20]*)?value)(?![a-z0-9_.])"
+    r"((?:[^^]|\^\^)*)"
+)
 
 
 def configure_audit_log(setting: str, *, transport: str = "stdio") -> bool:
@@ -72,9 +80,14 @@ def is_enabled() -> bool:
     return _enabled
 
 
-def redact_query(query: str) -> str:
-    """Mask values of password/secret/token-like fields and cap the length."""
+def redact_query(query: str, table: Optional[str] = None) -> str:
+    """Mask values of password/secret/token-like fields and cap the length.
+
+    On ``sys_properties`` every term on ``value`` is masked after the field name.
+    """
     masked = _REDACT_RE.sub(r"\1[REDACTED]", query)
+    if isinstance(table, str) and table.strip().lower() == "sys_properties":
+        masked = _PROPERTY_VALUE_RE.sub(r"\1[REDACTED]", masked)
     if len(masked) > QUERY_MAX_CHARS:
         return masked[:QUERY_MAX_CHARS] + "…"
     return masked
@@ -190,7 +203,9 @@ class AuditMiddleware(Middleware):
         sys_id = arguments.get("sys_id") or arguments.get("update_set_sys_id")
         record["sys_id"] = sys_id if isinstance(sys_id, str) else None
         query = arguments.get("query")
-        record["query"] = redact_query(query) if isinstance(query, str) else None
+        record["query"] = (
+            redact_query(query, record["table"]) if isinstance(query, str) else None
+        )
         data = arguments.get("data")
         record["data_keys"] = sorted(data) if isinstance(data, dict) else None
         record["limit"] = arguments.get("limit")

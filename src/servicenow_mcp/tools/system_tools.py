@@ -18,12 +18,14 @@ from servicenow_mcp.server import (
 from servicenow_mcp.tools import annotations
 from servicenow_mcp.middleware.policy import check_identifier
 from servicenow_mcp.tools.results import PropertyList, ReferenceReport, TableSchema
+from servicenow_mcp.tools.table_tools import query_field_names
 from servicenow_mcp.utils.http import (
     ServiceNowAPIError,
     build_url,
     parse_json_response,
     result_rows,
 )
+from servicenow_mcp.utils.redaction import PROPERTY_TABLE, Guard, refuse_value_walk
 from servicenow_mcp.utils.schema import fetch_table_schema
 from servicenow_mcp.utils.user import fetch_current_user
 
@@ -42,13 +44,18 @@ def get_system_properties(
         int, Field(ge=1, le=100, description="Maximum number of properties to return")
     ] = 20,
 ) -> PropertyList:
-    """Query ServiceNow system properties"""
+    """Query ServiceNow system properties: name, value, description and type.
+
+    The value of a credential-type property (type password or password2) is
+    never returned: a marker takes its place, and warning names the property.
+    """
     config = get_config()
 
-    url = build_url(config.api_url, "table", "sys_properties")
+    url = build_url(config.api_url, "table", PROPERTY_TABLE)
+    guard = Guard(PROPERTY_TABLE, "name,value,description,type")
     query_params: Dict[str, Any] = {
         "sysparm_limit": limit,
-        "sysparm_fields": "name,value,description",
+        "sysparm_fields": guard.fields,
     }
     if query:
         query_params["sysparm_query"] = query
@@ -56,7 +63,11 @@ def get_system_properties(
     response = make_sn_request("GET", url, config.timeout, params=query_params)
     data = parse_json_response(response, url)
     result = result_rows(data)
-    return {"count": len(result), "properties": result}
+    warning = guard.apply(result, query_field_names(query)[0])
+    payload: PropertyList = {"count": len(result), "properties": result}
+    if warning:
+        payload["warning"] = warning
+    return payload
 
 
 @mcp.tool(tags={"read", "admin"}, annotations=annotations.READ)
@@ -69,6 +80,7 @@ def get_current_user(
     ] = None,
 ) -> Dict[str, Any]:
     """Get the authenticated user's identity and directly assigned, active roles"""
+    refuse_value_walk("fields", fields)
     config = get_config()
     return fetch_current_user(config.api_url, config.timeout, fields)
 
