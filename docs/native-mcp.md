@@ -12,11 +12,11 @@ This project is the other half: the developer loop. It reads and writes any tabl
 | **Entitlement** | Now Assist / AI-native SKU; metered in assists | MIT, $0, your own compute |
 | **Developer instances (PDIs)** | Not available as of July 2026 | Works |
 | **Auth** | OAuth 2.0 auth-code via Machine Identity Console | Basic, OAuth (client credentials or password grant), API key; over HTTP an OAuth 2.1 + PKCE proxy (DCR + CIMD) |
-| **Governance** | AI Control Tower / AI Gateway | Self-managed: `--read-only`, query validation, JSON audit log, tool annotations; table scope from ServiceNow ACLs |
+| **Governance** | AI Control Tower / AI Gateway | Its own controls: `--read-only`, query validation, JSON audit log, tool annotations; table scope from ServiceNow ACLs. They stay in force behind AI Gateway, which can also register this server as a remote MCP server: expected to work per ServiceNow's documentation, untested ([Behind ServiceNow AI Gateway](deployment.md#behind-servicenow-ai-gateway)) |
 | **Transport** | Streamable HTTP | stdio + Streamable HTTP |
 | **Resources / skills / prompts** | Roadmap | 5 resources; 4 Agent Skills as `skill://` resources (SEP-2640); prompts planned |
 
-The Console rows were checked against ServiceNow's documentation, KB2952534 and the AI Academy material on 2026-08-22. The pre-built servers' announcement does not state their entitlement, minimum release or PDI availability, so those cells describe the Console; check your instance before relying on them.
+The Console rows were checked against ServiceNow's documentation, KB2952534 and the AI Academy material on 2026-08-22; the AI Gateway note in the Governance row comes from the Brazil documentation, read on 2026-11-09. The pre-built servers' announcement does not state their entitlement, minimum release or PDI availability, so those cells describe the Console; check your instance before relying on them.
 
 ## Run both
 
