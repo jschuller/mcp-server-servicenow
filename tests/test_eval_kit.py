@@ -2,14 +2,18 @@
 
 import json
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
 from typing import Any, Dict, List
+from unittest.mock import patch
 
 import pytest
 
 from servicenow_mcp.eval_kit import (
+    DEFAULT_MOCKS,
+    INSTANCE,
     TOOLS_META_KEY,
     EvalKitError,
     summarize,
@@ -117,6 +121,86 @@ def test_eval_mocks_writes_the_kit(tmp_path: Path) -> None:
         assert json.loads(fixture.read_text()) == {"count": 0, "records": []}
     aggregate = (plugin / base / "aggregate_records.md").read_text()
     assert "error: true" in aggregate and "Authentication failed (401)" in aggregate
+
+
+def _stdio_error(status: int, url: str, body: Dict[str, Any], logged_in: str) -> str:
+    """The text the server gives a stdio client for this ServiceNow answer."""
+    import requests
+
+    from servicenow_mcp.auth.auth_manager import AuthManager
+    from servicenow_mcp.utils.config import ApiKeyConfig, AuthConfig, AuthType
+    from servicenow_mcp.utils.http import (
+        ServiceNowAPIError,
+        api_request,
+        local_error_detail,
+    )
+
+    reply = requests.Response()
+    reply.status_code = status
+    reply._content = json.dumps(body).encode()
+    reply.headers["Content-Type"] = "application/json"
+    reply.headers["X-Is-Logged-In"] = logged_in
+    reply.headers["X-Transaction-ID"] = re.search(
+        r"'X-Transaction-ID': '(\w+)'", DEFAULT_MOCKS[MOCK_OF[status]]
+    ).group(1)
+    key = AuthConfig(type=AuthType.API_KEY, api_key=ApiKeyConfig(api_key="k"))
+    with (
+        patch("servicenow_mcp.utils.http.requests.request", return_value=reply),
+        local_error_detail(),
+        pytest.raises(ServiceNowAPIError) as raised,
+    ):
+        api_request("GET", url, AuthManager(key, INSTANCE))
+    return str(raised.value)
+
+
+MOCK_OF = {401: "aggregate_records.md", 403: "get_table_schema.md"}
+
+
+def test_refusal_mocks_use_the_words_the_server_uses_on_stdio() -> None:
+    """The default mocks are the server's own stdio error text for these answers."""
+    refused = _stdio_error(
+        401,
+        f"{INSTANCE}/api/now/stats/incident",
+        {
+            "error": {
+                "message": "User is not authenticated",
+                "detail": "Required to provide Auth information",
+            },
+            "status": "failure",
+        },
+        "false",
+    )
+    denied = _stdio_error(
+        403,
+        f"{INSTANCE}/api/now/table/sys_dictionary",
+        {
+            "error": {
+                "message": "Insufficient rights to query records",
+                "detail": "Field(s) present in the query do not have "
+                "permission to be read",
+            },
+            "status": "failure",
+        },
+        "true",
+    )
+    front = "---\nerror: true\n---\n\n"
+    aggregate = DEFAULT_MOCKS["aggregate_records.md"].replace(
+        "{{input.table_name}}", "incident"
+    )
+    assert aggregate == front + refused + "\n"
+    assert DEFAULT_MOCKS["get_table_schema.md"] == front + denied + "\n"
+    assert "Response:" not in aggregate + denied
+
+
+@pytest.mark.parametrize(
+    "plugin",
+    [".", "examples/change-impact", "examples/incident-triage", "examples/template"],
+)
+def test_committed_refusal_mocks_are_the_defaults(plugin: str) -> None:
+    repo = Path(__file__).resolve().parent.parent
+    for name in MOCK_OF.values():
+        committed = repo / plugin / "evals/mocks/servicenow" / name
+        assert committed.read_text(encoding="utf-8") == DEFAULT_MOCKS[name], committed
 
 
 def test_eval_mocks_keeps_edits_and_refreshes_tools(tmp_path: Path) -> None:

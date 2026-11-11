@@ -175,6 +175,19 @@ def _body_summary(response: "requests.Response") -> str:
     )
 
 
+def response_summary(response: Any) -> str:
+    """What a response said, in words that are safe for a message or a log line.
+
+    ServiceNow's parsed error message and detail; any other body, an empty one
+    included, is described, never quoted. ``response`` is a requests or an
+    httpx2 response.
+    """
+    sn_error = _sn_error(response)
+    if sn_error:
+        return "ServiceNow error: " + ": ".join(sn_error.values())
+    return f"Response: {_body_summary(response)}"
+
+
 def _error_context(response: "requests.Response") -> str:
     """What ServiceNow answered, as the tail of an error message.
 
@@ -183,12 +196,7 @@ def _error_context(response: "requests.Response") -> str:
     unexpected JSON body can hold record values or name hosts). A local reader
     also gets the diagnostic headers.
     """
-    parts: list[str] = []
-    sn_error = _sn_error(response)
-    if sn_error:
-        parts.append("ServiceNow error: " + ": ".join(sn_error.values()))
-    else:
-        parts.append(f"Response: {_body_summary(response)}")
+    parts = [response_summary(response)]
     if _local_reader():
         diag = _diagnostic_headers(response)
         if diag:

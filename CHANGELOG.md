@@ -37,6 +37,12 @@
   headers, which go to the log line instead. Over stdio and in `--check` the URL and the
   headers stay in the text. These errors also pass FastMCP's error masking
   (`FASTMCP_MASK_ERROR_DETAILS=true`), which until now would have hidden them.
+- **`--eval-mocks` default refusals use the new wording.** `aggregate_records.md` and
+  `get_table_schema.md` end with `… | ServiceNow error: <message>: <detail> | Headers: {…}`
+  instead of `… | Response: {"error":{…}}`, as the server now says over stdio; a test keeps
+  them equal to the server's text. This repository's mocks, the three examples' and the
+  template's are updated. `--eval-mocks` keeps existing mock files, so delete those two in
+  your own plugin to get the new text.
 
 ### Security
 - **No error quotes a response body, on any transport.** An error used to carry up to 500
@@ -48,7 +54,8 @@
   its length and whether it parsed, for example
   `Response: text/html, 5321 characters, not JSON, not shown`. The same holds for the log line,
   and for a refused OAuth token request: its error shows the token endpoint's `error` and
-  `error_description`, not its whole answer.
+  `error_description`, not its whole answer. The OAuth proxy's token check no longer writes
+  the first 200 characters of a refused `sys_user` lookup to the debug log either.
 - No error text or log line carries the request's query string, which can hold filter values.
   Before, a connection, DNS or TLS failure quoted it in `Detail:`, on every transport.
 
