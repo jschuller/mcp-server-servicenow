@@ -12,7 +12,11 @@ from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional
 
 from servicenow_mcp.utils.config import AuthType, ServerConfig
-from servicenow_mcp.utils.http import build_url, parse_json_response
+from servicenow_mcp.utils.http import (
+    build_url,
+    local_error_detail,
+    parse_json_response,
+)
 from servicenow_mcp.utils.user import fetch_current_user, fetch_direct_roles, has_role
 
 OK, WARN, FAIL, INFO = "ok", "warn", "FAIL", "info"
@@ -270,7 +274,9 @@ def run_doctor(config: ServerConfig) -> int:
     """Print every check and return the exit code."""
     _header()
     doctor = Doctor(config)
-    code = doctor.run()
+    # The reader ran --check here, with this instance URL: full error detail.
+    with local_error_detail():
+        code = doctor.run()
     for check in doctor.checks:
         print(check)
     print("result: " + ("OK (auth and a read work)" if code == 0 else "FAILED"))

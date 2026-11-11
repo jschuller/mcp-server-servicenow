@@ -4,11 +4,14 @@
     uv run --frozen --extra dev python scripts/contract.py --write   # regenerate both
 
 The contract is what an MCP client receives from tools/list, resources/list, resources/templates/list and
-prompts/list, plus the server instructions, with the default settings (skills on, write tools served). It is read
+prompts/list, plus the server instructions, with the default settings (skills on, write tools served), and what the
+server negotiates when a client connects: the protocol version, the capabilities (extensions included) and the server
+name, once for server/discover (FastMCP's client default) and once for the initialize handshake. It is read
 in-process through FastMCP's client, so the middleware runs exactly as on the wire. Nothing is contacted: the
 instance URL is under .invalid and the snc_read_only lookup is stubbed. The server version is left out on purpose,
-so a release bump alone does not change the snapshot; a dependency bump that changes a schema does, which is the
-point. tests/test_contract.py runs the check.
+so a release bump alone does not change the snapshot; a dependency bump that changes a schema, adds or drops a
+capability or an extension, or moves a default protocol version does, which is the point. tests/test_contract.py
+runs the check.
 """
 
 from __future__ import annotations
@@ -19,7 +22,7 @@ import difflib
 import json
 import sys
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 from unittest.mock import patch
 
 REPO = Path(__file__).resolve().parent.parent
@@ -32,6 +35,36 @@ REGENERATE = "uv run --frozen --extra dev python scripts/contract.py --write"
 
 def _dump(items: Any) -> List[Dict[str, Any]]:
     return [i.model_dump(by_alias=True, exclude_none=True, mode="json") for i in items]
+
+
+def _one(model: Any) -> Any:
+    return model.model_dump(by_alias=True, exclude_none=True, mode="json")
+
+
+def _discovered(client: Any) -> Optional[Dict[str, Any]]:
+    """What server/discover told a client with default settings; None if it fell back to initialize."""
+    result = client.session.discover_result
+    if result is None:
+        return None
+    info = client.server_info
+    return {
+        "protocolVersion": client.protocol_version,
+        "supportedVersions": list(result.supported_versions),
+        "serverInfo": {"name": info.name if info else None},
+        "capabilities": _one(result.capabilities),
+    }
+
+
+def _initialized(client: Any) -> Optional[Dict[str, Any]]:
+    """The initialize result a handshake-era client gets when it offers its newest version."""
+    result = client.initialize_result
+    if result is None:
+        return None
+    return {
+        "protocolVersion": result.protocol_version,
+        "serverInfo": {"name": result.server_info.name},
+        "capabilities": _one(result.capabilities),
+    }
 
 
 async def read_contract() -> Dict[str, Any]:
@@ -70,9 +103,13 @@ async def read_contract() -> Dict[str, Any]:
             templates = _dump(await client.list_resource_templates())
             prompts = _dump(await client.list_prompts())
             instructions = client.instructions
+            discover = _discovered(client)
+        async with Client(mcp, mode="legacy") as client:
+            initialize = _initialized(client)
     return {
         "generated_by": "scripts/contract.py (default settings: skills on, write tools served); "
         f"do not edit, run `{REGENERATE}`",
+        "negotiation": {"discover": discover, "initialize": initialize},
         "instructions": instructions,
         "tools": sorted(tools, key=lambda t: t["name"]),
         "resources": sorted(resources, key=lambda r: r["uri"]),
@@ -126,6 +163,25 @@ def _kind(tool: Dict[str, Any]) -> str:
     return "write, destructive" if hints.get("destructiveHint", True) else "write"
 
 
+def _answer(result: Optional[Dict[str, Any]]) -> str:
+    """One negotiation result in words: the version, then what the server says it can do."""
+    if not result:
+        return "not answered"
+    capabilities = result.get("capabilities") or {}
+    named = sorted(k for k in capabilities if k not in ("extensions", "experimental"))
+    text = f"`{result.get('protocolVersion')}`"
+    if result.get("supportedVersions"):
+        text += (
+            f" (supported: {', '.join(f'`{v}`' for v in result['supportedVersions'])})"
+        )
+    text += f", capabilities {', '.join(f'`{k}`' for k in named) or 'none'}"
+    for group in ("extensions", "experimental"):
+        keys = sorted(capabilities.get(group) or {})
+        if keys:
+            text += f", {group} {', '.join(f'`{k}`' for k in keys)}"
+    return text
+
+
 def render_reference(contract: Dict[str, Any]) -> str:
     tools = contract["tools"]
     lines = [
@@ -133,8 +189,8 @@ def render_reference(contract: Dict[str, Any]) -> str:
         "",
         f"Read from the server itself with the default settings (skills on, write tools served) by "
         f"`scripts/contract.py`. The descriptions, parameter names and types are the ones the model reads; the tables above are written for "
-        f"people. The full contract, with input and output schemas, annotations, resources and the server "
-        f"instructions, is [contract.json](contract.json). Tests fail when either drifts from the code: "
+        f"people. The full contract, with input and output schemas, annotations, resources, the server "
+        f"instructions and what the server negotiates, is [contract.json](contract.json). Tests fail when either drifts from the code: "
         f"`{REGENERATE}` regenerates both.",
         "",
         "| Tool | Kind | Parameters (**required**) | Structured output | Description the model reads |",
@@ -163,12 +219,16 @@ def render_reference(contract: Dict[str, Any]) -> str:
     templates = codes([r["uriTemplate"] for r in contract["resourceTemplates"]])
     prompts = codes([p["name"] for p in contract["prompts"]])
     instructions = len(contract["instructions"] or "")
+    negotiation = contract.get("negotiation") or {}
     lines += [
         "",
         f"- **Resources:** {codes(plain)}; and {skill_files} skill files for {len(skills)} skills ({codes(skills)}).",
         f"- **Resource templates:** {templates}.",
         f"- **Prompts:** {prompts}.",
         f"- **Server instructions:** {instructions} characters (the text is in contract.json).",
+        f"- **`server/discover`** (what a current client negotiates): {_answer(negotiation.get('discover'))}.",
+        f"- **`initialize`** (the handshake, offered the newest version it covers): {_answer(negotiation.get('initialize'))}. "
+        f"The capability flags are in contract.json.",
         "",
         END,
     ]

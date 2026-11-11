@@ -74,6 +74,34 @@ class TestPasswordGrant:
         with pytest.raises(ValueError, match="Failed to get OAuth token: 401"):
             oauth_auth_manager.get_headers()
 
+    @patch("servicenow_mcp.auth.auth_manager.requests.post")
+    def test_failure_shows_the_oauth_error_and_never_the_body(
+        self, mock_post: MagicMock, oauth_auth_manager: AuthManager
+    ) -> None:
+        """This text reaches tool errors and logs: only the OAuth error fields go in."""
+        refusal = requests.Response()
+        refusal.status_code = 401
+        refusal._content = (
+            b'{"error":"invalid_client","error_description":"access_denied",'
+            b'"extra":"canary-in-json"}'
+        )
+        page = requests.Response()
+        page.status_code = 503
+        page._content = b"<html>canary-in-html</html>"
+        mock_post.side_effect = [refusal, page]
+
+        with pytest.raises(ValueError) as oauth_error:
+            oauth_auth_manager.get_headers()
+        assert "Failed to get OAuth token: 401 invalid_client: access_denied" in str(
+            oauth_error.value
+        )
+        with pytest.raises(ValueError) as not_oauth:
+            oauth_auth_manager.get_headers()
+        assert "503 (a body of 27 characters, not an OAuth error, not shown)" in str(
+            not_oauth.value
+        )
+        assert "canary" not in str(oauth_error.value) + str(not_oauth.value)
+
 
 class TestClientCredentialsGrant:
     """OAuth without username/password uses the client credentials grant."""

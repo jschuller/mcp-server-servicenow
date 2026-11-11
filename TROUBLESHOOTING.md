@@ -14,7 +14,7 @@ Start with `mcp-server-servicenow --check` (or `uvx mcp-server-servicenow --chec
 
 ## Reading Error Messages
 
-Error messages from this MCP server include diagnostic context from ServiceNow's response — the response body and key headers (`X-Is-Logged-In`, `X-Transaction-ID`). This context often pinpoints the exact cause:
+Error messages from this MCP server include diagnostic context from ServiceNow's response — ServiceNow's own error message and detail (`ServiceNow error: …`) and key headers (`X-Is-Logged-In`, `X-Transaction-ID`). This context often pinpoints the exact cause:
 
 - **403 with `WebServicePolicyValidator`** → The table needs `ws_access=true` in its dictionary entry
 - **403 with ACL reference** → The user lacks the required role or ACL for that operation
@@ -23,6 +23,10 @@ Error messages from this MCP server include diagnostic context from ServiceNow's
 - **401 with `X-Is-Logged-In: false`** → Credentials are invalid (not just expired)
 
 The `X-Transaction-ID` header can be given to a ServiceNow admin to look up the exact server-side log entry.
+
+That is the message over stdio and in `--check`. Over HTTP (`--transport streamable-http`) the reader may be remote, so the message keeps the status, ServiceNow's own error message, the API path and the hints, and leaves out the instance host and the headers. The server's log has them: one `ServiceNow API error: {…}` WARNING line per failure, JSON with the tool or resource, `kind`, `status`, `method`, `path`, `sn_message`, `sn_detail` and `headers` (`X-Transaction-ID` included). A failure ServiceNow answered, a timeout or a DNS or TLS error logs no Python traceback; a traceback in the log means a bug in the server.
+
+No message and no log line quotes a response body or the request's query string, on any transport: a body can hold a record's field values, and a query can hold filter values. Only the `message` and `detail` of ServiceNow's JSON error are shown. Any other body (an HTML page, a cut-off or unexpected JSON body) is described instead, for example `Response: text/html, 5321 characters, not JSON, not shown`. To see such a body, repeat the request with `curl`.
 
 ## Instance is hibernating
 PDIs hibernate after inactivity. Wake it at [developer.servicenow.com](https://developer.servicenow.com/dev.do#!/home?wu=true) — sign in and the instance wakes, or click your instance and select "Wake Up". You'll get HTML login pages instead of JSON until it's awake.
@@ -45,7 +49,7 @@ Desktop apps (Claude Desktop, some IDEs) do not inherit your shell's `PATH`, so 
 - **API key (`--auth-type api_key`):** a key authenticates only where a REST API access policy maps its auth profile for that API, method and resource — the global policy cannot carry token auth. A policy for Table API GET does not cover `aggregate_records` (Aggregate API, `/now/stats`), writes (PATCH/POST/DELETE), or a resource it does not list (e.g. `/now/table/{tableName}/{sys_id}`). The 401 names the method; add a policy per API you need. The server sends the key in `x-sn-apikey`, ServiceNow's default auth parameter; if your admin created a custom header parameter, set `SERVICENOW_API_KEY_HEADER` to its name
 
 ## 403 Access Denied
-The error message includes the ServiceNow response body, which typically names the specific policy or ACL that blocked access. Common causes:
+The error message includes ServiceNow's own error message and detail, which typically name the specific policy or ACL that blocked access. Common causes:
 - **`WebServicePolicyValidator`** — The table's `ws_access` property is not set to `true`. Fix: go to System Definition > Tables, find the table, check "Allow access to this table via web services"
 - **Missing role** — The integration user needs the appropriate role (e.g., `itil` for incident, `cmdb_read` for CMDB). Check the error body for the specific role required
 - **Cross-scope restriction** — If accessing a scoped app's table, ensure cross-scope privileges are configured

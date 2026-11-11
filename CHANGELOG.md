@@ -2,17 +2,6 @@
 
 ## [Unreleased]
 
-### Added
-- **`docs/contract.json`**: the server's MCP contract as a client receives it (every tool's
-  description, input and output schema, annotations and tags; the resources, resource templates
-  and prompts; the server instructions), read offline with the default settings by
-  `scripts/contract.py`. The server version is left out, so only real changes show up as a diff.
-- **"What the model sees (generated)"** at the end of `docs/tools.md`: one row per tool with the
-  description the model reads, its parameters and whether it returns structured output. The
-  hand-written tables above it stay as they are.
-- `tests/test_contract.py` fails when either drifts from the code; `scripts/contract.py --write`
-  regenerates both.
-
 ### Security
 - **The value of a credential-type system property is no longer returned.** `sys_properties.value`
   is a string column, and whether it holds a credential depends on the row's `type`. For an
@@ -49,8 +38,61 @@
     secret kept in a `string` property is returned; credential fields of other tables are
     returned as the instance returns them; an identity that can write as `admin` has other
     ways to a value.
+- **No error quotes a response body, on any transport.** An error used to carry up to 500
+  characters of a non-OK response body and the first 200 characters of a 200 response that was
+  not valid JSON, in the tool result and in the audit line's `error`. A cut-off or unexpected
+  body from a read of `sys_properties` (or any table) could put a field's value there. Now
+  only the `message` and `detail` of ServiceNow's JSON error (`{"error": {…}}`) are shown, as
+  `ServiceNow error: <message>: <detail>`; any other body is described by its content type,
+  its length and whether it parsed, for example
+  `Response: text/html, 5321 characters, not JSON, not shown`. The same holds for the log line,
+  and for a refused OAuth token request: its error shows the token endpoint's `error` and
+  `error_description`, not its whole answer. The OAuth proxy's token check no longer writes
+  the first 200 characters of a refused `sys_user` lookup to the debug log either.
+- No error text or log line carries the request's query string, which can hold filter values.
+  Before, a connection, DNS or TLS failure quoted it in `Detail:`, on every transport.
+
+### Added
+- **`docs/contract.json`**: the server's MCP contract as a client receives it (every tool's
+  description, input and output schema, annotations and tags; the resources, resource templates
+  and prompts; the server instructions), read offline with the default settings by
+  `scripts/contract.py`. The server version is left out, so only real changes show up as a diff.
+- **"What the model sees (generated)"** at the end of `docs/tools.md`: one row per tool with the
+  description the model reads, its parameters and whether it returns structured output. The
+  hand-written tables above it stay as they are.
+- `tests/test_contract.py` fails when either drifts from the code; `scripts/contract.py --write`
+  regenerates both.
+- **`docs/contract.json` records what the server negotiates** (`negotiation`): the protocol
+  version, the capabilities with their flags and extensions, and the server name, once for
+  `server/discover` (2026-07-28, what a current client gets) and once for the `initialize`
+  handshake (2025-11-25). A dependency bump that adds or drops a capability or an extension,
+  or moves a default protocol version, now fails the contract check. The generated block in
+  `docs/tools.md` names both.
+- A test that an `initialize` request asking for protocol version 2025-03-26 is answered with
+  2025-03-26, and that the tools, the resources and a tool call work on that session.
 
 ### Changed
+- **A ServiceNow API failure is a proper MCP tool error.** `ServiceNowAPIError` is now a FastMCP
+  `ToolError`: the tool result has `isError: true` and the message as it is, without the
+  `Error calling tool '<name>':` prefix, and a failed resource read returns the same message
+  without `Error reading resource '<uri>':`. The server no longer prints a Python traceback for
+  a ServiceNow 401, 403, 404 or 5xx, a timeout or a DNS or TLS failure. It logs one WARNING line,
+  `ServiceNow API error: {…}`: JSON with the tool or resource, `kind`, `status`, `method`,
+  `path`, ServiceNow's message and detail and its diagnostic headers. An unexpected exception
+  still logs its traceback. The audit line's `error` now starts with `ServiceNowAPIError:`.
+- **Over HTTP the error text no longer names the instance.** On `streamable-http` (and for an
+  in-process client or a parent server's HTTP transport) the message keeps the status,
+  ServiceNow's own error message and detail, the API path and the role and troubleshooting
+  hints. It leaves out the instance host and the `X-Is-Logged-In` and `X-Transaction-ID`
+  headers, which go to the log line instead. Over stdio and in `--check` the URL and the
+  headers stay in the text. These errors also pass FastMCP's error masking
+  (`FASTMCP_MASK_ERROR_DETAILS=true`), which until now would have hidden them.
+- **`--eval-mocks` default refusals use the new wording.** `aggregate_records.md` and
+  `get_table_schema.md` end with `… | ServiceNow error: <message>: <detail> | Headers: {…}`
+  instead of `… | Response: {"error":{…}}`, as the server now says over stdio; a test keeps
+  them equal to the server's text. This repository's mocks, the three examples' and the
+  template's are updated. `--eval-mocks` keeps existing mock files, so delete those two in
+  your own plugin to get the new text.
 - `get_system_properties` returns each property's `type` beside `name`, `value` and
   `description`, and its result can carry a `warning` (new in its `outputSchema`; its
   description says that credential-type values are never returned). `docs/contract.json`, the
@@ -65,6 +107,12 @@
   the cap, the first 4.3 release would stop every fresh `uvx mcp-server-servicenow` from
   starting. The cap is lifted once 4.2 is final and the import has moved to the new path
   (`fastmcp.skills.provider`). Nothing changes for an install on 4.1.x.
+
+### Fixed
+- A first OAuth token request that fails, and `requests` failures other than a timeout or a
+  connection error (too many redirects, a broken transfer encoding), reached the client as
+  the raw exception text (the instance host, or the token endpoint's whole answer), with a
+  traceback in the log. They are API errors like the rest now.
 
 ## [0.9.3] - 2026-10-28
 

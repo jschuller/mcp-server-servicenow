@@ -20,6 +20,7 @@ import httpx2
 
 from fastmcp.server.auth import AccessToken, TokenVerifier
 
+from servicenow_mcp.utils.http import response_summary
 from servicenow_mcp.utils.user import (
     DIRECT_ROLES_QUERY,
     MAX_DIRECT_ROLES,
@@ -121,10 +122,11 @@ class ServiceNowTokenVerifier(TokenVerifier):
                 )
 
                 if response.status_code != 200:
+                    # The body is described, never quoted: it is a table read's.
                     logger.debug(
                         "SN token verification failed: %d - %s",
                         response.status_code,
-                        response.text[:200],
+                        response_summary(response),
                     )
                     return None
 
