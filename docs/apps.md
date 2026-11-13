@@ -202,7 +202,7 @@ if __name__ == "__main__":
 
 Because the tool is added to the package's own server object, the audit log and the policy checks apply to it.
 
-To try a view without a chat client, FastMCP has a local host: `fastmcp dev apps my_server.py` (it needs the `fastmcp[apps]` extra) opens a page that lists the server's app tools and renders the one you launch.
+To try a view without a chat client, FastMCP has a local host: `fastmcp dev apps my_server.py` (it needs the `fastmcp[apps]` extra) opens a page that lists the server's app tools and renders the one you launch. From a checkout of this repository, `scripts/apps_preview.py` does the same for the built-in view with made-up data and no instance.
 
 **Rules of thumb**
 
