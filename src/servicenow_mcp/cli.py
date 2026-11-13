@@ -252,6 +252,18 @@ def parse_args() -> argparse.Namespace:
             "instructions (default on; SERVICENOW_SKILLS)"
         ),
     )
+    parser.add_argument(
+        "--apps",
+        # A flag only while this is a spike: a SERVICENOW_APPS variable would
+        # also have to be allowed (or refused) in skill plugins by skill_lint.
+        default="off",
+        metavar="{on,off}",
+        help=(
+            "Experimental: register the MCP Apps views (ui:// resources) and "
+            "the read-only tools that open them, such as review_update_set "
+            "(default off)"
+        ),
+    )
 
     args = parser.parse_args()
     modes = [
@@ -300,6 +312,23 @@ def _skills_enabled(args: argparse.Namespace) -> bool:
     return value
 
 
+def _apps_enabled(args: argparse.Namespace) -> bool:
+    """``--apps``: ``off`` (default) or ``on``.
+
+    Same rules as ``--skills``: any other value stops startup, and the error
+    does not repeat the value.
+    """
+    raw = getattr(args, "apps", None)
+    if raw is None:
+        raw = "off"
+    value = _SKILLS_VALUES.get(raw.strip().lower())
+    if value is None:
+        raise ValueError(
+            f"--apps must be 'on' or 'off' (got a value of {len(raw)} characters)"
+        )
+    return value
+
+
 def _option_kwargs(args: argparse.Namespace) -> dict[str, Any]:
     """ServerConfig fields that do not depend on the auth type."""
     return {
@@ -307,6 +336,7 @@ def _option_kwargs(args: argparse.Namespace) -> dict[str, Any]:
         "allow_js_queries": bool(getattr(args, "allow_js_queries", False)),
         "audit_log": getattr(args, "audit_log", None) or "stderr",
         "skills": _skills_enabled(args),
+        "apps": _apps_enabled(args),
     }
 
 
@@ -647,6 +677,7 @@ def main() -> None:
         # Before create_config(): its errors are reported below as missing
         # credentials when MCP_STATIC_TOKENS is set.
         _skills_enabled(args)
+        _apps_enabled(args)
         try:
             config = create_config(args, require_sn_creds=require_sn_creds)
         except ValueError as exc:
@@ -722,6 +753,14 @@ def main() -> None:
             logger.info(
                 "Skills off: no skill:// resources, and none named in the instructions"
             )
+
+        # MCP Apps (experimental, off by default): one more read tool and its
+        # ui:// view. Hosts without the extension get the tool's data as text.
+        if config.apps:
+            from servicenow_mcp.apps import register_apps
+
+            register_apps(mcp)
+            logger.info("Apps on: review_update_set and its ui:// view are registered")
 
         # Safety rails
         if config.read_only:

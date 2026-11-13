@@ -1,0 +1,402 @@
+<!doctype html>
+<!--
+  MCP Apps view for the review_update_set tool (extension io.modelcontextprotocol/ui,
+  protocol 2026-01-26). One self-contained file: inline script and style, no network
+  access, so it runs under a host's default content security policy.
+
+  It speaks the view side of the protocol by hand: JSON-RPC 2.0 over postMessage to
+  the parent frame. Record text comes from the instance and is untrusted: it is
+  written with textContent only, never as markup.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Update set review</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: var(--color-background-primary, light-dark(#ffffff, #1f1e1d));
+    --bg-2: var(--color-background-secondary, light-dark(#f5f4f0, #2a2927));
+    --ink: var(--color-text-primary, light-dark(#1f1e1d, #f2f0ea));
+    --ink-2: var(--color-text-secondary, light-dark(#5e5d59, #b5b3ab));
+    --line: var(--color-border-secondary, light-dark(#e3e1da, #3d3c39));
+    --line-strong: var(--color-border-primary, light-dark(#c9c6bc, #57554f));
+    --danger-ink: var(--color-text-danger, light-dark(#a3231f, #ff9d94));
+    --danger-bg: var(--color-background-danger, light-dark(#fbe9e7, #4a2320));
+    --ring: var(--color-ring-primary, light-dark(#2b6cb0, #8ab4f8));
+    --radius: var(--border-radius-md, 6px);
+    --sans: var(--font-sans, system-ui, -apple-system, "Segoe UI", sans-serif);
+    --mono: var(--font-mono, ui-monospace, "SF Mono", Menlo, monospace);
+  }
+  :root[data-theme="light"] { color-scheme: light; }
+  :root[data-theme="dark"] { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    font: 13px/1.45 var(--sans);
+    color: var(--ink);
+    background: var(--bg);
+    padding: 12px 14px 14px;
+  }
+  h1 { font-size: 15px; font-weight: 600; margin: 0; overflow-wrap: anywhere; }
+  .head { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+  .badge {
+    font-size: 11px; padding: 1px 7px; border-radius: 999px;
+    border: 1px solid var(--line-strong); color: var(--ink-2); white-space: nowrap;
+  }
+  .badge.danger { color: var(--danger-ink); background: var(--danger-bg); border-color: transparent; }
+  .meta { color: var(--ink-2); margin: 2px 0 0; overflow-wrap: anywhere; }
+  .desc {
+    color: var(--ink-2); margin: 6px 0 0; white-space: pre-wrap; overflow-wrap: anywhere;
+    max-height: 4.4em; overflow: auto;
+  }
+  .bar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 12px 0 8px; }
+  .chips { display: flex; gap: 6px; flex-wrap: wrap; flex: 1 1 auto; }
+  button, input { font: inherit; color: inherit; }
+  button {
+    background: var(--bg); border: 1px solid var(--line-strong); border-radius: var(--radius);
+    padding: 3px 9px; cursor: pointer;
+  }
+  button:hover { background: var(--bg-2); }
+  button[aria-pressed="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+  button:disabled { opacity: .55; cursor: default; }
+  button:focus-visible, input:focus-visible { outline: 2px solid var(--ring); outline-offset: 1px; }
+  .chip .n { color: var(--ink-2); margin-left: 4px; font-variant-numeric: tabular-nums; }
+  .chip[aria-pressed="true"] .n { color: inherit; opacity: .8; }
+  input[type="search"] {
+    background: var(--bg); border: 1px solid var(--line-strong); border-radius: var(--radius);
+    padding: 3px 8px; min-width: 12em; flex: 0 1 16em;
+  }
+  .scroll { max-height: 26rem; overflow: auto; border: 1px solid var(--line); border-radius: var(--radius); }
+  table { border-collapse: collapse; width: 100%; }
+  th, td { text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  thead th {
+    position: sticky; top: 0; background: var(--bg-2); color: var(--ink-2);
+    font-weight: 600; font-size: 12px; white-space: nowrap;
+  }
+  tbody tr:last-child td { border-bottom: 0; }
+  td.target { overflow-wrap: anywhere; }
+  td.when, td.who, td.type { white-space: nowrap; }
+  td.when { font-variant-numeric: tabular-nums; color: var(--ink-2); }
+  .sub { display: block; font: 11px/1.4 var(--mono); color: var(--ink-2); overflow-wrap: anywhere; }
+  .foot { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: 8px; color: var(--ink-2); }
+  .note { color: var(--ink-2); margin: 10px 0 0; }
+  .error { color: var(--danger-ink); }
+  .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<main id="app">
+  <p class="note" id="status" role="status">Waiting for the update set…</p>
+
+  <section id="review" hidden>
+    <div class="head">
+      <h1 id="name"></h1>
+      <span class="badge" id="state"></span>
+    </div>
+    <p class="meta" id="meta"></p>
+    <p class="desc" id="desc" hidden></p>
+
+    <div class="bar">
+      <div class="chips" id="chips" role="group" aria-label="Filter by change type"></div>
+      <label class="sr-only" for="search">Search changes</label>
+      <input type="search" id="search" placeholder="Search changes" title="Search target, name, type or author" autocomplete="off">
+    </div>
+
+    <div class="scroll">
+      <table>
+        <caption class="sr-only">Customer updates in this update set, newest first</caption>
+        <thead>
+          <tr>
+            <th scope="col">Type</th>
+            <th scope="col">Target</th>
+            <th scope="col">Action</th>
+            <th scope="col">Author</th>
+            <th scope="col">Updated (UTC)</th>
+          </tr>
+        </thead>
+        <tbody id="rows"></tbody>
+      </table>
+    </div>
+
+    <div class="foot">
+      <span id="count" aria-live="polite"></span>
+      <button type="button" id="refresh" hidden>Refresh</button>
+    </div>
+  </section>
+</main>
+
+<script>
+(() => {
+  "use strict";
+
+  const PROTOCOL_VERSION = "2026-01-26";
+  const DEFAULT_TOOL = "review_update_set";
+  const host = window.parent;
+  const $ = (id) => document.getElementById(id);
+
+  // ---- JSON-RPC 2.0 over postMessage (the view side of MCP Apps) ----------
+  let nextId = 1;
+  const pending = new Map();
+
+  function post(message) {
+    // The parent may be the host or its sandbox proxy, on an origin the view
+    // cannot know; incoming messages are checked by source instead.
+    host.postMessage(message, "*");
+  }
+  function request(method, params) {
+    const id = nextId++;
+    return new Promise((resolve, reject) => {
+      pending.set(id, { resolve, reject });
+      post({ jsonrpc: "2.0", id, method, params: params || {} });
+    });
+  }
+  function notify(method, params) {
+    post({ jsonrpc: "2.0", method, params: params || {} });
+  }
+
+  window.addEventListener("message", (event) => {
+    if (event.source !== host) return;
+    const message = event.data;
+    if (!message || message.jsonrpc !== "2.0") return;
+
+    if (message.method === undefined) {
+      const waiter = pending.get(message.id);
+      if (!waiter) return;
+      pending.delete(message.id);
+      if (message.error) waiter.reject(new Error(String(message.error.message || "request failed")));
+      else waiter.resolve(message.result);
+      return;
+    }
+    if (message.id !== undefined) {
+      // Requests from the host: teardown and ping need an empty result.
+      if (message.method === "ui/resource-teardown" || message.method === "ping") {
+        post({ jsonrpc: "2.0", id: message.id, result: {} });
+      } else {
+        post({ jsonrpc: "2.0", id: message.id, error: { code: -32601, message: "Method not found" } });
+      }
+      return;
+    }
+    const params = message.params || {};
+    switch (message.method) {
+      case "ui/notifications/tool-input":
+        state.args = params.arguments || {};
+        break;
+      case "ui/notifications/tool-result":
+        showResult(params);
+        break;
+      case "ui/notifications/tool-cancelled":
+        showStatus("The tool call was cancelled" + (params.reason ? ": " + params.reason : "."), true);
+        break;
+      case "ui/notifications/host-context-changed":
+        applyHostContext(params);
+        break;
+    }
+  });
+
+  // ---- State and rendering -------------------------------------------------
+  const state = {
+    tool: DEFAULT_TOOL,
+    args: {},
+    canCallTools: false,
+    data: null,
+    type: null, // the selected type chip, or null for all
+    text: "",
+  };
+
+  function applyHostContext(context) {
+    if (!context) return;
+    const root = document.documentElement;
+    if (context.theme === "light" || context.theme === "dark") root.dataset.theme = context.theme;
+    const variables = context.styles && context.styles.variables;
+    if (variables && typeof variables === "object") {
+      for (const [key, value] of Object.entries(variables)) {
+        if (key.startsWith("--") && typeof value === "string") root.style.setProperty(key, value);
+      }
+    }
+    const info = context.toolInfo && context.toolInfo.tool;
+    if (info && typeof info.name === "string") state.tool = info.name; // a mount may rename it
+  }
+
+  function showStatus(text, isError) {
+    const status = $("status");
+    status.textContent = text;
+    status.classList.toggle("error", Boolean(isError));
+    status.hidden = false;
+  }
+
+  function text(value) {
+    if (value === null || value === undefined) return "";
+    if (typeof value === "object") return String(value.display_value ?? value.value ?? "");
+    return String(value);
+  }
+
+  function resultData(result) {
+    if (result && result.structuredContent && typeof result.structuredContent === "object") {
+      return result.structuredContent;
+    }
+    const first = result && Array.isArray(result.content) ? result.content.find((c) => c.type === "text") : null;
+    if (!first) return null;
+    try { return JSON.parse(first.text); } catch { return null; }
+  }
+
+  function showResult(result) {
+    if (result && result.isError) {
+      const first = Array.isArray(result.content) ? result.content.find((c) => c.type === "text") : null;
+      showStatus(first ? first.text : "The tool returned an error.", true);
+      return;
+    }
+    const data = resultData(result);
+    if (!data || !Array.isArray(data.changes)) {
+      showStatus("The tool result has no changes to show.", true);
+      return;
+    }
+    state.data = data;
+    if (state.type && !data.changes.some((c) => text(c.type) === state.type)) state.type = null;
+    render();
+  }
+
+  function el(tag, className, content) {
+    const node = document.createElement(tag);
+    if (className) node.className = className;
+    if (content !== undefined) node.textContent = content;
+    return node;
+  }
+
+  function render() {
+    const data = state.data;
+    const header = data.update_set || {};
+    const changes = data.changes;
+
+    $("status").hidden = true;
+    $("review").hidden = false;
+    $("name").textContent = text(header.name) || "Update set";
+    $("state").textContent = text(header.state) || "unknown state";
+    const scope = text(header["application.name"]);
+    $("meta").textContent = [
+      scope && "Scope: " + scope,
+      text(header.sys_created_by) && "Created by " + text(header.sys_created_by),
+      text(header.sys_updated_on) && "Updated " + text(header.sys_updated_on) + " UTC",
+    ].filter(Boolean).join(" · ");
+    const desc = $("desc");
+    desc.textContent = text(header.description);
+    desc.hidden = !desc.textContent;
+
+    // Type chips, most common first; ties by name so the order is stable.
+    const tally = new Map();
+    for (const change of changes) {
+      const type = text(change.type) || "(no type)";
+      tally.set(type, (tally.get(type) || 0) + 1);
+    }
+    const types = [...tally.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+    const chips = $("chips");
+    chips.replaceChildren();
+    const addChip = (label, count, value) => {
+      const chip = el("button", "chip", label);
+      chip.type = "button";
+      chip.setAttribute("aria-pressed", String(state.type === value));
+      chip.append(el("span", "n", String(count)));
+      chip.addEventListener("click", () => { state.type = value; render(); });
+      chips.append(chip);
+    };
+    addChip("All", changes.length, null);
+    for (const [type, count] of types) addChip(type, count, type);
+
+    const needle = state.text.trim().toLowerCase();
+    const shown = changes.filter((change) => {
+      if (state.type && (text(change.type) || "(no type)") !== state.type) return false;
+      if (!needle) return true;
+      return [change.target_name, change.name, change.sys_created_by, change.type]
+        .some((field) => text(field).toLowerCase().includes(needle));
+    });
+
+    const rows = $("rows");
+    rows.replaceChildren();
+    for (const change of shown) {
+      const row = document.createElement("tr");
+      row.append(el("td", "type", text(change.type)));
+      const target = el("td", "target", text(change.target_name));
+      target.append(el("span", "sub", text(change.name)));
+      row.append(target);
+      const action = text(change.action);
+      const actionCell = el("td", "action");
+      actionCell.append(el("span", action === "DELETE" ? "badge danger" : "badge", action || "—"));
+      row.append(actionCell);
+      row.append(el("td", "who", text(change.sys_created_by)));
+      row.append(el("td", "when", text(change.sys_updated_on)));
+      rows.append(row);
+    }
+    if (!shown.length) {
+      const row = document.createElement("tr");
+      const cell = el("td", "note", changes.length ? "No change matches the filter." : "This update set has no changes.");
+      cell.colSpan = 5;
+      row.append(cell);
+      rows.append(row);
+    }
+
+    const deletes = changes.filter((c) => text(c.action) === "DELETE").length;
+    const limit = Number(data.limit) || 0;
+    $("count").textContent = [
+      "Showing " + shown.length + " of " + changes.length + (changes.length === 1 ? " change" : " changes"),
+      deletes ? deletes + (deletes === 1 ? " delete" : " deletes") : "",
+      limit && changes.length >= limit ? "the newest " + limit + " only: raise limit to see more" : "",
+    ].filter(Boolean).join(" · ");
+    $("refresh").hidden = !state.canCallTools;
+  }
+
+  $("search").addEventListener("input", (event) => {
+    state.text = event.target.value;
+    if (state.data) render();
+  });
+
+  $("refresh").addEventListener("click", async () => {
+    const button = $("refresh");
+    button.disabled = true;
+    button.textContent = "Refreshing…";
+    try {
+      // The host proxies this to the server: the same read-only tool, same arguments.
+      showResult(await request("tools/call", { name: state.tool, arguments: state.args }));
+    } catch (error) {
+      showStatus("Refresh failed: " + error.message, true);
+    } finally {
+      button.disabled = false;
+      button.textContent = "Refresh";
+    }
+  });
+
+  // ---- Size: tell the host how tall the content is --------------------------
+  let lastHeight = 0;
+  function reportSize() {
+    const height = Math.ceil(document.documentElement.getBoundingClientRect().height);
+    if (height && height !== lastHeight) {
+      lastHeight = height;
+      notify("ui/notifications/size-changed", { height });
+    }
+  }
+
+  // ---- Start ---------------------------------------------------------------
+  async function start() {
+    if (host === window) {
+      showStatus("This view runs inside an MCP Apps host (it has no data on its own).", false);
+      return;
+    }
+    const result = await request("ui/initialize", {
+      protocolVersion: PROTOCOL_VERSION,
+      appInfo: { name: "servicenow-update-set-review", version: "0.1.0" },
+      appCapabilities: { availableDisplayModes: ["inline"] },
+    });
+    const capabilities = (result && result.hostCapabilities) || {};
+    state.canCallTools = Boolean(capabilities.serverTools);
+    applyHostContext(result && result.hostContext);
+    notify("ui/notifications/initialized");
+    new ResizeObserver(reportSize).observe(document.documentElement);
+    reportSize();
+  }
+
+  start().catch((error) => showStatus("Could not connect to the host: " + error.message, true));
+})();
+</script>
+</body>
+</html>

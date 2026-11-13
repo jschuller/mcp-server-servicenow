@@ -89,6 +89,13 @@ class ServerConfig(BaseModel):
             "and name them in the server instructions."
         ),
     )
+    apps: bool = Field(
+        default=False,
+        description=(
+            "Register the MCP Apps views (ui:// resources) and the tools that "
+            "open them. Off by default: a spike."
+        ),
+    )
 
     @property
     def api_url(self) -> str:

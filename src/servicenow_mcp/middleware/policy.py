@@ -67,6 +67,8 @@ FIXED_TABLES: Dict[str, str] = {
     "create_update_set": "sys_update_set",
     "set_current_update_set": "sys_update_set",
     "list_update_set_changes": "sys_update_xml",
+    # Registered only with --apps on (servicenow_mcp.apps).
+    "review_update_set": "sys_update_set",
 }
 IDENTIFIER_ARGS = ("sys_id", "update_set_sys_id", "relation_type", "field_name")
 FIELD_LIST_ARGS = (
