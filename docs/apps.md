@@ -223,6 +223,7 @@ To try a view without a chat client, FastMCP has a local host: `fastmcp dev apps
 
 - **Experimental.** The switch is a flag only (`--apps on`); there is no environment variable yet, and the names of the parts may change before a stable release.
 - **One built-in view**, read-only.
+- **Not under a mount namespace yet.** `parent.mount(servicenow, namespace="snow")` renames the resource to `ui://snow/servicenow/update-set-review.html`, but the tool still names the old URI, so a host cannot find the view. Add views to the server object you run (as in the example above), or mount without a namespace.
 - **At most 200 changes** per review. The view says when the limit cut the list.
 - **Dates are UTC**, as stored, like the other update set tools.
 - **The built-in view speaks protocol revision 2026-01-26**, the stable one.
