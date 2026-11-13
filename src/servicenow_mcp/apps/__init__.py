@@ -140,12 +140,36 @@ def view_problems(document: str) -> List[str]:
     return problems
 
 
+def _mounted_uri(uri: str, namespace: Optional[str]) -> str:
+    """``uri`` as a parent serves it after ``parent.mount(server, namespace=namespace)``."""
+    if not namespace:
+        return uri
+    scheme, _, path = uri.partition("://")
+    return f"{scheme}://{namespace}/{path}"
+
+
+def _name_tool(view: str, tool_name: str) -> str:
+    """Write the tool's name into the head of ``view``, where ``McpApp`` reads it.
+
+    A host may tell a view which tool opened it (``hostContext.toolInfo``) and
+    need not, and the view's script is static text. So the name the server
+    knows goes into the document it serves; the host's wins when it gives one.
+    A document without a plain ``<head>`` tag is served as it is.
+    """
+    before, head, after = view.partition("<head>")
+    if not head:
+        return view
+    name = html.escape(tool_name, quote=True)
+    return f'{before}{head}\n<meta name="mcp-app-tool" content="{name}">{after}'
+
+
 def add_app(
     server: FastMCP,
     fn: Callable[..., Any],
     *,
     uri: str,
     view: str,
+    namespace: Optional[str] = None,
     name: Optional[str] = None,
     view_description: Optional[str] = None,
     tags: Optional[Set[str]] = None,
@@ -161,14 +185,28 @@ def add_app(
     package's server the audit log, the policy checks and read-only mode apply
     to it like any other. ``annotations`` defaults to the read-only set, so
     pass the right one for a tool that writes, and tag it ``write``.
+
+    The view is served with the tool's name in its head (``_name_tool``), so
+    ``app.callTool()`` works in a host that does not say which tool opened it.
+
+    Pass ``namespace`` when ``server`` will be mounted under one
+    (``parent.mount(server, namespace="snow")``), and only then. The mount
+    serves the view at ``ui://snow/...`` and renames the tool to ``snow_...``,
+    but FastMCP copies the tool's ``_meta`` as it is and never sees inside the
+    view, so both have to carry the mounted names from the start. Such a
+    server is for mounting: served on its own, its tool names a view that is
+    not there.
     """
     if not uri.startswith("ui://"):
         raise ValueError("an MCP Apps view is served under the ui:// scheme")
     tool_name = name or fn.__name__
     all_tags = set(tags or ()) | {"app"}
 
+    mounted_name = f"{namespace}_{tool_name}" if namespace else tool_name
+    document = _name_tool(view, mounted_name)
+
     def read_view() -> str:
-        return view
+        return document
 
     server.resource(
         uri,
@@ -183,7 +221,7 @@ def add_app(
         name=tool_name,
         tags=all_tags,
         annotations=READ if annotations is None else annotations,
-        app=AppConfig(resource_uri=uri),
+        app=AppConfig(resource_uri=_mounted_uri(uri, namespace)),
     )(fn)
 
 
@@ -255,13 +293,17 @@ def review_update_set(
     }
 
 
-def register_apps(server: FastMCP) -> None:
-    """Register the built-in views and their tools on ``server`` (the CLI passes the singleton)."""
+def register_apps(server: FastMCP, *, namespace: Optional[str] = None) -> None:
+    """Register the built-in views and their tools on ``server`` (the CLI passes the singleton).
+
+    ``namespace`` is the one ``server`` will be mounted under, if any: see ``add_app()``.
+    """
     add_app(
         server,
         review_update_set,
         name=REVIEW_TOOL,
         uri=UPDATE_SET_REVIEW_URI,
+        namespace=namespace,
         view=update_set_review_view(),
         view_description=(
             "MCP Apps view for review_update_set: a filterable table of an "

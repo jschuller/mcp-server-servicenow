@@ -9,6 +9,7 @@ Views use [MCP Apps](https://modelcontextprotocol.io/extensions/apps/overview), 
 - [What it changes in the server](#what-it-changes-in-the-server)
 - [The parts you can reuse](#the-parts-you-can-reuse)
 - [Build your own view](#build-your-own-view)
+- [Under a mount namespace](#under-a-mount-namespace)
 - [Security](#security)
 - [Limits](#limits)
 
@@ -109,10 +110,10 @@ The package ships the pieces a view is made of, so a view of your own is a funct
 | Name | What it does |
 |---|---|
 | `apps.compose_view(fragment, title=...)` | Wraps your fragment (markup, optional `<style>`, a `<script>`) into one self-contained document with `base.css` and `bridge.js` inlined |
-| `apps.add_app(server, fn, uri=..., view=...)` | Registers `fn` as a tool and `view` as the `ui://` resource the tool names. `tags=` and `annotations=` as for any tool; annotations default to the read-only set |
+| `apps.add_app(server, fn, uri=..., view=...)` | Registers `fn` as a tool and `view` as the `ui://` resource the tool names, and writes the tool's name into the view. `tags=` and `annotations=` as for any tool; annotations default to the read-only set. `namespace=` only for a server you mount under one: see [Under a mount namespace](#under-a-mount-namespace) |
 | `apps.view_problems(document)` | Lists what stops a document from being self-contained and text-safe (a URL, a loaded file, a network call, text written as markup). Empty when it is fine |
 | `apps.asset(name)` | The text of `bridge.js`, `base.css` or a shipped view fragment, if you compose a document yourself |
-| `apps.register_apps(server)` | Registers the built-in views; what `--apps on` calls |
+| `apps.register_apps(server)` | Registers the built-in views; what `--apps on` calls. `namespace=` as for `add_app` |
 
 **JavaScript** (`McpApp`, available to your fragment's script):
 
@@ -120,7 +121,7 @@ The package ships the pieces a view is made of, so a view of your own is a funct
 |---|---|
 | `McpApp.connect({name, version, onInput, onResult, onCancelled, onContext})` | Connects to the host and resolves to `app`. It applies the host's theme and reports the content height for you |
 | `app.callTool()` | Calls the tool that opened the view again, with the same arguments. `app.callTool(name, args)` calls another tool of the same server |
-| `app.canCallTools`, `app.toolName`, `app.args` | Whether the host lets the view call tools; the opening tool's name (a mount may rename it); its last arguments |
+| `app.canCallTools`, `app.toolName`, `app.args` | Whether the host lets the view call tools; the opening tool's name (the one the host gives, else the one `add_app` wrote into the view); its last arguments |
 | `McpApp.data(result)` | The result's structured data, or its first text block parsed as JSON |
 | `McpApp.errorText(result)` | The message of an error result, or `null` |
 | `McpApp.el(tag, className, text)` | A new element. Text goes in through `textContent` |
@@ -211,6 +212,21 @@ To try a view without a chat client, FastMCP has a local host: `fastmcp dev apps
 - **Poll, do not wait.** A view gets no push updates. For fresh data, call the tool again.
 - **A view that writes** carries `tags={"write"}` and the matching annotations, so `--read-only` hides it. Let the person press the button: the model fills the form in, the view submits it.
 
+## Under a mount namespace
+
+A server mounted with a namespace gets new names: `parent.mount(servicenow, namespace="snow")` serves the tool as `snow_review_update_set` and the view at `ui://snow/servicenow/update-set-review.html`. FastMCP does not rewrite the URI in the tool's `_meta.ui.resourceUri`, and it never sees the tool name inside the view. So say the namespace once more, where the views are registered:
+
+```python
+apps.register_apps(servicenow, namespace="snow")  # and add_app(..., namespace="snow") for your own
+parent.mount(servicenow, namespace="snow")
+```
+
+The tool then names the URI the parent serves, and the view calls the tool by the name the parent gives it. Use the same string in both lines, as for [`render_instructions("snow")`](architecture.md#mounting-it-in-your-own-server).
+
+- **Only for a server you mount.** Registered with a namespace and served on its own, the tool names a view that is not there.
+- **Mounting without a namespace needs nothing.**
+- **Other tools a view calls** (`app.callTool(name, args)`) also carry the prefix under a mount: `snow_list_records`.
+
 ## Security
 
 - **Record text is untrusted.** It comes from end users and other systems. The built-in view writes it with `textContent` only, and `view_problems` rejects `innerHTML` and its relatives.
@@ -223,7 +239,6 @@ To try a view without a chat client, FastMCP has a local host: `fastmcp dev apps
 
 - **Experimental.** The switch is a flag only (`--apps on`); there is no environment variable yet, and the names of the parts may change before a stable release.
 - **One built-in view**, read-only.
-- **Not under a mount namespace yet.** `parent.mount(servicenow, namespace="snow")` renames the resource to `ui://snow/servicenow/update-set-review.html`, but the tool still names the old URI, so a host cannot find the view. Add views to the server object you run (as in the example above), or mount without a namespace.
 - **At most 200 changes** per review. The view says when the limit cut the list.
 - **Dates are UTC**, as stored, like the other update set tools.
 - **The built-in view speaks protocol revision 2026-01-26**, the stable one.

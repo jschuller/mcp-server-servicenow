@@ -27,6 +27,16 @@ from servicenow_mcp.server import init_services
 from tests.conftest import make_server_config, sn_response
 
 UI_MIME = "text/html;profile=mcp-app"
+
+
+def stamped(view: str, tool_name: str) -> str:
+    """``view`` as add_app() serves it: the tool's name in the head, for McpApp."""
+    assert view.count("<head>\n") == 1
+    return view.replace(
+        "<head>\n", f'<head>\n<meta name="mcp-app-tool" content="{tool_name}">\n'
+    )
+
+
 SET_ID = "a" * 32
 HEADER = {
     "sys_id": SET_ID,
@@ -102,7 +112,11 @@ class TestRegistration:
         assert [str(r.uri) for r in resources] == [apps.UPDATE_SET_REVIEW_URI]
         assert resources[0].mime_type == UI_MIME
         assert contents[0].mime_type == UI_MIME
-        assert contents[0].text == apps.update_set_review_view()
+        # Served with the tool's name, so Refresh works where the host names no tool.
+        assert contents[0].text == stamped(
+            apps.update_set_review_view(), apps.REVIEW_TOOL
+        )
+        assert apps.view_problems(contents[0].text) == []
         assert contents[0].text.lstrip().startswith("<!doctype html>")
 
 
@@ -199,6 +213,10 @@ class TestBuiltInView:
             '"ui/resource-teardown"',
             '"tools/call"',
             "event.source !== host",
+            # The tool's name: the host's toolInfo, else what add_app() stamped.
+            "context.toolInfo",
+            'meta[name="mcp-app-tool"]',
+            "does not know its tool's name",
         ],
     )
     def test_bridge_speaks_the_view_side_of_the_protocol(self, needle: str) -> None:
@@ -275,7 +293,7 @@ class TestReusableParts:
         assert tool.meta["ui"] == {"resourceUri": "ui://mine/by-priority.html"}
         assert tool.annotations is not None and tool.annotations.read_only_hint is True
         assert resource.mime_type == UI_MIME
-        assert contents[0].text == view
+        assert contents[0].text == stamped(view, "open_incidents_by_priority")
         assert result.structured_content == {"groups": [{"priority": "1", "count": 3}]}
 
     def test_add_app_refuses_a_uri_outside_ui(self) -> None:
@@ -303,6 +321,95 @@ class TestReusableParts:
             tags={"write"},
             annotations=CREATE,
         )
+
+
+class TestMount:
+    """``parent.mount(server, namespace="snow")``: the tool must name the view the parent serves.
+
+    FastMCP's namespace renames the resource (``ui://servicenow/x`` becomes
+    ``ui://snow/servicenow/x``) and the tool, and copies the tool's ``_meta``
+    as it is. So the server is told the namespace when the views are
+    registered, like ``render_instructions("snow")``.
+    """
+
+    MOUNTED_URI = "ui://snow/servicenow/update-set-review.html"
+
+    @staticmethod
+    def _mounted(namespace: str | None, *, told: str | None) -> FastMCP:
+        init_services(make_server_config())
+        child = FastMCP("servicenow")
+        apps.register_apps(child, namespace=told)
+        parent = FastMCP("orchestrator")
+        parent.mount(child, namespace=namespace)
+        return parent
+
+    async def test_a_host_finds_the_view_through_the_parent(
+        self, instance: Mock
+    ) -> None:
+        parent = self._mounted("snow", told="snow")
+        async with Client(parent) as client:
+            tool = (await client.list_tools())[0]
+            served = {str(r.uri): r for r in await client.list_resources()}
+            # What a host does: read the URI the tool names, then call the tool.
+            assert tool.meta is not None
+            named = tool.meta["ui"]["resourceUri"]
+            contents = await client.read_resource(named)
+            result = await client.call_tool(tool.name, {"update_set_sys_id": SET_ID})
+        assert tool.name == f"snow_{apps.REVIEW_TOOL}"
+        assert named == self.MOUNTED_URI
+        assert set(served) == {self.MOUNTED_URI}
+        assert served[named].mime_type == UI_MIME
+        assert contents[0].mime_type == UI_MIME
+        # The view calls the tool by the name the parent gives it.
+        assert contents[0].text == stamped(
+            apps.update_set_review_view(), f"snow_{apps.REVIEW_TOOL}"
+        )
+        assert result.structured_content is not None
+        assert result.structured_content["count"] == 2
+
+    async def test_no_namespace_needs_nothing(self) -> None:
+        parent = self._mounted(None, told=None)
+        async with Client(parent) as client:
+            tool = (await client.list_tools())[0]
+            served = {str(r.uri) for r in await client.list_resources()}
+        assert tool.meta is not None
+        assert tool.meta["ui"] == {"resourceUri": apps.UPDATE_SET_REVIEW_URI}
+        assert served == {apps.UPDATE_SET_REVIEW_URI}
+
+    async def test_fastmcp_still_leaves_the_link_to_us(self) -> None:
+        """Why ``namespace=`` exists. If this fails after a FastMCP upgrade, the
+        mount rewrites ``_meta.ui.resourceUri`` itself: passing the namespace
+        would then prefix it twice, so remove the parameter."""
+        parent = self._mounted("snow", told=None)
+        async with Client(parent) as client:
+            tool = (await client.list_tools())[0]
+            served = {str(r.uri) for r in await client.list_resources()}
+        assert tool.meta is not None
+        assert tool.meta["ui"] == {"resourceUri": apps.UPDATE_SET_REVIEW_URI}
+        assert served == {self.MOUNTED_URI}
+
+    async def test_add_app_takes_the_namespace_too(self) -> None:
+        child = FastMCP("mine")
+
+        def by_priority() -> dict[str, Any]:
+            """Count open incidents per priority."""
+            return {"groups": []}
+
+        apps.add_app(
+            child,
+            by_priority,
+            uri="ui://mine/by-priority.html",
+            view="<!doctype html>",
+            namespace="team",
+        )
+        parent = FastMCP("orchestrator")
+        parent.mount(child, namespace="team")
+        async with Client(parent) as client:
+            tool = (await client.list_tools())[0]
+            contents = await client.read_resource("ui://team/mine/by-priority.html")
+        assert tool.meta is not None
+        assert tool.meta["ui"] == {"resourceUri": "ui://team/mine/by-priority.html"}
+        assert contents[0].text == "<!doctype html>"
 
 
 class TestSwitch:

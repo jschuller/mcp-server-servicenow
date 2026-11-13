@@ -10,7 +10,9 @@
  *     onCancelled(reason) {},  // the call was cancelled
  *     onContext(context) {},   // host context, at start and when it changes
  *   });
- *   app.toolName      the tool that opened this view (a mount may rename it)
+ *   app.toolName      the tool that opened this view: the name the host gives
+ *                     (hostContext.toolInfo, which a host may leave out), else
+ *                     the one add_app() wrote into the document's head
  *   app.args          the last arguments received
  *   app.canCallTools  whether the host lets the view call server tools
  *   await app.callTool()             the same tool again, same arguments
@@ -90,13 +92,16 @@ const McpApp = (() => {
     };
     const notify = (method, params) => post({ jsonrpc: "2.0", method, params: params || {} });
 
+    const stamped = document.querySelector('meta[name="mcp-app-tool"]');
     const app = {
-      toolName: null,
+      toolName: stamped ? stamped.getAttribute("content") : null,
       args: {},
       canCallTools: false,
       hostContext: {},
       callTool(name, args) {
-        return request("tools/call", { name: name || app.toolName, arguments: args || app.args });
+        const tool = name || app.toolName;
+        if (!tool) return Promise.reject(new Error("this view does not know its tool's name: pass one to callTool()"));
+        return request("tools/call", { name: tool, arguments: args || app.args });
       },
     };
 
