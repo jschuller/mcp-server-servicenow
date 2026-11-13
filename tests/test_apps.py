@@ -14,7 +14,6 @@ import json
 import os
 import subprocess
 import sys
-from importlib.resources import files
 from pathlib import Path
 from typing import Any
 from unittest.mock import Mock
@@ -103,7 +102,7 @@ class TestRegistration:
         assert [str(r.uri) for r in resources] == [apps.UPDATE_SET_REVIEW_URI]
         assert resources[0].mime_type == UI_MIME
         assert contents[0].mime_type == UI_MIME
-        assert contents[0].text == apps._view_html()
+        assert contents[0].text == apps.update_set_review_view()
         assert contents[0].text.lstrip().startswith("<!doctype html>")
 
 
@@ -165,40 +164,24 @@ class TestReviewTool:
         instance.assert_not_called()
 
 
-class TestViewFile:
-    """Static checks on the HTML: self-contained, escapes record text, speaks the protocol."""
+class TestBuiltInView:
+    """The composed document: self-contained, text-safe, and it speaks the protocol."""
 
-    html = (
-        files("servicenow_mcp.apps")
-        .joinpath("update_set_review.html")
-        .read_text(encoding="utf-8")
-    )
+    document = apps.update_set_review_view()
 
-    @pytest.mark.parametrize(
-        "needle",
-        [
-            "http://",
-            "https://",
-            "//cdn",
-            "@import",
-            "src=",
-            "href=",
-            "fetch(",
-            "XMLHttpRequest",
-            "WebSocket",
-            "eval(",
-            "new Function",
-        ],
-    )
-    def test_loads_and_contacts_nothing(self, needle: str) -> None:
+    def test_is_self_contained_and_text_safe(self) -> None:
         # A host's default policy for a view allows inline script and style only.
-        assert needle not in self.html
+        assert apps.view_problems(self.document) == []
 
-    @pytest.mark.parametrize(
-        "needle", ["innerHTML", "outerHTML", "insertAdjacentHTML", "document.write"]
-    )
-    def test_never_writes_record_text_as_markup(self, needle: str) -> None:
-        assert needle not in self.html
+    def test_is_one_document_with_the_shared_parts_inlined(self) -> None:
+        assert self.document.startswith("<!doctype html>")
+        assert self.document.count("<html") == self.document.count("</html>") == 1
+        assert apps.asset("base.css") in self.document
+        assert apps.asset("bridge.js") in self.document
+        # The bridge is defined before the view's own script uses it.
+        assert self.document.index("const McpApp =") < self.document.rindex(
+            "McpApp.connect("
+        )
 
     @pytest.mark.parametrize(
         "needle",
@@ -210,17 +193,116 @@ class TestViewFile:
             '"ui/notifications/initialized"',
             '"ui/notifications/tool-input"',
             '"ui/notifications/tool-result"',
+            '"ui/notifications/tool-cancelled"',
+            '"ui/notifications/host-context-changed"',
             '"ui/notifications/size-changed"',
             '"ui/resource-teardown"',
             '"tools/call"',
             "event.source !== host",
         ],
     )
-    def test_speaks_the_view_side_of_the_protocol(self, needle: str) -> None:
-        assert needle in self.html
+    def test_bridge_speaks_the_view_side_of_the_protocol(self, needle: str) -> None:
+        assert needle in apps.asset("bridge.js")
 
-    def test_ships_in_the_package(self) -> None:
-        assert (Path(apps.__file__).parent / "update_set_review.html").is_file()
+    @pytest.mark.parametrize(
+        "name", ["bridge.js", "base.css", "update_set_review.html"]
+    )
+    def test_parts_ship_in_the_package(self, name: str) -> None:
+        assert (Path(apps.__file__).parent / name).is_file()
+
+
+class TestReusableParts:
+    """What a server that imports this package builds its own view from (docs/apps.md)."""
+
+    def test_compose_view_escapes_the_title(self) -> None:
+        document = apps.compose_view("<p>hi</p>", title="A <b> & c")
+        assert "<title>A &lt;b&gt; &amp; c</title>" in document
+        assert "<p>hi</p>" in document
+        assert apps.view_problems(document) == []
+
+    @pytest.mark.parametrize(
+        ("fragment", "reason"),
+        [
+            ('<script src="https://cdn.example/x.js"></script>', "names a URL"),
+            ('<link rel="stylesheet" href="x.css">', "loads a file"),
+            ("<style>@import 'x.css';</style>", "loads a file"),
+            ("<script>fetch('/api')</script>", "opens a network connection"),
+            ("<script>new WebSocket(u)</script>", "opens a network connection"),
+            ("<script>n.innerHTML = row.name</script>", "writes text as markup"),
+            ("<script>eval(code)</script>", "evaluates a string as code"),
+        ],
+    )
+    def test_view_problems_names_what_is_wrong(
+        self, fragment: str, reason: str
+    ) -> None:
+        problems = apps.view_problems(apps.compose_view(fragment, title="t"))
+        assert any(reason in problem for problem in problems), problems
+        assert all(problem.startswith("line ") for problem in problems)
+
+    async def test_add_app_registers_a_custom_tool_and_its_view(self) -> None:
+        """The example in docs/apps.md, in miniature."""
+
+        def open_incidents_by_priority() -> dict[str, Any]:
+            """Count open incidents per priority."""
+            return {"groups": [{"priority": "1", "count": 3}]}
+
+        view = apps.compose_view(
+            '<h1>Open incidents by priority</h1><div id="rows"></div>'
+            "<script>McpApp.connect({name: 'by-priority', onResult(result) {"
+            " for (const g of McpApp.data(result).groups)"
+            " document.getElementById('rows').append("
+            "McpApp.el('p', null, g.priority + ': ' + g.count)); }});</script>",
+            title="Open incidents by priority",
+        )
+        assert apps.view_problems(view) == []
+
+        mine = FastMCP("mine")
+        apps.add_app(
+            mine,
+            open_incidents_by_priority,
+            uri="ui://mine/by-priority.html",
+            view=view,
+            tags={"read"},
+        )
+        async with Client(mine) as client:
+            tool = (await client.list_tools())[0]
+            resource = (await client.list_resources())[0]
+            contents = await client.read_resource("ui://mine/by-priority.html")
+            result = await client.call_tool("open_incidents_by_priority", {})
+        assert tool.name == "open_incidents_by_priority"
+        assert tool.description == "Count open incidents per priority."
+        assert tool.meta is not None
+        assert tool.meta["ui"] == {"resourceUri": "ui://mine/by-priority.html"}
+        assert tool.annotations is not None and tool.annotations.read_only_hint is True
+        assert resource.mime_type == UI_MIME
+        assert contents[0].text == view
+        assert result.structured_content == {"groups": [{"priority": "1", "count": 3}]}
+
+    def test_add_app_refuses_a_uri_outside_ui(self) -> None:
+        with pytest.raises(ValueError, match="ui://"):
+            apps.add_app(
+                FastMCP("mine"), lambda: {}, uri="https://example.test/v.html", view=""
+            )
+
+    def test_add_app_passes_write_annotations_through(self) -> None:
+        from servicenow_mcp.tools.annotations import CREATE
+
+        mine = FastMCP("mine")
+
+        def create_thing() -> dict[str, Any]:
+            """Create a thing."""
+            return {}
+
+        # A tool that writes carries its own annotations and the write tag,
+        # so read-only mode hides it like any other write tool.
+        apps.add_app(
+            mine,
+            create_thing,
+            uri="ui://mine/create.html",
+            view="<!doctype html>",
+            tags={"write"},
+            annotations=CREATE,
+        )
 
 
 class TestSwitch:

@@ -206,6 +206,14 @@ Pass secrets as environment variables, not CLI args: `--password`, `--client-sec
 - **With the plugin:** `off` stops the server serving a second copy of the skills the plugin already loads.
 - **Measuring what the skills add:** compare `on` and `off` with the server added without the plugin. Through the plugin, `off` leaves the skills loaded.
 
+### MCP Apps views
+
+| Variable | CLI Arg | Description |
+|----------|---------|-------------|
+| (none yet) | `--apps` | `off` (default) or `on`. `on` adds the read tool `review_update_set` and its view `ui://servicenow/update-set-review.html`, which clients that support MCP Apps show in the conversation; other clients get the same result as text. Experimental. Any other value stops startup |
+
+How it works, what it changes and how to add a view of your own: [MCP Apps views](apps.md).
+
 ### One-shot commands
 
 These run, print a report and exit; they don't start the server. Only `--check` loads a `.env` file, as the server does; the others read no instance or credential.

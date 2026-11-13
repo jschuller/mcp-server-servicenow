@@ -1,30 +1,42 @@
-"""MCP Apps views (SEP-1865, extension ``io.modelcontextprotocol/ui``): a spike.
+"""MCP Apps views (SEP-1865, extension ``io.modelcontextprotocol/ui``).
 
 An MCP App is two ordinary MCP objects: a tool, and an HTML resource under
 ``ui://`` that the tool names in ``_meta.ui.resourceUri``. A host that supports
 the extension renders the HTML in a sandboxed frame and hands it the tool's
 result; any other host ignores the metadata and gets the same result as text.
-So the view needs no separate fallback tool: it draws what the model reads.
+So a view needs no separate fallback tool: it draws what the model reads.
 
 Off by default (``--apps on``, ``ServerConfig.apps``). With it off nothing here
 is registered, and the tool list, the resource list and
 ``docs/contract.json`` are unchanged.
 
-One view so far, read-only:
+The parts, each usable on its own in a server that imports this package
+(``docs/apps.md`` has a worked example):
+
+- ``bridge.js``: ``McpApp``, the view side of the protocol (JSON-RPC over
+  ``postMessage``) with theme, sizing and tool calls. No SDK, no CDN.
+- ``base.css``: theme tokens bound to the host's style variables, and the
+  table, chip, badge and button styles.
+- ``compose_view()``: wraps a fragment (markup and a script that uses
+  ``McpApp``) into one self-contained document with both inlined, so it runs
+  under a host's default content security policy.
+- ``add_app()``: registers a function as a tool and its view as the ``ui://``
+  resource the tool names.
+- ``view_problems()``: the checks this package's own views must pass (loads
+  nothing, contacts nothing, never writes text as markup).
+
+One built-in view, read-only, registered by ``register_apps()``:
 
 - ``review_update_set`` + ``ui://servicenow/update-set-review.html``: an update
   set's header and its customer updates as a table the user can filter.
-
-The HTML is one self-contained file: inline script and style, no network
-access, so it runs under a host's default content security policy. It speaks
-the view side of the protocol by hand (JSON-RPC over ``postMessage``) rather
-than loading the ext-apps SDK from a CDN. Record text is untrusted: the view
-writes it with ``textContent`` only.
 """
 
+import html
 import logging
+import re
+from functools import lru_cache
 from importlib.resources import files
-from typing import Annotated, Any, Dict, List
+from typing import Annotated, Any, Callable, Dict, List, Optional, Set
 
 from fastmcp import FastMCP
 from fastmcp.apps import AppConfig
@@ -38,8 +50,146 @@ from servicenow_mcp.utils.http import build_url, parse_json_response, result_row
 
 logger = logging.getLogger(__name__)
 
+__all__ = [
+    "REVIEW_TOOL",
+    "UPDATE_SET_REVIEW_URI",
+    "add_app",
+    "asset",
+    "compose_view",
+    "register_apps",
+    "review_update_set",
+    "update_set_review_view",
+    "view_problems",
+]
+
 UPDATE_SET_REVIEW_URI = "ui://servicenow/update-set-review.html"
 REVIEW_TOOL = "review_update_set"
+
+
+# ---------------------------------------------------------------------------
+# Reusable parts
+# ---------------------------------------------------------------------------
+
+
+@lru_cache(maxsize=None)
+def asset(name: str) -> str:
+    """The text of a file shipped in this package: ``bridge.js``, ``base.css`` or a view fragment."""
+    return files("servicenow_mcp.apps").joinpath(name).read_text(encoding="utf-8")
+
+
+def compose_view(fragment: str, *, title: str) -> str:
+    """Wrap a view fragment into one self-contained MCP Apps document.
+
+    ``fragment`` is body content: markup, optional ``<style>``, and a
+    ``<script>`` that calls ``McpApp.connect(...)``. The result inlines
+    ``base.css`` in the head and ``bridge.js`` ahead of the fragment, and loads
+    nothing else, so a host's default policy for a view (inline script and
+    style only, no network) is enough.
+    """
+    return (
+        "<!doctype html>\n"
+        '<html lang="en">\n<head>\n<meta charset="utf-8">\n'
+        '<meta name="viewport" content="width=device-width, initial-scale=1">\n'
+        f"<title>{html.escape(title)}</title>\n"
+        f"<style>\n{asset('base.css')}</style>\n</head>\n<body>\n"
+        f"<script>\n{asset('bridge.js')}</script>\n"
+        f"{fragment}\n</body>\n</html>\n"
+    )
+
+
+# What a self-contained, text-safe view must not contain. A view that needs the
+# network declares the origins in AppConfig(csp=...) instead and skips this check.
+_VIEW_RULES = (
+    (
+        re.compile(r"https?://|(?<![\w.])//[\w-]+\.", re.I),
+        "names a URL: a view loads nothing",
+    ),
+    (
+        re.compile(r"@import|\bsrc\s*=|\bhref\s*=", re.I),
+        "loads a file (@import, src=, href=)",
+    ),
+    (
+        re.compile(
+            r"\bfetch\s*\(|XMLHttpRequest|\bWebSocket\b|\bEventSource\b|sendBeacon"
+        ),
+        "opens a network connection",
+    ),
+    (
+        re.compile(r"innerHTML|outerHTML|insertAdjacentHTML|document\.write"),
+        "writes text as markup: use McpApp.el / textContent",
+    ),
+    (
+        re.compile(r"\beval\s*\(|new\s+Function\b"),
+        "evaluates a string as code",
+    ),
+)
+
+
+def view_problems(document: str) -> List[str]:
+    """Why ``document`` is not a self-contained, text-safe view; empty when it is.
+
+    The built-in views must pass. It reads the text, it does not run it: a
+    check for careless mistakes, not a sandbox (the host's frame is that).
+    """
+    problems = []
+    for pattern, reason in _VIEW_RULES:
+        match = pattern.search(document)
+        if match:
+            line = document.count("\n", 0, match.start()) + 1
+            problems.append(f"line {line}: {reason} ({match.group(0).strip()!r})")
+    return problems
+
+
+def add_app(
+    server: FastMCP,
+    fn: Callable[..., Any],
+    *,
+    uri: str,
+    view: str,
+    name: Optional[str] = None,
+    view_description: Optional[str] = None,
+    tags: Optional[Set[str]] = None,
+    annotations: Optional[Dict[str, Any]] = None,
+    prefers_border: bool = True,
+) -> None:
+    """Register ``fn`` as a tool whose result ``view`` renders.
+
+    ``view`` is a complete HTML document (``compose_view()`` builds one) served
+    at ``uri``, which must use the ``ui://`` scheme; the tool names it in
+    ``_meta.ui.resourceUri``. The tool is an ordinary tool: its description is
+    ``fn``'s docstring, it is visible to the model and to the view, and on this
+    package's server the audit log, the policy checks and read-only mode apply
+    to it like any other. ``annotations`` defaults to the read-only set, so
+    pass the right one for a tool that writes, and tag it ``write``.
+    """
+    if not uri.startswith("ui://"):
+        raise ValueError("an MCP Apps view is served under the ui:// scheme")
+    tool_name = name or fn.__name__
+    all_tags = set(tags or ()) | {"app"}
+
+    def read_view() -> str:
+        return view
+
+    server.resource(
+        uri,
+        name=f"{tool_name}-view",
+        description=view_description
+        or f"MCP Apps view for {tool_name}. Rendered by hosts that support MCP Apps.",
+        tags=all_tags,
+        app=AppConfig(prefers_border=prefers_border),
+    )(read_view)
+
+    server.tool(
+        name=tool_name,
+        tags=all_tags,
+        annotations=READ if annotations is None else annotations,
+        app=AppConfig(resource_uri=uri),
+    )(fn)
+
+
+# ---------------------------------------------------------------------------
+# Built-in view: review_update_set
+# ---------------------------------------------------------------------------
 
 # ``application.name`` dot-walks to the scope's name: stored values keep the
 # dates in UTC, like list_update_set_changes, and still give a readable scope.
@@ -57,12 +207,9 @@ class UpdateSetReview(TypedDict):
     changes: List[Row]
 
 
-def _view_html() -> str:
-    return (
-        files("servicenow_mcp.apps")
-        .joinpath("update_set_review.html")
-        .read_text(encoding="utf-8")
-    )
+def update_set_review_view() -> str:
+    """The complete document served at ``UPDATE_SET_REVIEW_URI``."""
+    return compose_view(asset("update_set_review.html"), title="Update set review")
 
 
 def review_update_set(
@@ -109,21 +256,16 @@ def review_update_set(
 
 
 def register_apps(server: FastMCP) -> None:
-    """Register the views and their tools on ``server`` (the CLI passes the singleton)."""
-    server.resource(
-        UPDATE_SET_REVIEW_URI,
-        name="update-set-review",
-        description=(
+    """Register the built-in views and their tools on ``server`` (the CLI passes the singleton)."""
+    add_app(
+        server,
+        review_update_set,
+        name=REVIEW_TOOL,
+        uri=UPDATE_SET_REVIEW_URI,
+        view=update_set_review_view(),
+        view_description=(
             "MCP Apps view for review_update_set: a filterable table of an "
             "update set's changes. Rendered by hosts that support MCP Apps."
         ),
-        tags={"read", "updateset", "app"},
-        app=AppConfig(prefers_border=True),
-    )(_view_html)
-
-    server.tool(
-        name=REVIEW_TOOL,
-        tags={"read", "updateset", "app"},
-        annotations=READ,
-        app=AppConfig(resource_uri=UPDATE_SET_REVIEW_URI),
-    )(review_update_set)
+        tags={"read", "updateset"},
+    )
