@@ -16,7 +16,11 @@
   .bar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 12px 0 8px; }
   .bar .chips { flex: 1 1 auto; }
   .bar input[type="search"] { min-width: 12em; flex: 0 1 16em; }
-  td.target { overflow-wrap: anywhere; }
+  /* The target takes the room that is left; its record name stays on one line
+     and is cut with an ellipsis (the full name is the tooltip), so a narrow
+     frame does not turn every row into three lines. */
+  td.target { overflow-wrap: anywhere; width: 46%; max-width: 0; }
+  td.target .sub { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   td.when, td.who, td.type { white-space: nowrap; }
   td.when { font-variant-numeric: tabular-nums; color: var(--ink-2); }
 </style>
@@ -148,7 +152,9 @@
       const row = el("tr");
       row.append(el("td", "type", text(change.type)));
       const target = el("td", "target", text(change.target_name));
-      target.append(el("span", "sub", text(change.name)));
+      const recordName = el("span", "sub", text(change.name));
+      recordName.title = text(change.name);
+      target.append(recordName);
       row.append(target);
       const action = text(change.action);
       const actionCell = el("td", "action");
