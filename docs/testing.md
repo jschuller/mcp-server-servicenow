@@ -41,7 +41,10 @@ with-secrets SERVICENOW_CLIENT_SECRET=svc/<scope>/servicenow-<pdi>-<tier>-client
 ```
 
 Every run also starts the server with `--skills off --read-only` and checks the `skills off:` lines: 3 resources plus
-the schema template, no `skill://`, the read tools, and instructions that name no skill.
+the schema template, no `skill://`, the read tools, and instructions that name no skill. And with
+`--apps on --read-only` it checks the `apps on:` lines: the read tools plus `review_update_set`, its `ui://` view as a
+host reads it, and one review of the newest update set (an identity that cannot read update sets gets the refusal
+checked instead).
 
 Use `--profile readonly` for the three read tiers and `--profile write --expect-tools 20` for the writer. The write
 profile deletes what it creates, even after a failed step; afterwards, check that no incident whose short description

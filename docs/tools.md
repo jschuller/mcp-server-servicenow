@@ -68,6 +68,7 @@ ServiceNow's ACLs decide what the user can do; the server adds nothing on top. B
 | `get_system_properties` | `admin` | **an empty list, no error** |
 | `get_current_user`, `servicenow://instance`, `servicenow://update-set/current` | any user | without `admin`, `instance` has no build or default time zone: `unavailable` names each and why |
 | update-set tools | `admin` | 403 |
+| `review_update_set` and its view (only with [`--apps on`](apps.md)) | `admin`: read access to `sys_update_set` and `sys_update_xml` | 403 as the tool's error (401 for an API key that no access policy maps for the call); the view shows the message |
 
 The reads, the empty `get_system_properties` and the 403s were checked live on a Brazil PDI on 2026-10-11 as `itil` + `snc_read_only`, and the record writes, schema and update-set tools as `admin`; the `itil` write, `itil_admin` delete and CI write rows follow ServiceNow's base-system role documentation. An instance with custom ACLs can differ — the error text names the API and method. API-key users also need a REST API access policy for each API they call (Table, Aggregate): see [TROUBLESHOOTING](../TROUBLESHOOTING.md#401-unauthorized).
 
