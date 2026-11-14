@@ -32,7 +32,14 @@ from fastmcp import FastMCP
 from fastmcp.server.providers.skills import SkillsDirectoryProvider
 
 from servicenow_mcp.server import get_config, get_config_or_none, make_sn_request, mcp
-from servicenow_mcp.utils.http import build_url, parse_json_response, result_rows
+from servicenow_mcp.utils.http import (
+    build_url,
+    error_text,
+    parse_json_response,
+    result_rows,
+)
+from servicenow_mcp.utils.records import record_result
+from servicenow_mcp.utils.redaction import PROPERTY_TABLE, REDACTED, Guard
 from servicenow_mcp.utils.schema import _reference_value, fetch_table_schema
 from servicenow_mcp.utils.user import fetch_current_user
 from servicenow_mcp.tools.update_set_tools import CURRENT_UPDATE_SET_PREF_QUERY
@@ -86,7 +93,7 @@ _NO_PROPERTIES = "sys_properties returned no such property: reading it needs adm
 
 def _reason(exc: Exception) -> str:
     """The first sentence of an error, short enough for a JSON value."""
-    return str(exc).split(". ")[0][:120]
+    return error_text(exc).split(". ")[0][:120]
 
 
 @mcp.resource(
@@ -107,16 +114,20 @@ def instance_info() -> str:
 
     props: Dict[str, str] = {}
     props_error = ""
-    props_url = build_url(config.api_url, "table", "sys_properties")
+    props_url = build_url(config.api_url, "table", PROPERTY_TABLE)
+    # None of the four is a credential, but the type decides, here as anywhere.
+    guard = Guard(PROPERTY_TABLE, "name,value")
     props_params = {
         "sysparm_query": "nameIN" + ",".join(INSTANCE_PROPERTIES),
-        "sysparm_fields": "name,value",
+        "sysparm_fields": guard.fields,
         "sysparm_limit": 10,
     }
     try:
         resp = make_sn_request("GET", props_url, config.timeout, params=props_params)
-        for prop in result_rows(parse_json_response(resp, props_url)):
-            if isinstance(prop, dict) and isinstance(prop.get("name"), str):
+        rows = result_rows(parse_json_response(resp, props_url))
+        guard.apply(rows)
+        for prop in rows:
+            if isinstance(prop.get("name"), str) and prop.get("value") != REDACTED:
                 props[prop["name"]] = str(prop.get("value") or "")
     except Exception as exc:
         logger.debug("Failed to fetch system properties for instance resource")
@@ -206,8 +217,7 @@ def current_update_set() -> str:
         "sysparm_fields": "value",
     }
     resp = make_sn_request("GET", pref_url, config.timeout, params=pref_params)
-    pref_data = parse_json_response(resp, pref_url)
-    prefs = pref_data.get("result", [])
+    prefs = result_rows(parse_json_response(resp, pref_url))
 
     if not prefs or not prefs[0].get("value"):
         return json.dumps({"error": "No current update set found in user preferences"})
@@ -220,8 +230,7 @@ def current_update_set() -> str:
         "sysparm_fields": "sys_id,name,state,description,application",
     }
     us_resp = make_sn_request("GET", us_url, config.timeout, params=us_params)
-    us_data = parse_json_response(us_resp, us_url)
-    update_set = us_data.get("result", {})
+    update_set = record_result(parse_json_response(us_resp, us_url))
 
     return json.dumps(
         {
@@ -268,7 +277,7 @@ def cmdb_classes() -> str:
             "sysparm_offset": page * CLASS_PAGE_SIZE,
         }
         response = make_sn_request("GET", url, config.timeout, params=query_params)
-        batch = parse_json_response(response, url).get("result", [])
+        batch = result_rows(parse_json_response(response, url))
         result.extend(batch)
         if len(batch) < CLASS_PAGE_SIZE:
             break

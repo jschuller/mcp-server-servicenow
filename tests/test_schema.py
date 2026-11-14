@@ -175,7 +175,9 @@ def test_dictionary_refusal_names_the_role(monkeypatch) -> None:
     from servicenow_mcp import server
 
     def fake(method, url, timeout, params=None, json_data=None):
-        raise ServiceNowAPIError("Access denied (403). The user may lack permissions")
+        raise ServiceNowAPIError(
+            "Access denied (403). The user may lack permissions", status=403
+        )
 
     monkeypatch.setattr(server, "make_sn_request", fake)
     with pytest.raises(ServiceNowAPIError, match="personalize_dictionary"):

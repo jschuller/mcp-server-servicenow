@@ -1,5 +1,6 @@
 """Configuration module for the ServiceNow MCP server."""
 
+import re
 from enum import Enum
 from typing import Optional
 
@@ -8,6 +9,25 @@ from pydantic import BaseModel, Field
 
 # ServiceNow's default API-key auth parameter (a header or query parameter).
 DEFAULT_API_KEY_HEADER = "x-sn-apikey"
+
+
+HEADER_NAME = re.compile(r"[!#$%&'*+\-.^_`|~0-9A-Za-z]+\Z")
+
+
+def header_value_problem(value: str) -> Optional[str]:
+    """Why ``value`` cannot be sent as an HTTP header value, or None.
+
+    The answer never repeats the value: it is a credential.
+    """
+    if value != value.strip():
+        return "white space at its start or end (often a pasted line ending)"
+    if any(ord(char) < 32 or ord(char) == 127 for char in value):
+        return "a control character (often a pasted line ending)"
+    try:
+        value.encode("latin-1")
+    except UnicodeEncodeError:
+        return "a character HTTP headers cannot carry"
+    return None
 
 
 class AuthType(str, Enum):

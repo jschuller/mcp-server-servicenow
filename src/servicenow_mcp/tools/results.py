@@ -55,6 +55,7 @@ class RelationshipList(TypedDict):
 class PropertyList(TypedDict):
     count: int
     properties: List[Row]
+    warning: NotRequired[str]
     truncated: NotRequired[bool]
     note: NotRequired[str]
 

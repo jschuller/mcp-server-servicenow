@@ -104,6 +104,19 @@ def test_unreachable_oauth_token_endpoint_fails_reach(monkeypatch, capsys) -> No
     assert code == 1 and "FAIL reach" in out
 
 
+def test_a_library_error_is_reported_by_class_not_by_its_text(
+    monkeypatch, capsys
+) -> None:
+    """requests' text can quote a response or the key: --check prints the class."""
+    import requests
+
+    quoted = "Invalid header value: 'key-canary\\r' for /api?sysparm_query=canary"
+    fake = router(sys_user=requests.exceptions.InvalidHeader(quoted))
+    code, out = _run(monkeypatch, capsys, fake)
+    assert code == 1 and "FAIL reach      InvalidHeader" in out
+    assert "canary" not in out
+
+
 def test_api_key_policy_limit_is_a_warning(monkeypatch, capsys) -> None:
     fake = router(
         **{"stats/sys_user_group": ServiceNowAPIError("Authentication failed (401). x")}

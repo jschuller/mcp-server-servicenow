@@ -29,7 +29,7 @@ graph TD
     AR -->|"REST API"| SN
 ```
 
-Built with [FastMCP 4](https://gofastmcp.com): it speaks both the stateless MCP 2026-07-28 protocol and the legacy handshake, negotiated per connection.
+Built with [FastMCP 4](https://gofastmcp.com): it speaks both the stateless MCP 2026-07-28 protocol and the legacy handshake, negotiated per connection. The protocol versions and the capabilities it answers with are recorded in [contract.json](contract.json) (`negotiation`), and a test checks that an `initialize` asking for 2025-03-26 gets that version.
 
 ## Mounting it in your own server
 

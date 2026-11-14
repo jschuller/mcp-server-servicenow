@@ -17,6 +17,7 @@ from servicenow_mcp.utils.http import (
     parse_json_response,
     result_rows,
 )
+from servicenow_mcp.utils.records import first_row, record_result
 from servicenow_mcp.utils.user import fetch_current_user
 
 logger = logging.getLogger(__name__)
@@ -76,8 +77,7 @@ def get_update_set(
 
     url = build_url(config.api_url, "table", "sys_update_set", sys_id)
     response = make_sn_request("GET", url, config.timeout)
-    data = parse_json_response(response, url)
-    return data.get("result", {})
+    return record_result(parse_json_response(response, url))
 
 
 @mcp.tool(tags={"write", "updateset"}, annotations=annotations.CREATE)
@@ -101,8 +101,7 @@ def create_update_set(
         payload["parent"] = parent
 
     response = make_sn_request("POST", url, config.timeout, json_data=payload)
-    data = parse_json_response(response, url)
-    result = data.get("result", {})
+    result = record_result(parse_json_response(response, url))
     return {
         "sys_id": result.get("sys_id"),
         "name": result.get("name"),
@@ -121,8 +120,7 @@ def set_current_update_set(
 
     url = build_url(config.api_url, "table", "sys_update_set", sys_id)
     response = make_sn_request("GET", url, config.timeout)
-    data = parse_json_response(response, url)
-    update_set = data.get("result", {})
+    update_set = record_result(parse_json_response(response, url))
 
     name = update_set.get("name", "Unknown")
     state = update_set.get("state", "Unknown")
@@ -139,11 +137,10 @@ def set_current_update_set(
         config.timeout,
         params={"sysparm_query": CURRENT_UPDATE_SET_PREF_QUERY, "sysparm_limit": 1},
     )
-    pref_data = parse_json_response(pref_response, pref_url)
-    prefs = pref_data.get("result", [])
+    pref = first_row(result_rows(parse_json_response(pref_response, pref_url)))
 
-    if prefs:
-        pref_sys_id = prefs[0]["sys_id"]
+    if pref.get("sys_id"):
+        pref_sys_id = pref["sys_id"]
         make_sn_request(
             "PATCH",
             build_url(config.api_url, "table", "sys_user_preference", pref_sys_id),

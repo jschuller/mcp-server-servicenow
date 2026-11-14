@@ -224,7 +224,9 @@ package uninstallable):
    issue (see #10 for the template). Stay polite — real contributor fixes
    do land (#5).
 5. If `tests/test_contract.py` fails after a lock refresh, the dependency
-   changed what clients receive (a schema, a title, an annotation). Run
+   changed what clients receive (a schema, a title, an annotation) or what
+   the server negotiates (a capability, an extension, a protocol version:
+   the `negotiation` block). Run
    `scripts/contract.py --write` and read the `docs/contract.json` diff
    before merging; say what changed in the CHANGELOG.
 

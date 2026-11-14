@@ -4,7 +4,9 @@ Lines go to ``stderr`` by default (``--audit-log stderr``), to a file
 (``--audit-log /path/audit.jsonl``) or nowhere (``--audit-log off``). Never
 stdout: on stdio transport that is the protocol channel. Written values are
 never logged, only the ``data`` keys; the encoded query is logged redacted
-(secret-like values masked) and truncated, so it can hold filter values.
+(secret-like values masked, and on ``sys_properties`` whatever a term compares
+``value`` with) and truncated, so it can hold other filter values. A query
+too long to be worth reading is not logged at all, only its length.
 """
 
 from __future__ import annotations
@@ -22,13 +24,23 @@ from fastmcp.exceptions import NotFoundError
 from fastmcp.server.middleware import CallNext, Middleware, MiddlewareContext
 from mcp.types import TextContent
 
-from servicenow_mcp.middleware.policy import SCHEMA_URI_RE, PolicyError, resolve_table
+from servicenow_mcp.middleware.policy import (
+    SCHEMA_URI_RE,
+    OPAQUE_TERM_RE,
+    VALUE_TERM_RE,
+    PolicyError,
+    resolve_table,
+)
 from servicenow_mcp.middleware.response_limit import TRUNCATED_META
 
 AUDIT_LOGGER_NAME = "servicenow_mcp.audit"
 TRUNCATION_SUFFIX = "\n\n[Response truncated due to size limit]"
 RUN_ID = uuid.uuid4().hex
 QUERY_MAX_CHARS = 200
+# The line keeps 200 characters of a query; one longer than this is no
+# filter a person wrote, and masking it would be work done on the event loop
+# for nothing.
+QUERY_MAX_INPUT = 4000
 
 logger = logging.getLogger(AUDIT_LOGGER_NAME)
 logger.propagate = False
@@ -36,10 +48,16 @@ logger.propagate = False
 _enabled = False
 _transport = "stdio"
 
+# The rest of a field name and the space before its operator are bounded
+# (a column name has at most 80 characters): unbounded, a run of keywords
+# with no operator costs quadratic time.
 _REDACT_RE = re.compile(
-    r"(?i)((?:password|secret|token|api_key|apikey)[A-Za-z0-9_]*\s*"
-    r"(?:!=|=|LIKE|STARTSWITH|ENDSWITH|IN))([^^]*)"
+    r"(?i)((?:password|secret|token|api_key|apikey)[A-Za-z0-9_]{0,80}\s{0,8}"
+    r"(?:!=|=|<|>|LIKE|STARTSWITH|ENDSWITH|IN|BETWEEN))([^^]*)"
 )
+# What those bounds would miss: more space before the operator, or a longer
+# name. A query with either is not masked but left out.
+_UNBOUNDED_RE = re.compile(r"\s{9,}|[A-Za-z0-9_]{81,}")
 
 
 def configure_audit_log(setting: str, *, transport: str = "stdio") -> bool:
@@ -72,9 +90,25 @@ def is_enabled() -> bool:
     return _enabled
 
 
-def redact_query(query: str) -> str:
-    """Mask values of password/secret/token-like fields and cap the length."""
+def redact_query(query: str, table: Optional[str] = None) -> str:
+    """Mask values of password/secret/token-like fields and cap the length.
+
+    On ``sys_properties`` a filter on ``value`` can hold a credential the
+    caller knows or is guessing: every term on ``value`` is masked after the
+    field name. A query the masks can't be trusted on is logged by its length
+    only: one over ``QUERY_MAX_INPUT`` characters, one with a run of space or
+    a name longer than the secret mask looks at, and on ``sys_properties`` one
+    with a text-search term, a related-list or sub-query or a join, which can
+    compare ``value`` without naming it. Linear in the query's length.
+    """
+    not_logged = f"<query of {len(query)} characters, not logged>"
+    if len(query) > QUERY_MAX_INPUT or _UNBOUNDED_RE.search(query):
+        return not_logged
     masked = _REDACT_RE.sub(r"\1[REDACTED]", query)
+    if isinstance(table, str) and table.strip().lower() == "sys_properties":
+        if OPAQUE_TERM_RE.search(query):
+            return not_logged
+        masked = VALUE_TERM_RE.sub(r"\1[REDACTED]", masked)
     if len(masked) > QUERY_MAX_CHARS:
         return masked[:QUERY_MAX_CHARS] + "…"
     return masked
@@ -190,7 +224,9 @@ class AuditMiddleware(Middleware):
         sys_id = arguments.get("sys_id") or arguments.get("update_set_sys_id")
         record["sys_id"] = sys_id if isinstance(sys_id, str) else None
         query = arguments.get("query")
-        record["query"] = redact_query(query) if isinstance(query, str) else None
+        record["query"] = (
+            redact_query(query, record["table"]) if isinstance(query, str) else None
+        )
         data = arguments.get("data")
         record["data_keys"] = sorted(data) if isinstance(data, dict) else None
         record["limit"] = arguments.get("limit")

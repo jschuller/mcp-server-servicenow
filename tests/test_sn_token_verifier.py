@@ -1,6 +1,7 @@
 """Tests for ServiceNow token verifier."""
 
 import hashlib
+import logging
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx2
@@ -104,6 +105,78 @@ class TestServiceNowTokenVerifier:
             result = await verifier.verify_token("expired-token")
 
         assert result is None
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("body", "content_type", "logged"),
+        [
+            (
+                b"<html>canary-in-html</html>",
+                "text/html",
+                "401 - Response: text/html, 27 characters, not JSON, not shown",
+            ),
+            (
+                b'{"result":[{"user_name":"canary-in-rows"}]}',
+                "application/json",
+                "401 - Response: application/json, 43 characters, "
+                "not a ServiceNow error object, not shown",
+            ),
+            (
+                b'{"error":{"message":"User Not Authenticated","detail":"Required '
+                b'to provide Auth information","value":"canary-in-extra-key"}}',
+                "application/json",
+                "401 - ServiceNow error: User Not Authenticated: "
+                "Required to provide Auth information",
+            ),
+        ],
+        ids=["html", "rows", "error object with an extra key"],
+    )
+    async def test_refused_lookup_logs_no_body_content(
+        self,
+        verifier: ServiceNowTokenVerifier,
+        caplog: pytest.LogCaptureFixture,
+        body: bytes,
+        content_type: str,
+        logged: str,
+    ) -> None:
+        """The debug line says what the answer was, never what the body held."""
+        refusal = httpx2.Response(
+            401, content=body, headers={"Content-Type": content_type}
+        )
+        mock_cls = _make_mock_client(response=refusal)
+        with (
+            caplog.at_level(logging.DEBUG, logger="servicenow_mcp"),
+            patch("servicenow_mcp.auth.sn_token_verifier.httpx2.AsyncClient", mock_cls),
+        ):
+            assert await verifier.verify_token("refused-sn-token") is None
+        assert f"SN token verification failed: {logged}" in caplog.messages
+        assert "canary" not in caplog.text and "refused-sn-token" not in caplog.text
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "failure",
+        [
+            httpx2.RemoteProtocolError("illegal chunk header: b'canary-in-body'"),
+            httpx2.LocalProtocolError("Illegal header value b'Bearer canary-token\\r'"),
+            ValueError("canary in some other error"),
+        ],
+        ids=["RemoteProtocolError", "LocalProtocolError", "ValueError"],
+    )
+    async def test_a_failed_lookup_logs_the_error_class_not_its_text(
+        self,
+        verifier: ServiceNowTokenVerifier,
+        caplog: pytest.LogCaptureFixture,
+        failure: Exception,
+    ) -> None:
+        """An httpx2 error can quote the answer, or the Authorization header."""
+        mock_cls = _make_mock_client(side_effect=failure)
+        with (
+            caplog.at_level(logging.DEBUG, logger="servicenow_mcp"),
+            patch("servicenow_mcp.auth.sn_token_verifier.httpx2.AsyncClient", mock_cls),
+        ):
+            assert await verifier.verify_token("canary-token") is None
+        assert type(failure).__name__ in caplog.text
+        assert "canary" not in caplog.text
 
     @pytest.mark.asyncio
     async def test_connection_error_returns_none(
