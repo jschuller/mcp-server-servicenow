@@ -54,3 +54,5 @@ import servicenow_mcp.resources  # noqa: E402,F401
 app = FastMCP("orchestrator", instructions=render_instructions("snow", skills=SKILLS))
 app.mount(servicenow, namespace="snow")  # tools snow_*, resources servicenow://snow/…, skill://snow/…
 ```
+
+[MCP Apps views](apps.md#under-a-mount-namespace) take the namespace the same way: `apps.register_apps(servicenow, namespace="snow")`.

@@ -160,23 +160,27 @@ SERVER_ENV = {
     "SERVICENOW_ALLOW_JS_QUERIES",
     "SERVICENOW_AUDIT_LOG",
     "SERVICENOW_SKILLS",
+    "SERVICENOW_APPS",
 }
 SECRET_ENV = {"SERVICENOW_PASSWORD", "SERVICENOW_CLIENT_SECRET", "SERVICENOW_API_KEY"}
 # Where the server sends those credentials: a skills repository mustn't choose it.
 HOST_ENV = {"SERVICENOW_INSTANCE_URL", "SERVICENOW_TOKEN_URL"}
 SERVER_FLAGS = {"--read-only", "--debug", "--allow-js-queries"}
 # Flags that take a value, with the values a plugin may pass (any case, as the CLI).
-SERVER_VALUE_FLAGS = {"--skills": ("on", "off")}
+SERVER_VALUE_FLAGS = {"--skills": ("on", "off"), "--apps": ("on", "off")}
 # The first release that reads each value flag; an older pin stops at startup on it.
-SERVER_FLAG_SINCE = {"--skills": (0, 9, 3)}
+SERVER_FLAG_SINCE = {"--skills": (0, 9, 3), "--apps": (0, 9, 4)}
 # The first release that reads each setting; an older pin ignores it.
-SERVER_ENV_SINCE = {"SERVICENOW_SKILLS": (0, 9, 3)}
+SERVER_ENV_SINCE = {"SERVICENOW_SKILLS": (0, 9, 3), "SERVICENOW_APPS": (0, 9, 4)}
 # Settings whose value must be one of these (whitespace around it is ignored, as the
 # server strips it). A reference may name only the setting itself: the server's error
 # for a bad value must not be able to carry another variable, such as a credential.
 STRICT_ENV_VALUES = {
     "SERVICENOW_SKILLS": re.compile(
         r"^((?i:on|off)|)\Z|^\$\{SERVICENOW_SKILLS(:-((?i:on|off))?)?\}\Z"
+    ),
+    "SERVICENOW_APPS": re.compile(
+        r"^((?i:on|off)|)\Z|^\$\{SERVICENOW_APPS(:-((?i:on|off))?)?\}\Z"
     ),
 }
 

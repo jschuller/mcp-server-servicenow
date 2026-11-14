@@ -1,0 +1,251 @@
+<!--
+  The table view: one fragment for every table_view(). It draws the rows of a
+  tool result as a table with a search box, optional filter chips, an optional
+  header for one record, and a Refresh button.
+
+  What to draw is not in this file: table_view() writes it into the document
+  as JSON (the "view-config" block ahead of this fragment), because a view is
+  static text and cannot ask the server for its settings.
+
+  Record text comes from the instance and is untrusted: it is written with
+  McpApp.el (textContent) only, never as markup. The settings are the server
+  author's, and they too are written as text.
+-->
+<style>
+  .head { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+  .meta { color: var(--ink-2); margin: 2px 0 0; overflow-wrap: anywhere; }
+  .desc {
+    color: var(--ink-2); margin: 6px 0 0; white-space: pre-wrap; overflow-wrap: anywhere;
+    max-height: 4.4em; overflow: auto;
+  }
+  .bar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 12px 0 8px; }
+  .bar .chips { flex: 1 1 auto; }
+  .bar input[type="search"] { min-width: 12em; flex: 0 1 16em; }
+  /* A wide column takes the room that is left; its second line stays on one
+     line and is cut with an ellipsis (the full text is the tooltip), so a
+     narrow frame does not turn every row into three lines. */
+  td.wide { overflow-wrap: anywhere; width: 46%; max-width: 0; }
+  td.wide .sub { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  td.nowrap { white-space: nowrap; }
+  td.muted { font-variant-numeric: tabular-nums; color: var(--ink-2); }
+</style>
+
+<main id="app">
+  <p class="note" id="status" role="status">Waiting for the result…</p>
+
+  <section id="view" hidden>
+    <div class="head">
+      <h1 id="title"></h1>
+      <span class="badge" id="badge" hidden></span>
+    </div>
+    <p class="meta" id="meta" hidden></p>
+    <p class="desc" id="desc" hidden></p>
+
+    <div class="bar">
+      <div class="chips" id="chips" role="group" hidden></div>
+      <label class="sr-only" for="search" id="search-label">Search</label>
+      <input type="search" id="search" autocomplete="off">
+    </div>
+
+    <div class="scroll">
+      <table>
+        <caption class="sr-only" id="caption"></caption>
+        <thead><tr id="heads"></tr></thead>
+        <tbody id="rows"></tbody>
+      </table>
+    </div>
+
+    <div class="foot">
+      <span id="count" aria-live="polite"></span>
+      <button type="button" id="refresh" hidden>Refresh</button>
+    </div>
+  </section>
+</main>
+
+<script>
+(() => {
+  "use strict";
+
+  const { el, text } = McpApp;
+  const $ = (id) => document.getElementById(id);
+  const config = JSON.parse($("view-config").textContent);
+  const columns = config.columns;
+  const [one, many] = config.noun;
+  const NO_VALUE = "(none)";
+
+  let app = null;
+  const state = {
+    data: null,
+    facet: null, // the selected chip's value, or null for all
+    search: "",
+  };
+
+  const facetOf = (row) => text(row[config.facet]) || NO_VALUE;
+  const isDanger = (column, value) => Array.isArray(column.danger) && column.danger.includes(value);
+
+  // The parts that do not depend on a result.
+  $("status").textContent = "Waiting for " + many + "…";
+  $("caption").textContent = config.title;
+  for (const column of columns) {
+    const head = el("th", null, column.label);
+    head.scope = "col";
+    $("heads").append(head);
+  }
+  $("search-label").textContent = "Search " + many;
+  $("search").placeholder = "Search " + many;
+  $("search").hidden = !config.search.length;
+  if (config.facet) $("chips").setAttribute("aria-label", "Filter by " + config.facetLabel);
+
+  function showStatus(message, isError) {
+    const status = $("status");
+    status.textContent = message;
+    status.classList.toggle("error", Boolean(isError));
+    status.hidden = false;
+  }
+
+  function showResult(result) {
+    const error = McpApp.errorText(result);
+    if (error) return showStatus(error, true);
+    const data = McpApp.data(result);
+    if (!data || !Array.isArray(data[config.rows])) {
+      return showStatus("The tool result has no " + many + " to show.", true);
+    }
+    state.data = data;
+    if (state.facet && !data[config.rows].some((row) => facetOf(row) === state.facet)) state.facet = null;
+    render();
+  }
+
+  function renderHeader(data) {
+    const header = config.header;
+    const record = (header && data[header.key]) || {};
+    $("title").textContent = (header && header.title && text(record[header.title])) || config.title;
+
+    const badge = $("badge");
+    badge.textContent = header && header.badge ? text(record[header.badge]) : "";
+    badge.hidden = !badge.textContent;
+
+    const meta = $("meta");
+    meta.textContent = ((header && header.details) || [])
+      .map((detail) => text(record[detail.key]) && detail.label + ": " + text(record[detail.key]))
+      .filter(Boolean).join(" · ");
+    meta.hidden = !meta.textContent;
+
+    const desc = $("desc");
+    desc.textContent = header && header.text ? text(record[header.text]) : "";
+    desc.hidden = !desc.textContent;
+  }
+
+  function renderChips(rows) {
+    const chips = $("chips");
+    chips.hidden = !config.facet;
+    if (!config.facet) return;
+    // Most common first; ties by name so the order is stable.
+    const tally = new Map();
+    for (const row of rows) tally.set(facetOf(row), (tally.get(facetOf(row)) || 0) + 1);
+    const values = [...tally.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+    chips.replaceChildren();
+    const addChip = (label, count, value) => {
+      const chip = el("button", "chip", label);
+      chip.type = "button";
+      chip.setAttribute("aria-pressed", String(state.facet === value));
+      chip.append(el("span", "n", count));
+      chip.addEventListener("click", () => { state.facet = value; render(); });
+      chips.append(chip);
+    };
+    addChip("All", rows.length, null);
+    for (const [value, count] of values) addChip(value, count, value);
+  }
+
+  function renderRow(row) {
+    const line = el("tr");
+    for (const column of columns) {
+      const value = text(row[column.key]);
+      const classes = ["wide", "nowrap", "muted"].filter((name) => column[name]).join(" ");
+      const cell = el("td", classes);
+      if (column.badge) cell.append(el("span", isDanger(column, value) ? "badge danger" : "badge", value || "—"));
+      else cell.textContent = value;
+      if (column.sub) {
+        const second = el("span", "sub", text(row[column.sub]));
+        second.title = text(row[column.sub]);
+        cell.append(second);
+      }
+      line.append(cell);
+    }
+    return line;
+  }
+
+  function render() {
+    const data = state.data;
+    const rows = data[config.rows];
+
+    $("status").hidden = true;
+    $("view").hidden = false;
+    renderHeader(data);
+    renderChips(rows);
+
+    const needle = state.search.trim().toLowerCase();
+    const shown = rows.filter((row) => {
+      if (state.facet && facetOf(row) !== state.facet) return false;
+      if (!needle) return true;
+      return config.search.some((key) => text(row[key]).toLowerCase().includes(needle));
+    });
+
+    const body = $("rows");
+    body.replaceChildren(...shown.map(renderRow));
+    if (!shown.length) {
+      const line = el("tr");
+      const cell = el("td", "note", rows.length ? "No " + one + " matches the filter." : config.empty);
+      cell.colSpan = columns.length;
+      line.append(cell);
+      body.append(line);
+    }
+
+    // The footer: how many are shown, how many carry a value marked as danger,
+    // and whether the tool's limit cut the list.
+    const flagged = [];
+    for (const column of columns) {
+      for (const value of column.danger || []) {
+        const count = rows.filter((row) => text(row[column.key]) === value).length;
+        if (count) flagged.push(count + " " + value);
+      }
+    }
+    const limit = config.limit ? Number(data[config.limit]) || 0 : 0;
+    $("count").textContent = [
+      "Showing " + shown.length + " of " + rows.length + " " + (rows.length === 1 ? one : many),
+      ...flagged,
+      limit && rows.length >= limit ? "the first " + limit + " only: raise limit to see more" : "",
+    ].filter(Boolean).join(" · ");
+    $("refresh").hidden = !(app && app.canCallTools);
+  }
+
+  $("search").addEventListener("input", (event) => {
+    state.search = event.target.value;
+    if (state.data) render();
+  });
+
+  $("refresh").addEventListener("click", async () => {
+    const button = $("refresh");
+    button.disabled = true;
+    button.textContent = "Refreshing…";
+    try {
+      // The host proxies this to the server: the same tool, the same arguments.
+      showResult(await app.callTool());
+    } catch (error) {
+      showStatus("Refresh failed: " + error.message, true);
+    } finally {
+      button.disabled = false;
+      button.textContent = "Refresh";
+    }
+  });
+
+  McpApp.connect({
+    name: config.name,
+    version: config.version,
+    onResult: showResult,
+    onCancelled: (reason) => showStatus("The tool call was cancelled" + (reason ? ": " + reason : "."), true),
+  }).then((connected) => {
+    app = connected;
+    if (state.data) render();
+  }).catch((error) => showStatus(error.message, true));
+})();
+</script>

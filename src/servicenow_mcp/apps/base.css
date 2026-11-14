@@ -1,0 +1,70 @@
+/*
+ * Base styles for MCP Apps views. compose_view() inlines this file.
+ *
+ * Colours come from the host's style variables (--color-*, --font-*,
+ * --border-radius-*), with a light and a dark fallback for hosts that send
+ * none. McpApp sets data-theme from the host's theme. Classes: .badge
+ * (.danger), .chips and .chip, .scroll (a bordered box that scrolls), .sub,
+ * .note, .error, .foot, .sr-only; plus plain table, button and input.
+ */
+:root {
+  color-scheme: light dark;
+  --bg: var(--color-background-primary, light-dark(#ffffff, #1f1e1d));
+  --bg-2: var(--color-background-secondary, light-dark(#f5f4f0, #2a2927));
+  --ink: var(--color-text-primary, light-dark(#1f1e1d, #f2f0ea));
+  --ink-2: var(--color-text-secondary, light-dark(#5e5d59, #b5b3ab));
+  --line: var(--color-border-secondary, light-dark(#e3e1da, #3d3c39));
+  --line-strong: var(--color-border-primary, light-dark(#c9c6bc, #57554f));
+  --danger-ink: var(--color-text-danger, light-dark(#a3231f, #ff9d94));
+  --danger-bg: var(--color-background-danger, light-dark(#fbe9e7, #4a2320));
+  --ring: var(--color-ring-primary, light-dark(#2b6cb0, #8ab4f8));
+  --radius: var(--border-radius-md, 6px);
+  --sans: var(--font-sans, system-ui, -apple-system, "Segoe UI", sans-serif);
+  --mono: var(--font-mono, ui-monospace, "SF Mono", Menlo, monospace);
+}
+:root[data-theme="light"] { color-scheme: light; }
+:root[data-theme="dark"] { color-scheme: dark; }
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body {
+  font: 13px/1.45 var(--sans);
+  color: var(--ink);
+  background: var(--bg);
+  padding: 12px 14px 14px;
+}
+h1 { font-size: 15px; font-weight: 600; margin: 0; overflow-wrap: anywhere; }
+button, input { font: inherit; color: inherit; }
+button {
+  background: var(--bg); border: 1px solid var(--line-strong); border-radius: var(--radius);
+  padding: 3px 9px; cursor: pointer;
+}
+button:hover { background: var(--bg-2); }
+button[aria-pressed="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+button:disabled { opacity: .55; cursor: default; }
+button:focus-visible, input:focus-visible { outline: 2px solid var(--ring); outline-offset: 1px; }
+input[type="search"], input[type="text"] {
+  background: var(--bg); border: 1px solid var(--line-strong); border-radius: var(--radius);
+  padding: 3px 8px;
+}
+.badge {
+  font-size: 11px; padding: 1px 7px; border-radius: 999px;
+  border: 1px solid var(--line-strong); color: var(--ink-2); white-space: nowrap;
+}
+.badge.danger { color: var(--danger-ink); background: var(--danger-bg); border-color: transparent; }
+.chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.chip .n { color: var(--ink-2); margin-left: 4px; font-variant-numeric: tabular-nums; }
+.chip[aria-pressed="true"] .n { color: inherit; opacity: .8; }
+.scroll { max-height: 26rem; overflow: auto; border: 1px solid var(--line); border-radius: var(--radius); }
+table { border-collapse: collapse; width: 100%; }
+th, td { text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+thead th {
+  position: sticky; top: 0; background: var(--bg-2); color: var(--ink-2);
+  font-weight: 600; font-size: 12px; white-space: nowrap;
+}
+tbody tr:last-child td { border-bottom: 0; }
+.sub { display: block; font: 11px/1.4 var(--mono); color: var(--ink-2); overflow-wrap: anywhere; }
+.foot { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: 8px; color: var(--ink-2); }
+.note { color: var(--ink-2); margin: 10px 0 0; }
+.error { color: var(--danger-ink); }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+[hidden] { display: none !important; }

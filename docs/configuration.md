@@ -206,6 +206,14 @@ Pass secrets as environment variables, not CLI args: `--password`, `--client-sec
 - **With the plugin:** `off` stops the server serving a second copy of the skills the plugin already loads.
 - **Measuring what the skills add:** compare `on` and `off` with the server added without the plugin. Through the plugin, `off` leaves the skills loaded.
 
+### MCP Apps views
+
+| Variable | CLI Arg | Description |
+|----------|---------|-------------|
+| `SERVICENOW_APPS` | `--apps` | `off` (default) or `on`, in any case; empty means `off`. `on` adds the read tool `review_update_set` and its view `ui://servicenow/update-set-review.html`, which clients that support MCP Apps show in the conversation; other clients get the same result as text. Experimental. Any other value stops startup |
+
+How it works, what it changes and how to add a view of your own: [MCP Apps views](apps.md).
+
 ### One-shot commands
 
 These run, print a report and exit; they don't start the server. Only `--check` loads a `.env` file, as the server does; the others read no instance or credential.
@@ -221,4 +229,4 @@ These run, print a report and exit; they don't start the server. Only `--check` 
 | `--baseline RESULT_JSON` | With `--eval-summary`: the tools-only run, to report what the skills add |
 | `--badge FILE` | With `--eval-summary`: also write a shields.io endpoint badge |
 
-Boolean env vars accept `1`, `true`, `yes`, `on` (case-insensitive); `SERVICENOW_SKILLS` is not one of them, it takes only `on` or `off`. Empty values and unexpanded `${VAR}` placeholders (as Claude Code passes for unset plugin env vars) are treated as unset.
+Boolean env vars accept `1`, `true`, `yes`, `on` (case-insensitive); `SERVICENOW_SKILLS` and `SERVICENOW_APPS` are not among them, they take only `on` or `off`. Empty values and unexpanded `${VAR}` placeholders (as Claude Code passes for unset plugin env vars) are treated as unset.

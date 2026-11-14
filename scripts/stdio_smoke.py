@@ -29,6 +29,11 @@ docs/testing.md gives it per identity tier, so a fail-open is a FAIL.
 Every run also starts the server with --skills off --read-only: 3 resources
 and the schema template, no skill://, the same read tools, and instructions
 that name no skill. Changes nothing.
+
+And with --apps on --read-only: the read tools plus review_update_set, its
+ui:// view as a host reads it, and one review of the newest update set (an
+identity that cannot read update sets gets the refusal checked instead).
+Changes nothing.
 """
 
 import argparse
@@ -71,8 +76,10 @@ REFUSED = (
 
 
 def transport(*flags):
-    # Each section sets --skills itself when it needs off; the rest test the default.
-    env = {k: v for k, v in os.environ.items() if k != "SERVICENOW_SKILLS"}
+    # Each section sets --skills or --apps itself when it needs the other value;
+    # the rest test the defaults.
+    switches = {"SERVICENOW_SKILLS", "SERVICENOW_APPS"}
+    env = {k: v for k, v in os.environ.items() if k not in switches}
     return StdioTransport(
         sys.executable,
         ["-m", "servicenow_mcp.cli", *flags],
@@ -490,6 +497,92 @@ async def section_f(results: list[bool]) -> None:
             )
 
 
+async def section_g(results: list[bool]) -> None:
+    """--apps on: one more read tool, linked to a ui:// view a host can read."""
+    from servicenow_mcp import apps
+
+    async with Client(
+        transport("--apps", "on", "--read-only", "--audit-log", "off")
+    ) as c:
+        tools = {t.name: t for t in await c.list_tools()}
+        results.append(
+            ok(
+                f"apps on: {len(READ_TOOLS)} read tools + {apps.REVIEW_TOOL}",
+                set(tools) == READ_TOOLS | {apps.REVIEW_TOOL},
+                str(len(tools)),
+            )
+        )
+        tool = tools.get(apps.REVIEW_TOOL)
+        named = ((tool.meta or {}).get("ui") or {}).get("resourceUri") if tool else None
+        results.append(
+            ok(
+                "apps on: the tool names its view",
+                named == apps.UPDATE_SET_REVIEW_URI,
+                str(named),
+            )
+        )
+        views = [r for r in await c.list_resources() if str(r.uri).startswith("ui://")]
+        results.append(
+            ok(
+                "apps on: one ui:// resource, served as an MCP App",
+                [str(r.uri) for r in views] == [apps.UPDATE_SET_REVIEW_URI]
+                and views[0].mime_type == "text/html;profile=mcp-app",
+                str(len(views)),
+            )
+        )
+        # What a host does: read the URI the tool names, as it is on the wire.
+        document = (await c.read_resource(named or apps.UPDATE_SET_REVIEW_URI))[0].text
+        results.append(
+            ok(
+                "apps on: the view is self-contained and knows its tool",
+                apps.view_problems(document) == []
+                and f'<meta name="mcp-app-tool" content="{apps.REVIEW_TOOL}">'
+                in document,
+                f"{len(document)} chars",
+            )
+        )
+        try:
+            listed = (
+                await c.call_tool("list_update_sets", {"limit": 1})
+            ).structured_content
+        except ToolError as e:
+            listed = None
+            results.append(
+                ok("apps on: update sets refused for this identity", refused(e))
+            )
+        if not listed or not listed["update_sets"]:
+            # Not admin (or no update set): the view's tool must refuse the same way.
+            info("apps on: no update set readable, review checked for refusal only")
+            try:
+                await c.call_tool(apps.REVIEW_TOOL, {"update_set_sys_id": "0" * 32})
+                results.append(
+                    ok("apps on: review of an unknown id is an error", False)
+                )
+            except ToolError as e:
+                results.append(
+                    ok(
+                        "apps on: review of an unknown id is an error",
+                        refused(e) or "404" in str(e) or "No Record" in str(e),
+                    )
+                )
+            return
+        sys_id = listed["update_sets"][0]["sys_id"]
+        review = (
+            await c.call_tool(
+                apps.REVIEW_TOOL, {"update_set_sys_id": sys_id, "limit": 5}
+            )
+        ).structured_content
+        results.append(
+            ok(
+                "apps on: review returns the header and at most 5 changes",
+                review["update_set"].get("sys_id") == sys_id
+                and review["limit"] == 5
+                and review["count"] == len(review["changes"]) <= 5,
+                f"{review['count']} changes",
+            )
+        )
+
+
 def pref_rows(data):
     return {r["sys_id"]: r.get("value") for r in data.get("records", [])}
 
@@ -624,6 +717,7 @@ async def main(profile, expect_tools=None):
         await section_d(results, f"{tmp}/skills-audit.jsonl")
         await section_e(results, profile)
         await section_f(results)
+        await section_g(results)
     print(f"\n{sum(results)}/{len(results)} passed")
     return all(results)
 

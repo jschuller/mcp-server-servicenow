@@ -221,6 +221,7 @@ Verified with 0.8.0 on 2026-10-11 against ServiceNow Brazil, and the 0.9.0 skill
 - [Remote deployment](https://github.com/jschuller/mcp-server-servicenow/blob/main/docs/deployment.md) — from source, Streamable HTTP, OAuth 2.1 + PKCE, Docker, Cloud Run
 - [Alongside ServiceNow's own MCP servers](https://github.com/jschuller/mcp-server-servicenow/blob/main/docs/native-mcp.md)
 - [Architecture and embedding](https://github.com/jschuller/mcp-server-servicenow/blob/main/docs/architecture.md) — mount it in your own FastMCP server
+- [MCP Apps views](https://github.com/jschuller/mcp-server-servicenow/blob/main/docs/apps.md) — experimental: tool results as tables in the conversation (`--apps on`), and the parts to build your own view
 - [Write your own skills](https://github.com/jschuller/mcp-server-servicenow/blob/main/EXTENDING.md) — the template, the validator, the GitHub Action, sharing
 - [Privacy](https://github.com/jschuller/mcp-server-servicenow/blob/main/docs/privacy.md) — the server talks only to your instance; no telemetry
 - [Contributing](https://github.com/jschuller/mcp-server-servicenow/blob/main/CONTRIBUTING.md) · [Changelog](https://github.com/jschuller/mcp-server-servicenow/blob/main/CHANGELOG.md) · [Support](https://github.com/jschuller/mcp-server-servicenow/blob/main/SUPPORT.md) · [Security](https://github.com/jschuller/mcp-server-servicenow/blob/main/SECURITY.md)
