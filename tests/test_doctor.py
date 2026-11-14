@@ -170,6 +170,7 @@ def test_read_only_flag_is_reported(monkeypatch, capsys) -> None:
 
 def test_config_line_names_skills_off() -> None:
     assert "flags: --skills off" in describe_config(make_server_config(skills=False))
+    assert "flags: --apps on" in describe_config(make_server_config(apps=True))
     assert "flags: none" in describe_config(make_server_config())
 
 

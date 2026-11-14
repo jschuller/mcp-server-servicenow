@@ -121,6 +121,28 @@
   `docs/tools.md` names both.
 - A test that an `initialize` request asking for protocol version 2025-03-26 is answered with
   2025-03-26, and that the tools, the resources and a tool call work on that session.
+- **MCP Apps views, experimental: `SERVICENOW_APPS` (`--apps`), `off` (default) or `on`.**
+  With `on` the server adds the read tool `review_update_set` (one update set's header and its
+  changes, newest first, at most 200) and the view `ui://servicenow/update-set-review.html`,
+  which a client that supports MCP Apps (extension `io.modelcontextprotocol/ui`) shows in the
+  conversation as a table with type filters, a search box and Refresh. Any other client gets
+  the same result as text. With `off` the tool list, the resource list and the contract are
+  unchanged. Any other value stops startup with a configuration error that does not repeat
+  the value. The tool asks for no payload and no property value, issues GET requests only,
+  and goes through the audit log and the policy checks like every other tool (docs/apps.md).
+  `--check` lists `--apps on` among the flags when it is on.
+- **Parts to build a view of your own** (`from servicenow_mcp import apps`): `table_view()`
+  makes a complete view of a list from settings (rows, columns, filter chips, search, a header
+  record), `compose_view()` wraps a fragment of your own design with the shipped `bridge.js`
+  (`McpApp`) and `base.css`, `add_app()` registers a function as a tool with its view, and
+  `view_problems()` lists what stops a view from being self-contained and text-safe. `add_app()`
+  refuses such a view. `register_apps(server, namespace=...)` and `add_app(..., namespace=...)`
+  are for a server mounted under a namespace: FastMCP does not rewrite the link from the tool
+  to its view.
+- `--validate-skills` accepts `SERVICENOW_APPS` in a plugin's `mcpServers.<name>.env` and
+  `--apps on` or `--apps off` in its `args`, with the same value rules as the skills switch.
+  Setting either with a pin older than 0.9.4 is an error: 0.9.3 stops on `--apps` and ignores
+  the variable.
 
 ### Changed
 - **A ServiceNow API failure is a proper MCP tool error.** `ServiceNowAPIError` is now a FastMCP

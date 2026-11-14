@@ -83,6 +83,7 @@ def describe_config(config: ServerConfig) -> str:
             ("--read-only", config.read_only),
             ("--allow-js-queries", config.allow_js_queries),
             ("--skills off", not config.skills),
+            ("--apps on", config.apps),
         )
         if on
     ]

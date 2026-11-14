@@ -63,6 +63,7 @@ from servicenow_mcp.server import get_config, make_sn_request
 from servicenow_mcp.tools.annotations import READ
 from servicenow_mcp.tools.results import Row
 from servicenow_mcp.utils.http import build_url, parse_json_response, result_rows
+from servicenow_mcp.utils.records import record_result
 
 logger = logging.getLogger(__name__)
 
@@ -529,7 +530,9 @@ def review_update_set(
     header_response = make_sn_request(
         "GET", header_url, config.timeout, params={"sysparm_fields": _HEADER_FIELDS}
     )
-    header = parse_json_response(header_response, header_url).get("result", {})
+    # An answer that is not one record is an error that does not repeat it,
+    # as for get_update_set.
+    header = record_result(parse_json_response(header_response, header_url))
 
     changes_url = build_url(config.api_url, "table", "sys_update_xml")
     params: Dict[str, Any] = {
@@ -543,7 +546,7 @@ def review_update_set(
     changes = result_rows(parse_json_response(changes_response, changes_url))
 
     return {
-        "update_set": header if isinstance(header, dict) else {},
+        "update_set": header,
         "count": len(changes),
         "limit": limit,
         "changes": changes,

@@ -153,6 +153,27 @@ class TestReviewTool:
             "sysparm_limit": 50,
         }
 
+    async def test_a_header_that_is_not_a_record_is_an_error_that_does_not_repeat_it(
+        self, server: FastMCP, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The release's rule for single-record calls (utils/records.py)."""
+        request = Mock(side_effect=[sn_response({"result": "leaked-text-1234"})])
+        monkeypatch.setattr(apps, "make_sn_request", request)
+        async with Client(server) as client:
+            with pytest.raises(ToolError) as caught:
+                await client.call_tool(apps.REVIEW_TOOL, {"update_set_sys_id": SET_ID})
+        assert "a string as the result" in str(caught.value)
+        assert "leaked-text-1234" not in str(caught.value)
+        assert request.call_count == 1  # the changes are not read after that
+
+    def test_reads_no_payload_and_no_property_value(self) -> None:
+        """What the property value guard watches is not among the fields this tool asks for."""
+        asked = set(apps._HEADER_FIELDS.split(",")) | set(
+            apps._CHANGE_FIELDS.split(",")
+        )
+        assert not asked & {"payload", "value", "remote_update_set"}
+        assert not any(field.endswith((".payload", ".value")) for field in asked)
+
     async def test_only_reads(self, server: FastMCP, instance: Mock) -> None:
         async with Client(server) as client:
             await client.call_tool(apps.REVIEW_TOOL, {"update_set_sys_id": SET_ID})
