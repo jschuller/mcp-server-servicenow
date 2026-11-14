@@ -20,9 +20,12 @@ The parts, each usable on its own in a server that imports this package
 - ``compose_view()``: wraps a fragment (markup and a script that uses
   ``McpApp``) into one self-contained document with both inlined, so it runs
   under a host's default content security policy.
+- ``table_view()``: a complete view from a few settings: which rows of the
+  result to draw, the columns, the filter chips, the search. Most views of a
+  list need nothing else.
 - ``add_app()``: registers a function as a tool and its view as the ``ui://``
   resource the tool names.
-- ``view_problems()``: the checks this package's own views must pass (loads
+- ``view_problems()``: the checks a view registered here must pass (loads
   nothing, contacts nothing, never writes text as markup).
 
 One built-in view, read-only, registered by ``register_apps()``:
@@ -32,17 +35,30 @@ One built-in view, read-only, registered by ``register_apps()``:
 """
 
 import html
+import json
 import logging
 import re
 from functools import lru_cache
 from importlib.resources import files
-from typing import Annotated, Any, Callable, Dict, List, Optional, Set
+from typing import (
+    Annotated,
+    Any,
+    Callable,
+    Dict,
+    List,
+    Mapping,
+    Optional,
+    Sequence,
+    Set,
+    Tuple,
+)
 
 from fastmcp import FastMCP
 from fastmcp.apps import AppConfig
 from pydantic import Field
-from typing_extensions import TypedDict
+from typing_extensions import Required, TypedDict
 
+from servicenow_mcp import __version__
 from servicenow_mcp.server import get_config, make_sn_request
 from servicenow_mcp.tools.annotations import READ
 from servicenow_mcp.tools.results import Row
@@ -53,11 +69,15 @@ logger = logging.getLogger(__name__)
 __all__ = [
     "REVIEW_TOOL",
     "UPDATE_SET_REVIEW_URI",
+    "Column",
+    "Detail",
+    "Header",
     "add_app",
     "asset",
     "compose_view",
     "register_apps",
     "review_update_set",
+    "table_view",
     "update_set_review_view",
     "view_problems",
 ]
@@ -140,6 +160,201 @@ def view_problems(document: str) -> List[str]:
     return problems
 
 
+class Column(TypedDict, total=False):
+    """One column of a ``table_view()``. Only ``key`` is required."""
+
+    key: Required[
+        str
+    ]  # the row's field, as the tool returns it ("assigned_to.name" too)
+    label: str  # the column heading; the key when left out
+    sub: str  # a second field, shown small under the first
+    badge: bool  # draw the value as a badge
+    danger: List[str]  # values drawn in the danger colour and counted in the footer
+    wide: bool  # the column that takes the room the others leave
+    nowrap: bool  # keep the value on one line
+    muted: bool  # secondary colour, for dates and ids
+
+
+class Detail(TypedDict):
+    """One ``Label: value`` in the line under a ``table_view()`` heading."""
+
+    key: str
+    label: str
+
+
+class Header(TypedDict, total=False):
+    """The record a ``table_view()`` shows above its table. Only ``key`` is required."""
+
+    key: Required[str]  # where the record is in the tool's result
+    title: str  # its field shown as the heading
+    badge: str  # its field shown as a badge beside the heading
+    details: List[Detail]  # its fields shown as "Label: value" under the heading
+    text: str  # a longer field, shown under those
+
+
+_COLUMN_OPTIONS = frozenset(Column.__annotations__)
+_HEADER_OPTIONS = frozenset(Header.__annotations__)
+_COLUMN_FLAGS = ("badge", "wide", "nowrap", "muted")
+
+
+def _text_option(value: Any, what: str) -> str:
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"table_view: {what} must be a non-empty string")
+    return value
+
+
+def _known_options(options: Any, known: frozenset[str], what: str) -> Mapping[str, Any]:
+    if not isinstance(options, Mapping):
+        raise ValueError(f"table_view: {what} must be a mapping")
+    unknown = sorted(set(options) - known)
+    if unknown:
+        raise ValueError(
+            f"table_view: {what} has unknown options {unknown}: "
+            f"use {', '.join(sorted(known))}"
+        )
+    if "key" not in options:
+        raise ValueError(f"table_view: {what} needs a key")
+    return options
+
+
+def _column_settings(column: Any, position: int) -> Dict[str, Any]:
+    what = f"column {position}"
+    options = _known_options(column, _COLUMN_OPTIONS, what)
+    key = _text_option(options["key"], f"{what}'s key")
+    settings: Dict[str, Any] = {
+        "key": key,
+        "label": _text_option(options.get("label", key), f"{what}'s label"),
+    }
+    if "sub" in options:
+        settings["sub"] = _text_option(options["sub"], f"{what}'s sub")
+    for flag in _COLUMN_FLAGS:
+        if not isinstance(options.get(flag, False), bool):
+            raise ValueError(f"table_view: {what}'s {flag} must be True or False")
+        if options.get(flag):
+            settings[flag] = True
+    danger = options.get("danger", [])
+    if isinstance(danger, str) or not all(isinstance(v, str) for v in danger):
+        raise ValueError(f"table_view: {what}'s danger must be a list of strings")
+    if danger:
+        settings["danger"] = list(danger)
+    return settings
+
+
+def _header_settings(header: Any) -> Dict[str, Any]:
+    options = _known_options(header, _HEADER_OPTIONS, "header")
+    settings: Dict[str, Any] = {"key": _text_option(options["key"], "header's key")}
+    for name in ("title", "badge", "text"):
+        if name in options:
+            settings[name] = _text_option(options[name], f"header's {name}")
+    details = []
+    for detail in options.get("details", []):
+        if not isinstance(detail, Mapping) or set(detail) != {"key", "label"}:
+            raise ValueError(
+                "table_view: a header detail is {'key': ..., 'label': ...}"
+            )
+        details.append(
+            {
+                "key": _text_option(detail["key"], "a header detail's key"),
+                "label": _text_option(detail["label"], "a header detail's label"),
+            }
+        )
+    if details:
+        settings["details"] = details
+    return settings
+
+
+# JSON inside a <script> block: the HTML parser must not see a tag or a comment
+# in it, whatever a label says. These escapes are still the same JSON.
+_JSON_IN_HTML = str.maketrans({"<": "\\u003c", ">": "\\u003e", "&": "\\u0026"})
+
+
+def table_view(
+    *,
+    title: str,
+    rows: str,
+    columns: Sequence[Column],
+    facet: Optional[str] = None,
+    search: Optional[Sequence[str]] = None,
+    header: Optional[Header] = None,
+    noun: Tuple[str, str] = ("row", "rows"),
+    limit: Optional[str] = None,
+    empty: Optional[str] = None,
+    name: Optional[str] = None,
+) -> str:
+    """A complete view that draws a tool result's rows as a table.
+
+    The document has a search box, a Refresh button where the host allows tool
+    calls, and what the settings ask for. It passes ``view_problems()``, so it
+    goes straight to ``add_app()``.
+
+    - ``title``: the document's title, and the heading when ``header`` gives none.
+    - ``rows``: the key of the row list in the tool's result (``"records"`` for
+      ``list_records``).
+    - ``columns``: what to show of each row, in order: see ``Column``. Keys are
+      field names as the tool returns them, not paths: ``"assigned_to.name"``
+      is one key.
+    - ``facet``: a field whose values become filter chips, most common first.
+    - ``search``: the fields the search box looks in. Default: every column's
+      ``key`` and ``sub``. An empty list hides the box.
+    - ``header``: a record of the result to show above the table: see ``Header``.
+    - ``noun``: what a row is called, singular and plural: "Showing 3 of 12 changes".
+    - ``limit``: the key of the limit the call used, if the result carries it.
+      The footer then says when the limit cut the list.
+    - ``empty``: the text for a result without rows.
+    - ``name``: the view's name in the protocol handshake. Default: from ``title``.
+
+    The settings are written into the document, because a view is static text
+    that a host may keep: change a setting and the served document changes.
+    Text from the instance and the settings alike are drawn as text.
+    """
+    _text_option(title, "title")
+    if isinstance(columns, (str, Mapping)) or not columns:
+        raise ValueError("table_view: columns must be a non-empty list")
+    column_settings = [_column_settings(c, i + 1) for i, c in enumerate(columns)]
+    if (
+        not isinstance(noun, (tuple, list))
+        or len(noun) != 2
+        or not all(isinstance(n, str) and n.strip() for n in noun)
+    ):
+        raise ValueError("table_view: noun is (singular, plural)")
+    if search is None:
+        searched: List[str] = []
+        for column in column_settings:
+            for key in (column["key"], column.get("sub")):
+                if key and key not in searched:
+                    searched.append(key)
+    elif isinstance(search, str):
+        raise ValueError("table_view: search must be a list of field names")
+    else:
+        searched = [_text_option(key, "a search field") for key in search]
+
+    config: Dict[str, Any] = {
+        "name": name or re.sub(r"[^a-z0-9]+", "-", title.lower()).strip("-") or "table",
+        "version": __version__,
+        "title": title,
+        "rows": _text_option(rows, "rows"),
+        "columns": column_settings,
+        "search": searched,
+        "noun": list(noun),
+        "empty": empty or f"No {noun[1]}.",
+    }
+    if facet is not None:
+        config["facet"] = _text_option(facet, "facet")
+        labels = {c["key"]: c["label"] for c in column_settings}
+        config["facetLabel"] = labels.get(facet, facet)
+    if header is not None:
+        config["header"] = _header_settings(header)
+    if limit is not None:
+        config["limit"] = _text_option(limit, "limit")
+
+    settings = json.dumps(config, ensure_ascii=False).translate(_JSON_IN_HTML)
+    return compose_view(
+        f'<script type="application/json" id="view-config">{settings}</script>\n'
+        f"{asset('table_view.html')}",
+        title=title,
+    )
+
+
 def _mounted_uri(uri: str, namespace: Optional[str]) -> str:
     """``uri`` as a parent serves it after ``parent.mount(server, namespace=namespace)``."""
     if not namespace:
@@ -196,9 +411,20 @@ def add_app(
     view, so both have to carry the mounted names from the start. Such a
     server is for mounting: served on its own, its tool names a view that is
     not there.
+
+    Both mistakes that a host would only show as an empty frame stop here
+    instead: a ``uri`` outside ``ui://``, and a ``view`` that fails
+    ``view_problems()``. A view that must load something declares the origins
+    in an ``AppConfig(csp=...)`` and is registered with FastMCP directly.
     """
     if not uri.startswith("ui://"):
         raise ValueError("an MCP Apps view is served under the ui:// scheme")
+    problems = view_problems(view)
+    if problems:
+        raise ValueError(
+            f"the view for {uri} is not self-contained and text-safe: "
+            + "; ".join(problems)
+        )
     tool_name = name or fn.__name__
     all_tags = set(tags or ()) | {"app"}
 
@@ -246,8 +472,39 @@ class UpdateSetReview(TypedDict):
 
 
 def update_set_review_view() -> str:
-    """The complete document served at ``UPDATE_SET_REVIEW_URI``."""
-    return compose_view(asset("update_set_review.html"), title="Update set review")
+    """The complete document served at ``UPDATE_SET_REVIEW_URI``: a ``table_view()``."""
+    return table_view(
+        title="Update set review",
+        name="servicenow-update-set-review",
+        rows="changes",
+        header={
+            "key": "update_set",
+            "title": "name",
+            "badge": "state",
+            "details": [
+                {"key": "application.name", "label": "Scope"},
+                {"key": "sys_created_by", "label": "Created by"},
+                {"key": "sys_updated_on", "label": "Updated (UTC)"},
+            ],
+            "text": "description",
+        },
+        columns=[
+            {"key": "type", "label": "Type", "nowrap": True},
+            {"key": "target_name", "label": "Target", "sub": "name", "wide": True},
+            {"key": "action", "label": "Action", "badge": True, "danger": ["DELETE"]},
+            {"key": "sys_created_by", "label": "Author", "nowrap": True},
+            {
+                "key": "sys_updated_on",
+                "label": "Updated (UTC)",
+                "nowrap": True,
+                "muted": True,
+            },
+        ],
+        facet="type",
+        noun=("change", "changes"),
+        limit="limit",
+        empty="This update set has no changes.",
+    )
 
 
 def review_update_set(

@@ -254,14 +254,13 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--apps",
-        # A flag only while this is a spike: a SERVICENOW_APPS variable would
-        # also have to be allowed (or refused) in skill plugins by skill_lint.
-        default="off",
+        # Not choices=, as for --skills: create_config() validates both sources.
+        default=_env_str("SERVICENOW_APPS", "off"),
         metavar="{on,off}",
         help=(
             "Experimental: register the MCP Apps views (ui:// resources) and "
             "the read-only tools that open them, such as review_update_set "
-            "(default off)"
+            "(default off; SERVICENOW_APPS)"
         ),
     )
 
@@ -313,10 +312,10 @@ def _skills_enabled(args: argparse.Namespace) -> bool:
 
 
 def _apps_enabled(args: argparse.Namespace) -> bool:
-    """``--apps``: ``off`` (default) or ``on``.
+    """``--apps`` / ``SERVICENOW_APPS``: ``off`` (default) or ``on``.
 
-    Same rules as ``--skills``: any other value stops startup, and the error
-    does not repeat the value.
+    Same rules as ``--skills``: any other value stops startup, an empty
+    variable means the default, and the error does not repeat the value.
     """
     raw = getattr(args, "apps", None)
     if raw is None:
@@ -324,7 +323,8 @@ def _apps_enabled(args: argparse.Namespace) -> bool:
     value = _SKILLS_VALUES.get(raw.strip().lower())
     if value is None:
         raise ValueError(
-            f"--apps must be 'on' or 'off' (got a value of {len(raw)} characters)"
+            "SERVICENOW_APPS (--apps) must be 'on' or 'off' "
+            f"(got a value of {len(raw)} characters)"
         )
     return value
 

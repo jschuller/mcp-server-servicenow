@@ -222,11 +222,203 @@ class TestBuiltInView:
     def test_bridge_speaks_the_view_side_of_the_protocol(self, needle: str) -> None:
         assert needle in apps.asset("bridge.js")
 
-    @pytest.mark.parametrize(
-        "name", ["bridge.js", "base.css", "update_set_review.html"]
-    )
+    @pytest.mark.parametrize("name", ["bridge.js", "base.css", "table_view.html"])
     def test_parts_ship_in_the_package(self, name: str) -> None:
         assert (Path(apps.__file__).parent / name).is_file()
+
+    def test_is_a_table_view_of_the_tool_result(self) -> None:
+        """The settings name fields the tool returns: a renamed field would draw an empty column."""
+        config = view_config(self.document)
+        assert config["rows"] == "changes"
+        assert config["header"]["key"] == "update_set"
+        assert config["limit"] == "limit"
+        assert {"update_set", "changes", "limit"} <= set(
+            apps.UpdateSetReview.__annotations__
+        )
+        change_fields = set(apps._CHANGE_FIELDS.split(","))
+        drawn = {c["key"] for c in config["columns"]}
+        drawn |= {c["sub"] for c in config["columns"] if "sub" in c}
+        assert drawn | {config["facet"]} | set(config["search"]) <= change_fields
+        header_fields = set(apps._HEADER_FIELDS.split(","))
+        header = config["header"]
+        named = {header["title"], header["badge"], header["text"]}
+        named |= {d["key"] for d in header["details"]}
+        assert named <= header_fields
+        delete = next(c for c in config["columns"] if c["key"] == "action")
+        assert delete["danger"] == ["DELETE"]
+
+
+def view_config(document: str) -> Any:
+    """The settings table_view() wrote into ``document``, as the view's script reads them."""
+    opening = '<script type="application/json" id="view-config">'
+    assert document.count(opening) == 1
+    block = document.split(opening, 1)[1].split("</script>", 1)[0]
+    return json.loads(block)
+
+
+INCIDENT_COLUMNS: list[apps.Column] = [
+    {"key": "number", "label": "Number", "nowrap": True},
+    {"key": "priority", "label": "Priority", "badge": True, "danger": ["1"]},
+    {"key": "short_description", "sub": "assigned_to.name", "wide": True},
+]
+
+
+class TestTableView:
+    """``table_view()``: a view of a list from settings, with no script to write."""
+
+    def test_writes_the_settings_into_a_self_contained_document(self) -> None:
+        document = apps.table_view(
+            title="Open incidents",
+            rows="records",
+            columns=INCIDENT_COLUMNS,
+            facet="priority",
+            noun=("incident", "incidents"),
+        )
+        assert apps.view_problems(document) == []
+        assert "<title>Open incidents</title>" in document
+        assert apps.asset("table_view.html") in document
+        assert document.index('id="view-config"') < document.index("getElementById(id)")
+        assert view_config(document) == {
+            "name": "open-incidents",
+            "version": __import__("servicenow_mcp").__version__,
+            "title": "Open incidents",
+            "rows": "records",
+            "columns": [
+                {"key": "number", "label": "Number", "nowrap": True},
+                {
+                    "key": "priority",
+                    "label": "Priority",
+                    "badge": True,
+                    "danger": ["1"],
+                },
+                # No label: the key. A dot-walked field is one key, not a path.
+                {
+                    "key": "short_description",
+                    "label": "short_description",
+                    "sub": "assigned_to.name",
+                    "wide": True,
+                },
+            ],
+            # Every column's key and second line, unless search= says otherwise.
+            "search": ["number", "priority", "short_description", "assigned_to.name"],
+            "noun": ["incident", "incidents"],
+            "empty": "No incidents.",
+            "facet": "priority",
+            "facetLabel": "Priority",
+        }
+
+    def test_optional_settings(self) -> None:
+        config = view_config(
+            apps.table_view(
+                title="Changes",
+                name="my-changes",
+                rows="changes",
+                columns=[{"key": "name"}],
+                search=[],
+                header={"key": "set", "title": "name"},
+                limit="limit",
+                empty="Nothing here.",
+            )
+        )
+        assert config["name"] == "my-changes"
+        assert config["search"] == []
+        assert config["header"] == {"key": "set", "title": "name"}
+        assert config["limit"] == "limit"
+        assert config["empty"] == "Nothing here."
+        assert config["noun"] == ["row", "rows"]
+        assert "facet" not in config
+
+    def test_a_setting_cannot_end_the_settings_block(self) -> None:
+        hostile = "</script><script>alert(1)</script><!-- & -->"
+        document = apps.table_view(
+            title="T", rows="records", columns=[{"key": "name", "label": hostile}]
+        )
+        assert hostile not in document
+        assert (
+            document.count("</script>")
+            == apps.compose_view(apps.asset("table_view.html"), title="T").count(
+                "</script>"
+            )
+            + 1
+        )
+        # The script still reads the label as it was written.
+        assert view_config(document)["columns"][0]["label"] == hostile
+        assert apps.view_problems(document) == []
+
+    @pytest.mark.parametrize(
+        ("change", "message"),
+        [
+            ({"columns": []}, "columns must be a non-empty list"),
+            ({"columns": [{"label": "Name"}]}, "column 1 needs a key"),
+            (
+                {"columns": [{"key": "a"}, {"key": "b", "lable": "B"}]},
+                "column 2 has unknown options ['lable']",
+            ),
+            ({"columns": [{"key": "a", "danger": "DELETE"}]}, "danger must be a list"),
+            ({"columns": [{"key": "a", "wide": "yes"}]}, "wide must be True or False"),
+            ({"columns": "name"}, "columns must be a non-empty list"),
+            ({"rows": ""}, "rows must be a non-empty string"),
+            ({"title": " "}, "title must be a non-empty string"),
+            ({"search": "name"}, "search must be a list"),
+            ({"noun": "incident"}, "noun is (singular, plural)"),
+            ({"header": {"title": "name"}}, "header needs a key"),
+            (
+                {"header": {"key": "set", "heading": "name"}},
+                "header has unknown options",
+            ),
+            (
+                {"header": {"key": "set", "details": [{"key": "a"}]}},
+                "a header detail is",
+            ),
+        ],
+    )
+    def test_a_wrong_setting_stops_at_once(
+        self, change: dict[str, Any], message: str
+    ) -> None:
+        settings: dict[str, Any] = {
+            "title": "T",
+            "rows": "records",
+            "columns": [{"key": "name"}],
+        }
+        with pytest.raises(ValueError) as caught:
+            apps.table_view(**{**settings, **change})
+        assert message in str(caught.value)
+
+    @pytest.mark.parametrize(
+        "needle",
+        [
+            # Drawn as text only, from the settings block, through the host.
+            'JSON.parse($("view-config").textContent)',
+            "McpApp.errorText(result)",
+            "McpApp.data(result)",
+            "app.callTool()",
+            "app.canCallTools",
+            "config.empty",
+        ],
+    )
+    def test_fragment_reads_the_settings_and_the_result(self, needle: str) -> None:
+        assert needle in apps.asset("table_view.html")
+
+    async def test_goes_straight_to_add_app(self) -> None:
+        """The example in docs/apps.md: a list tool, a table_view, add_app."""
+
+        def open_incidents(limit: int = 25) -> dict[str, Any]:
+            """List open incidents, highest priority first."""
+            return {"records": [{"number": "INC0010001", "priority": "1"}], "count": 1}
+
+        view = apps.table_view(
+            title="Open incidents", rows="records", columns=INCIDENT_COLUMNS
+        )
+        mine = FastMCP("mine")
+        apps.add_app(
+            mine, open_incidents, uri="ui://mine/open-incidents.html", view=view
+        )
+        async with Client(mine) as client:
+            tool = (await client.list_tools())[0]
+            contents = await client.read_resource("ui://mine/open-incidents.html")
+        assert tool.meta is not None
+        assert tool.meta["ui"] == {"resourceUri": "ui://mine/open-incidents.html"}
+        assert contents[0].text == stamped(view, "open_incidents")
 
 
 class TestReusableParts:
@@ -301,6 +493,20 @@ class TestReusableParts:
             apps.add_app(
                 FastMCP("mine"), lambda: {}, uri="https://example.test/v.html", view=""
             )
+
+    def test_add_app_refuses_a_view_that_is_not_self_contained(self) -> None:
+        """A host shows such a view as an empty frame; registration says why instead."""
+        view = apps.compose_view(
+            '<script src="https://cdn.example/x.js"></script>'
+            "<script>n.innerHTML = row.name</script>",
+            title="t",
+        )
+        mine = FastMCP("mine")
+        with pytest.raises(ValueError) as caught:
+            apps.add_app(mine, lambda: {}, uri="ui://mine/v.html", view=view)
+        message = str(caught.value)
+        assert "ui://mine/v.html is not self-contained and text-safe" in message
+        assert "names a URL" in message and "writes text as markup" in message
 
     def test_add_app_passes_write_annotations_through(self) -> None:
         from servicenow_mcp.tools.annotations import CREATE
@@ -412,6 +618,58 @@ class TestMount:
         assert contents[0].text == "<!doctype html>"
 
 
+UI_EXTENSION = "io.modelcontextprotocol/ui"
+
+
+class TestEveryClientGetsTheSame:
+    """Nothing here depends on what a client says it supports.
+
+    Since MCP 2026-07-28 a list does not vary per connection, and a client's
+    capabilities arrive per request, so a server cannot register a view tool
+    only for hosts that render views. The link is static, and the result is
+    useful as text.
+    """
+
+    async def test_a_client_that_declares_nothing_gets_the_link_and_the_data(
+        self, server: FastMCP, instance: Mock
+    ) -> None:
+        async with Client(server) as client:
+            tool = (await client.list_tools())[0]
+            result = await client.call_tool(tool.name, {"update_set_sys_id": SET_ID})
+        assert tool.meta is not None and "ui" in tool.meta
+        # The deprecated flat key is not sent.
+        assert "ui/resourceUri" not in tool.meta
+        assert result.structured_content is not None
+        assert json.loads(result.content[0].text) == result.structured_content
+
+    def test_no_code_here_asks_what_the_client_supports(self) -> None:
+        source = Path(apps.__file__).read_text(encoding="utf-8")
+        assert "client_supports" not in source
+        assert "get_context" not in source
+
+    async def test_a_server_with_views_advertises_the_extension(
+        self, server: FastMCP
+    ) -> None:
+        async with Client(server) as client:
+            capabilities = client.server_capabilities
+        assert capabilities is not None
+        assert UI_EXTENSION in (capabilities.extensions or {})
+
+    @pytest.mark.xfail(
+        strict=True,
+        reason=(
+            "FastMCP before 4.2.0 advertises the extension on every server "
+            "(PrefectHQ/fastmcp#4919, fixed by #5062). When the lock moves and "
+            "this passes, remove the mark and the line in docs/apps.md (Limits)."
+        ),
+    )
+    async def test_a_server_without_views_does_not(self) -> None:
+        async with Client(FastMCP("no-apps")) as client:
+            capabilities = client.server_capabilities
+        assert capabilities is not None
+        assert UI_EXTENSION not in (capabilities.extensions or {})
+
+
 class TestSwitch:
     def test_off_by_default(self) -> None:
         assert make_server_config().apps is False
@@ -428,10 +686,26 @@ class TestSwitch:
         with pytest.raises(ValueError) as caught:
             cli._apps_enabled(argparse.Namespace(apps=raw))
         message = str(caught.value)
-        assert "--apps must be 'on' or 'off'" in message
+        assert "SERVICENOW_APPS (--apps) must be 'on' or 'off'" in message
         assert f"{len(raw)} characters" in message
         if len(raw) > 1:  # "1" is also the length the message reports
             assert raw not in message
+
+    def test_env_and_flag(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        argv = ["mcp-server-servicenow"]
+        monkeypatch.delenv("SERVICENOW_APPS", raising=False)
+        monkeypatch.setattr("sys.argv", argv)
+        assert cli.parse_args().apps == "off"
+        monkeypatch.setenv("SERVICENOW_APPS", "on")
+        assert cli.parse_args().apps == "on"
+        # An empty variable, or one Claude Code passed through unset, is the default.
+        monkeypatch.setenv("SERVICENOW_APPS", "")
+        assert cli.parse_args().apps == "off"
+        monkeypatch.setenv("SERVICENOW_APPS", "${SERVICENOW_APPS}")
+        assert cli.parse_args().apps == "off"
+        monkeypatch.setenv("SERVICENOW_APPS", "on")
+        monkeypatch.setattr("sys.argv", [*argv, "--apps", "off"])
+        assert cli.parse_args().apps == "off"
 
 
 _PROBE = r"""
@@ -507,6 +781,13 @@ class TestServer:
             "resourceUri": apps.UPDATE_SET_REVIEW_URI
         }
         assert served["ui"] == [apps.UPDATE_SET_REVIEW_URI]
+
+    def test_the_variable_turns_it_on_and_the_flag_wins(self, tmp_path: Path) -> None:
+        served = _probe(tmp_path, env={"SERVICENOW_APPS": "on"})
+        assert served["ui"] == [apps.UPDATE_SET_REVIEW_URI]
+        served = _probe(tmp_path, "--apps", "off", env={"SERVICENOW_APPS": "on"})
+        assert served["ui"] == []
+        assert apps.REVIEW_TOOL not in served["tools"]
 
     def test_read_only_mode_keeps_the_view(self, tmp_path: Path) -> None:
         served = _probe(tmp_path, "--apps", "on", "--read-only")

@@ -76,8 +76,10 @@ REFUSED = (
 
 
 def transport(*flags):
-    # Each section sets --skills itself when it needs off; the rest test the default.
-    env = {k: v for k, v in os.environ.items() if k != "SERVICENOW_SKILLS"}
+    # Each section sets --skills or --apps itself when it needs the other value;
+    # the rest test the defaults.
+    switches = {"SERVICENOW_SKILLS", "SERVICENOW_APPS"}
+    env = {k: v for k, v in os.environ.items() if k not in switches}
     return StdioTransport(
         sys.executable,
         ["-m", "servicenow_mcp.cli", *flags],

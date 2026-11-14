@@ -905,7 +905,8 @@ def test_wrapper_may_pass_skills_flag(tmp_path: Path, flags: tuple[str, ...]) ->
         (("--skills", "--read-only"), "passes --skills '--read-only'"),
         (
             ("--read-only=yes",),
-            "only --allow-js-queries, --debug, --read-only, --skills on|off",
+            "only --allow-js-queries, --debug, --read-only, --apps on|off, "
+            "--skills on|off",
         ),
     ],
 )
@@ -956,6 +957,7 @@ def test_wrapper_skills_env_needs_a_pin_that_reads_it(tmp_path: Path) -> None:
         "SERVICENOW_TIMEOUT",
         "SERVICENOW_AUDIT_LOG",
         "SERVICENOW_SKILLS",
+        "SERVICENOW_APPS",
     ],
 )
 def test_wrapper_setting_may_not_reference_another(tmp_path: Path, key: str) -> None:
@@ -1014,6 +1016,60 @@ def test_wrapper_skills_flag_pin_error_once(tmp_path: Path) -> None:
 def test_wrapper_skills_env_value(tmp_path: Path, value: str, ok: bool) -> None:
     """A SERVICENOW_SKILLS value the server would refuse is an error here too."""
     spec = _server_spec(["mcp-server-servicenow"], {"SERVICENOW_SKILLS": value})
+    errors = plugin_messages(lint_skills([make_wrapper(tmp_path, spec)]), "error")
+    assert (errors == []) is ok, errors
+
+
+# --apps / SERVICENOW_APPS (0.9.4): the same rules as the skills switch.
+
+
+@pytest.mark.parametrize(
+    ("package", "flags", "ok"),
+    [
+        ("mcp-server-servicenow==0.9.4", ("--apps", "on"), True),
+        ("mcp-server-servicenow==0.9.4", ("--apps=OFF", "--read-only"), True),
+        ("mcp-server-servicenow", ("--apps", "on", "--skills", "off"), True),
+        ("mcp-server-servicenow==0.9.4", ("--apps", "default"), False),
+        ("mcp-server-servicenow==0.9.4", ("--apps",), False),
+        # 0.9.3 and older stop at startup on --apps: argparse rejects the flag.
+        ("mcp-server-servicenow==0.9.3", ("--apps", "on"), False),
+    ],
+)
+def test_wrapper_apps_flag(
+    tmp_path: Path, package: str, flags: tuple[str, ...], ok: bool
+) -> None:
+    spec = _server_spec([package, *flags], {})
+    errors = plugin_messages(lint_skills([make_wrapper(tmp_path, spec)]), "error")
+    assert (errors == []) is ok, errors
+
+
+def test_wrapper_apps_flag_needs_a_pin_that_has_it(tmp_path: Path) -> None:
+    spec = _server_spec(["mcp-server-servicenow==0.9.3", "--apps", "on"], {})
+    errors = plugin_messages(lint_skills([make_wrapper(tmp_path, spec)]), "error")
+    assert sum("pin 0.9.4 or later" in m for m in errors) == 1, errors
+
+
+@pytest.mark.parametrize(
+    ("package", "value", "ok"),
+    [
+        ("mcp-server-servicenow", "on", True),
+        ("mcp-server-servicenow", " OFF ", True),
+        ("mcp-server-servicenow", "", True),
+        ("mcp-server-servicenow", "${SERVICENOW_APPS}", True),
+        ("mcp-server-servicenow", "${SERVICENOW_APPS:-on}", True),
+        ("mcp-server-servicenow==0.9.4", "on", True),
+        ("mcp-server-servicenow", "default", False),
+        ("mcp-server-servicenow", "true", False),
+        ("mcp-server-servicenow", "${SERVICENOW_PASSWORD}", False),
+        ("mcp-server-servicenow", "${SERVICENOW_SKILLS:-on}", False),
+        # 0.9.3 ignores the variable: a plugin asking for the views would not get them.
+        ("mcp-server-servicenow==0.9.3", "on", False),
+    ],
+)
+def test_wrapper_apps_env_value(
+    tmp_path: Path, package: str, value: str, ok: bool
+) -> None:
+    spec = _server_spec([package], {"SERVICENOW_APPS": value})
     errors = plugin_messages(lint_skills([make_wrapper(tmp_path, spec)]), "error")
     assert (errors == []) is ok, errors
 

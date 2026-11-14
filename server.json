@@ -109,6 +109,12 @@
           "isRequired": false,
           "description": "on (default) or off: serve the packaged skill:// resources",
           "format": "string"
+        },
+        {
+          "name": "SERVICENOW_APPS",
+          "isRequired": false,
+          "description": "off (default) or on: experimental MCP Apps views (ui:// resources) and the read tools that open them",
+          "format": "string"
         }
       ]
     }
